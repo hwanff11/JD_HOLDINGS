@@ -40,7 +40,7 @@ def main() -> None:
     settings = load_runtime_settings()
     configure_logging(settings.log_path)
     repository = SQLiteRepository(settings.database_path, config)
-    data_source = YFinanceDataSource("data/cache")
+    data_source = YFinanceDataSource(settings.cache_path)
     market_clock = MarketClock()
     if settings.trading_mode == "live":
         settings.require_live_trading()

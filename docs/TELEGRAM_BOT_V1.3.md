@@ -34,7 +34,8 @@
 - 시작일만 입력하면 종료일은 최신 완결 거래일이다.
 - 동시에 하나의 백테스트만 실행한다.
 - 실행 중 다른 요청은 새 작업을 만들지 않고 대기 안내를 전송한다.
-- yfinance 수정주가 일봉과 로컬 `data/cache`를 사용한다.
+- yfinance 수정주가 일봉과 `JDSS_CACHE_PATH`를 사용한다. Oracle에서는 릴리스 밖의
+  `shared/data/cache`를 사용한다.
 
 ## Telegram 결과
 

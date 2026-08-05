@@ -48,6 +48,8 @@ git remote -v
 배포는 테스트와 린트 → GitHub push → commit별 릴리스 업로드 → 의존성 설치 → 설정
 검증 → `current` 심볼릭 링크 교체 → 전용 systemd 서비스 재시작 순서로 수행됩니다.
 DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
+Telegram 백테스트의 yfinance 캐시도
+`/home/ubuntu/JD_HOLDINGS/shared/data/cache`에 저장되어 읽기 전용 릴리스와 분리됩니다.
 
 ## 3. 검증
 
