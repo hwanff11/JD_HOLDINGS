@@ -25,10 +25,21 @@ def test_first_entry_budget_uses_score_exposure(config):
     assert decision.planned_budget == Decimal("3000.00")
 
 
-def test_watch_grade_can_open_first_entry(config):
+def test_watch_grade_without_reversal_is_blocked(config):
     decision = evaluate_entry(
         make_snapshot(),
         make_score(76, reversal=0),
+        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("10000")),
+        config,
+    )
+    assert not decision.allowed
+    assert "REVERSAL_SCORE_LOW" in decision.reason_codes
+
+
+def test_watch_grade_with_one_reversal_condition_can_enter(config):
+    decision = evaluate_entry(
+        make_snapshot(),
+        make_score(76, reversal=5),
         PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("10000")),
         config,
     )
@@ -54,6 +65,67 @@ def test_additional_entry_cap_expansion_example(config):
     assert decision.target_cumulative_capital == Decimal("5500.00")
     assert decision.planned_budget == Decimal("2500.00")
     assert decision.stage_trigger_price == Decimal("96.0000")
+
+
+def test_additional_entry_without_reversal_is_blocked(config):
+    position = PositionSnapshot(
+        symbol="TQQQ",
+        state=PositionState.HOLDING_1ST,
+        cycle_exposure_cap=Decimal("10000"),
+        staged_entry_capital=Decimal("3000"),
+        anchor_price=Decimal("100"),
+        entry_count=1,
+    )
+    decision = evaluate_additional_entry(
+        make_snapshot(close=Decimal("96")), make_score(89, reversal=0), position, 2, config
+    )
+    assert not decision.allowed
+    assert "REVERSAL_SCORE_LOW" in decision.reason_codes
+
+
+def test_soxl_sector_guard_blocks_stage3_when_semiconductor_benchmark_below_ema60(config):
+    position = PositionSnapshot(
+        symbol="SOXL",
+        state=PositionState.HOLDING_2ND,
+        cycle_exposure_cap=Decimal("10000"),
+        staged_entry_capital=Decimal("5500"),
+        anchor_price=Decimal("100"),
+        entry_count=2,
+    )
+    decision = evaluate_additional_entry(
+        make_snapshot(symbol="SOXL", close=Decimal("92")),
+        make_score(89),
+        position,
+        3,
+        config,
+        sector_benchmarks={
+            "SOXX": make_snapshot(symbol="SOXX", close=Decimal("490"), ema60=500.0)
+        },
+    )
+    assert not decision.allowed
+    assert "SOXL_SECTOR_GUARD" in decision.reason_codes
+
+
+def test_soxl_sector_guard_does_not_block_stage2(config):
+    position = PositionSnapshot(
+        symbol="SOXL",
+        state=PositionState.HOLDING_1ST,
+        cycle_exposure_cap=Decimal("10000"),
+        staged_entry_capital=Decimal("3000"),
+        anchor_price=Decimal("100"),
+        entry_count=1,
+    )
+    decision = evaluate_additional_entry(
+        make_snapshot(symbol="SOXL", close=Decimal("96")),
+        make_score(89),
+        position,
+        2,
+        config,
+        sector_benchmarks={
+            "SOXX": make_snapshot(symbol="SOXX", close=Decimal("490"), ema60=500.0)
+        },
+    )
+    assert decision.allowed
 
 
 def test_stage_trigger_boundary(config):
