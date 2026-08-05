@@ -17,7 +17,7 @@ from jd_holdings.settings import load_runtime_settings
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="JDSS v1.2.0 운영 도구")
+    parser = argparse.ArgumentParser(description="JDSS v1.3.0 운영 도구")
     parser.add_argument("--config", default="strategy.yaml", help="strategy.yaml 경로")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

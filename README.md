@@ -23,7 +23,8 @@ Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비�
 [`docs/DECISIONS.md`](docs/DECISIONS.md), v1.1.2 기준선은
 [`docs/BASELINE_BACKTEST.md`](docs/BASELINE_BACKTEST.md), v1.2.0 연구 결과는
 [`docs/SCORE_CALIBRATION_V1.2.md`](docs/SCORE_CALIBRATION_V1.2.md), v1.3.0 연구는
-[`docs/STRATEGY_V1.3.md`](docs/STRATEGY_V1.3.md)에 있습니다.
+[`docs/STRATEGY_V1.3.md`](docs/STRATEGY_V1.3.md), Telegram 백테스트 명세는
+[`docs/TELEGRAM_BOT_V1.3.md`](docs/TELEGRAM_BOT_V1.3.md)에 있습니다.
 
 ## 빠른 시작
 
@@ -52,6 +53,14 @@ Telegram 봇은 `.env`에 봇 토큰과 관리자 개인 Chat ID 하나를 넣�
 
 ```bash
 .venv/bin/jdss-bot
+```
+
+Telegram에서 다음 명령으로 실제 주문 없이 백테스트를 실행할 수 있습니다.
+
+```text
+/bt
+/bt ALL 2025-01-01
+/bt TQQQ 2021-01-01 2024-12-31
 ```
 
 `JDSS_TRADING_MODE=dry_run`이 기본입니다. dry-run은 Toss 주문 API를 호출하지 않습니다.

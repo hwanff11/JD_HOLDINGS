@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import html
 import logging
+import math
 import threading
 import time
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
+import pandas as pd
 import telebot
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -15,13 +19,77 @@ from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.trading_service import QuoteChangedError, TradingService
-from jd_holdings.backtest.engine import BacktestEngine
+from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
+from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
 from jd_holdings.config import StrategyConfig
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 from jd_holdings.settings import RuntimeSettings
 
 LOGGER = logging.getLogger(__name__)
+
+
+class BacktestCommandError(ValueError):
+    """Raised when a Telegram /backtest command is not safe or valid."""
+
+
+@dataclass(frozen=True)
+class TelegramBacktestRequest:
+    symbols: tuple[str, ...]
+    start: date
+    end: date
+
+
+def parse_backtest_request(
+    text: str,
+    enabled_symbols: tuple[str, ...],
+    default_start: str,
+    latest_completed: date,
+) -> TelegramBacktestRequest:
+    """Parse `/bt [ALL|SYMBOL] [START] [END]` without accepting arbitrary input."""
+    parts = (text or "").split()[1:]
+    selected = enabled_symbols
+    if parts and not _looks_like_iso_date(parts[0]):
+        requested = parts.pop(0).upper()
+        if requested == "ALL":
+            selected = enabled_symbols
+        elif requested in enabled_symbols:
+            selected = (requested,)
+        else:
+            raise BacktestCommandError(
+                "지원 종목은 ALL, " + ", ".join(enabled_symbols) + "입니다."
+            )
+    if len(parts) > 2:
+        raise BacktestCommandError("형식: /bt [ALL|종목] [시작일] [종료일]")
+    try:
+        minimum_start = date.fromisoformat(default_start)
+        start = date.fromisoformat(parts[0]) if parts else minimum_start
+        end = date.fromisoformat(parts[1]) if len(parts) == 2 else latest_completed
+    except ValueError as exc:
+        raise BacktestCommandError("날짜는 YYYY-MM-DD 형식이어야 합니다.") from exc
+    if start < minimum_start:
+        raise BacktestCommandError(f"시작일은 {minimum_start.isoformat()} 이후여야 합니다.")
+    if start > end:
+        raise BacktestCommandError("시작일은 종료일보다 늦을 수 없습니다.")
+    if end > latest_completed:
+        raise BacktestCommandError(
+            f"종료일은 최신 완결 거래일 {latest_completed.isoformat()} 이하여야 합니다."
+        )
+    return TelegramBacktestRequest(symbols=selected, start=start, end=end)
+
+
+def _looks_like_iso_date(value: str) -> bool:
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _format_number(value: float | int, digits: int = 2) -> str:
+    if isinstance(value, float) and math.isinf(value):
+        return "∞"
+    return f"{float(value):.{digits}f}"
 
 
 class TelegramBotApp:
@@ -53,6 +121,7 @@ class TelegramBotApp:
         self.allowed_chat_id = settings.allowed_chat_ids[0]
         self.bot = telebot.TeleBot(settings.telegram_bot_token, threaded=True)
         self._stop = threading.Event()
+        self._backtest_lock = threading.Lock()
         self._last_monitor = 0.0
         self._register_handlers()
 
@@ -230,14 +299,41 @@ class TelegramBotApp:
         def backtest(message):
             if not self._authorized_message(message):
                 return
-            symbol = self._requested_symbol(message.text) or self.config.enabled_symbols[0]
-            if symbol not in self.config.enabled_symbols:
-                self._send("지원 종목은 TQQQ, SOXL입니다. 예: /bt TQQQ")
+            try:
+                completed = self.market_clock.latest_completed_session()
+                request = parse_backtest_request(
+                    message.text,
+                    self.config.enabled_symbols,
+                    self.config.backtest.default_start,
+                    completed,
+                )
+            except BacktestCommandError as exc:
+                self._send(
+                    f"⚠️ {html.escape(str(exc))}\n\n"
+                    "예시\n"
+                    "/bt\n"
+                    "/bt ALL 2025-01-01\n"
+                    "/bt TQQQ 2021-01-01 2024-12-31"
+                )
                 return
-            self._send(f"🧪 {symbol} 장기 백테스트를 시작합니다. 완료 후 결과를 전송합니다.")
-            threading.Thread(
-                target=self._run_backtest_and_send, args=(symbol,), daemon=True
-            ).start()
+            if not self._backtest_lock.acquire(blocking=False):
+                self._send("⏳ 다른 백테스트가 실행 중입니다. 완료 알림 후 다시 요청해 주세요.")
+                return
+            symbols_text = "+".join(request.symbols)
+            self._send(
+                f"🧪 <b>{symbols_text} 백테스트 시작</b>\n"
+                f"기간: {request.start} ~ {request.end}\n"
+                "조회 전용이며 실제 주문은 실행하지 않습니다."
+            )
+            try:
+                threading.Thread(
+                    target=self._run_backtest_and_send,
+                    args=(request,),
+                    daemon=True,
+                ).start()
+            except Exception:
+                self._backtest_lock.release()
+                raise
 
         @bot.message_handler(commands=["help", "h", "start"])
         def help_handler(message):
@@ -250,7 +346,7 @@ class TelegramBotApp:
                 "/signal /sg — 활성 매매신호\n"
                 "/status /st [종목] — 포지션\n"
                 "/indicator /i [종목] — 지표\n"
-                "/backtest /bt [종목] — 장기 백테스트\n"
+                "/backtest /bt [ALL|종목] [시작일] [종료일] — 백테스트\n"
                 "/order /o — JDSS 주문\n"
                 "/errors /err — 최근 이벤트\n"
                 "/ping /p — 상태 확인\n\n"
@@ -347,34 +443,91 @@ class TelegramBotApp:
             markup=markup,
         )
 
-    def _run_backtest_and_send(self, symbol: str) -> None:
+    def _run_backtest_and_send(self, request: TelegramBacktestRequest) -> None:
         try:
-            completed = self.market_clock.latest_completed_session()
-            start = self.config.backtest.default_start
-            target = self.data_source.daily(symbol, start, completed)
-            spy = self.data_source.daily("SPY", start, completed)
-            qqq = self.data_source.daily("QQQ", start, completed)
-            result = BacktestEngine(self.config).run(
-                symbol, target, spy, qqq, start=start, end=completed
-            )
-            metrics = result.metrics
-            self._send(
-                f"🧪 <b>{symbol} JDSS 백테스트</b>\n"
-                f"기간: {result.start_date} ~ {result.end_date}\n"
-                f"최종자산: ${metrics['final_equity']:,.2f}\n"
-                f"총수익률: {metrics['total_return_pct']:+.2f}%\n"
-                f"CAGR: {metrics['cagr_pct']:+.2f}%\n"
-                f"MDD: {metrics['mdd_pct']:.2f}%\n"
-                f"완료 사이클: {metrics['closed_cycles']}회\n"
-                f"승률: {metrics['win_rate_pct']:.2f}%\n"
-                f"Profit Factor: {metrics['profit_factor']}\n"
-                f"연평균 신호: {metrics['signals_per_year']}회\n"
-                f"최악 MAE: {metrics['worst_mae_pct']:.2f}%\n"
-                f"최대 보유일: {metrics['maximum_holding_days']}일"
-            )
+            start = request.start.isoformat()
+            end = request.end.isoformat()
+            spy = self.data_source.daily("SPY", start, end)
+            qqq = self.data_source.daily("QQQ", start, end)
+            engine = BacktestEngine(self.config)
+            results = {}
+            for symbol in request.symbols:
+                target = self.data_source.daily(symbol, start, end)
+                results[symbol] = engine.run(
+                    symbol, target, spy, qqq, start=start, end=end
+                )
+            self._send(self._format_backtest_results(results))
         except Exception as exc:
             LOGGER.exception("Telegram 백테스트 실패")
-            self._send(f"❌ {symbol} 백테스트 실패: {html.escape(str(exc))}")
+            self._send(f"❌ 백테스트 실패: {html.escape(str(exc))}")
+        finally:
+            self._backtest_lock.release()
+
+    def _format_backtest_results(self, results: dict[str, BacktestResult]) -> str:
+        equity = pd.concat(
+            [result.equity_curve.rename(symbol) for symbol, result in results.items()],
+            axis=1,
+            join="inner",
+        ).sum(axis=1)
+        initial = float(equity.iloc[0])
+        final = float(equity.iloc[-1])
+        elapsed_days = max(1, (equity.index[-1] - equity.index[0]).days)
+        years = elapsed_days / 365.2425
+        total_return = final / initial - 1
+        cagr = (final / initial) ** (1 / years) - 1
+        sharpe, sortino = risk_adjusted_metrics(
+            equity, self.config.backtest.annualization_days
+        )
+        first_result = next(iter(results.values()))
+        lines = [
+            "🧪 <b>JDSS v1.3 백테스트 완료</b>",
+            f"기간: {first_result.start_date} ~ {first_result.end_date}",
+            f"대상: {' + '.join(results)}",
+            "모드: 조회 전용 / 실제 주문 없음",
+            "",
+            "<b>합산 포트폴리오</b>",
+            f"초기자금: ${initial:,.2f}",
+            f"최종자산: ${final:,.2f}",
+            f"총수익률: {total_return * 100:+.2f}%",
+            f"연복리수익률(CAGR): {cagr * 100:+.2f}%",
+            f"최대낙폭(MDD): {maximum_drawdown(equity) * 100:.2f}%",
+            f"샤프 / 소르티노: {sharpe:.2f} / {sortino:.2f}",
+            "",
+            "<b>종목별 결과</b>",
+        ]
+        for symbol, result in results.items():
+            metrics = result.metrics
+            lines.extend(
+                [
+                    "",
+                    f"<b>{symbol}</b>",
+                    f"수익률 / CAGR: {metrics['total_return_pct']:+.2f}% / "
+                    f"{metrics['cagr_pct']:+.2f}%",
+                    f"MDD / 최악 MAE: {metrics['mdd_pct']:.2f}% / "
+                    f"{metrics['worst_mae_pct']:.2f}%",
+                    f"완료 사이클 / 승률: {metrics['closed_cycles']}회 / "
+                    f"{metrics['win_rate_pct']:.2f}%",
+                    "Profit Factor / 기대수익: "
+                    f"{_format_number(metrics['profit_factor'], 3)} / "
+                    f"${metrics['expectancy_usd']:,.2f}",
+                    f"평균 / 최대 보유일: {metrics['average_holding_days']:.1f} / "
+                    f"{metrics['maximum_holding_days']}일",
+                    f"TP1 / TP2 도달률: {metrics['tp1_reach_rate_pct']:.1f}% / "
+                    f"{metrics['tp2_reach_rate_pct']:.1f}%",
+                    f"연평균 신호 / 자금활용률: {metrics['signals_per_year']:.1f}회 / "
+                    f"{metrics['average_capital_utilization_pct']:.1f}%",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                f"비용: 매수·매도 수수료 각 {self.config.global_.buy_fee * 100}% / "
+                f"{self.config.global_.sell_fee * 100}%, "
+                f"슬리피지 {self.config.backtest.default_slippage * 100}%",
+                "고정자금: 종목당 $10,000 / 수익 재투자 없음",
+            ]
+        )
+        return "\n".join(lines)
 
     @staticmethod
     def _requested_symbol(text: str) -> str | None:
@@ -418,7 +571,7 @@ class TelegramBotApp:
                 telebot.types.BotCommand("signal", "활성 매매신호"),
                 telebot.types.BotCommand("status", "포지션 상태"),
                 telebot.types.BotCommand("indicator", "기술지표"),
-                telebot.types.BotCommand("backtest", "장기 백테스트"),
+                telebot.types.BotCommand("backtest", "ALL/종목 기간 백테스트"),
                 telebot.types.BotCommand("order", "JDSS 주문"),
                 telebot.types.BotCommand("errors", "최근 이벤트"),
                 telebot.types.BotCommand("ping", "봇 상태"),
