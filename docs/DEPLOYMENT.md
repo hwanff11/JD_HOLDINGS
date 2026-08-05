@@ -3,7 +3,7 @@
 ## 1. 서버 준비
 
 Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요합니다. 기본
-배포 경로는 `/home/ubuntu/jd_holdings`이고 기존 CCI 프로젝트와 별도입니다.
+배포 경로는 `/home/ubuntu/JD_HOLDINGS`이고 기존 CCI 프로젝트와 별도입니다.
 
 현재 확인된 기존 서버 기본 Python은 3.8.10이므로 그대로는 배포할 수 없습니다.
 Python 3.12와 해당 버전의 `venv` 모듈을 먼저 설치하고, 로컬 배포 설정에 실제 실행파일을
@@ -13,8 +13,8 @@ Python 3.12와 해당 버전의 `venv` 모듈을 먼저 설치하고, 로컬 배
 다음 파일을 직접 만들고 권한을 제한합니다.
 
 ```bash
-mkdir -p /home/ubuntu/jd_holdings/shared
-install -m 0600 /dev/null /home/ubuntu/jd_holdings/shared/.env
+mkdir -p /home/ubuntu/JD_HOLDINGS/shared
+install -m 0600 /dev/null /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
 `.env.example`을 기준으로 Telegram 봇 토큰, 개인 Chat ID 하나, Toss 앱 키/시크릿 및
@@ -35,7 +35,7 @@ SERVER_HOST=203.0.113.10
 SERVER_USER=ubuntu
 SERVER_TARGET_DIR=/home/ubuntu/JD_HOLDINGS
 SYSTEMD_SERVICE=jd_holdings_bot
-REMOTE_PYTHON_BIN=python3.12
+REMOTE_PYTHON_BIN=/home/ubuntu/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12
 ```
 
 Git 작업트리가 깨끗한 `main`이어야 하며 remote URL에는 토큰을 포함하지 않습니다.
@@ -54,7 +54,7 @@ DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
 ```bash
 sudo systemctl status jd_holdings_bot --no-pager
 sudo journalctl -u jd_holdings_bot -n 100 --no-pager
-ls -l /home/ubuntu/jd_holdings/current
+ls -l /home/ubuntu/JD_HOLDINGS/current
 ```
 
 Telegram `/ping`, `/dashboard`, `/score TQQQ`를 확인합니다. 실주문 전에는 로컬 또는
@@ -65,9 +65,9 @@ Telegram `/ping`, `/dashboard`, `/score TQQQ`를 확인합니다. 실주문 전�
 이전 commit 릴리스로 `current` 링크를 되돌린 뒤 전용 서비스만 재시작합니다.
 
 ```bash
-ln -sfn /home/ubuntu/jd_holdings/releases/<previous-commit> \
-  /home/ubuntu/jd_holdings/current.new
-mv -Tf /home/ubuntu/jd_holdings/current.new /home/ubuntu/jd_holdings/current
+ln -sfn /home/ubuntu/JD_HOLDINGS/releases/<previous-commit> \
+  /home/ubuntu/JD_HOLDINGS/current.new
+mv -Tf /home/ubuntu/JD_HOLDINGS/current.new /home/ubuntu/JD_HOLDINGS/current
 sudo systemctl restart jd_holdings_bot
 ```
 
