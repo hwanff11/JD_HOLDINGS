@@ -16,6 +16,11 @@ def config():
     return load_config(Path(__file__).parents[1] / "strategy.yaml")
 
 
+@pytest.fixture
+def baseline_config():
+    return load_config(Path(__file__).parents[1] / "configs" / "strategy_v1.1.2.yaml")
+
+
 def make_snapshot(**overrides) -> IndicatorSnapshot:
     values = {
         "symbol": "TQQQ",

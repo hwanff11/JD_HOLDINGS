@@ -43,3 +43,5 @@ def test_backtest_executes_signal_on_later_session(config):
     assert buy_trades
     assert buy_trades[0]["date"] > result.signals[0]["trade_date"]
     assert result.metrics["mdd_pct"] <= 0
+    assert result.metrics["tp1_reach_rate_pct"] <= 100
+    assert result.metrics["tp2_reach_rate_pct"] <= 100

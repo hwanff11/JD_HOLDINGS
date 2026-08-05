@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -8,13 +9,19 @@ from typing import Any
 import pandas as pd
 
 from jd_holdings.config import StrategyConfig
-from jd_holdings.core.enums import DecisionType, PositionState
+from jd_holdings.core.enums import DecisionType, MarketRegime, PositionState
 from jd_holdings.core.execution import (
     calculate_execution_price_ceiling,
     calculate_order_quantity,
 )
 from jd_holdings.core.indicators import calculate_indicators, snapshot_from_row
-from jd_holdings.core.models import PositionSnapshot, ScoreResult, TakeProfitPlan, TradeDecision
+from jd_holdings.core.models import (
+    IndicatorSnapshot,
+    PositionSnapshot,
+    ScoreResult,
+    TakeProfitPlan,
+    TradeDecision,
+)
 from jd_holdings.core.regime import evaluate_regime
 from jd_holdings.core.scoring import calculate_score
 from jd_holdings.core.strategy import (
@@ -137,15 +144,22 @@ class BacktestEngine:
         start: str | date | None = None,
         end: str | date | None = None,
         slippage: Decimal | float | None = None,
+        indicators_precomputed: bool = False,
+        snapshots_precomputed: Mapping[str, Mapping[pd.Timestamp, IndicatorSnapshot]] | None = None,
+        regimes_precomputed: Mapping[pd.Timestamp, MarketRegime] | None = None,
     ) -> BacktestResult:
         symbol = symbol.upper()
         configured_slippage = (
             slippage if slippage is not None else self.config.backtest.default_slippage
         )
         slip = Decimal(str(configured_slippage))
-        target = calculate_indicators(symbol_data, self.config)
-        spy = calculate_indicators(spy_data, self.config)
-        qqq = calculate_indicators(qqq_data, self.config)
+        target = (
+            symbol_data
+            if indicators_precomputed
+            else calculate_indicators(symbol_data, self.config)
+        )
+        spy = spy_data if indicators_precomputed else calculate_indicators(spy_data, self.config)
+        qqq = qqq_data if indicators_precomputed else calculate_indicators(qqq_data, self.config)
         common_index = target.index.intersection(spy.index).intersection(qqq.index)
         if start:
             common_index = common_index[common_index >= pd.Timestamp(start)]
@@ -190,15 +204,23 @@ class BacktestEngine:
         executed_entries = 0
         tp1_hits = 0
         tp2_hits = 0
+        tp1_reached_cycles: set[str] = set()
+        tp2_reached_cycles: set[str] = set()
         rebuy_cycles = 0
         rebuy_profitable_cycles = 0
 
         for timestamp in common_index:
             row = target.loc[timestamp]
-            snapshot = snapshot_from_row(symbol, timestamp, row)
-            spy_snapshot = snapshot_from_row("SPY", timestamp, spy.loc[timestamp])
-            qqq_snapshot = snapshot_from_row("QQQ", timestamp, qqq.loc[timestamp])
-            regime = evaluate_regime(spy_snapshot, qqq_snapshot)
+            if snapshots_precomputed is None:
+                snapshot = snapshot_from_row(symbol, timestamp, row)
+            else:
+                snapshot = snapshots_precomputed[symbol][timestamp]
+            if regimes_precomputed is None:
+                spy_snapshot = snapshot_from_row("SPY", timestamp, spy.loc[timestamp])
+                qqq_snapshot = snapshot_from_row("QQQ", timestamp, qqq.loc[timestamp])
+                regime = evaluate_regime(spy_snapshot, qqq_snapshot)
+            else:
+                regime = regimes_precomputed[timestamp]
             score = calculate_score(snapshot, regime, self.config)
 
             if pending is not None:
@@ -228,6 +250,7 @@ class BacktestEngine:
                 state.cycle_mae = min(state.cycle_mae, low_return)
                 state.cycle_mfe = max(state.cycle_mfe, high_return)
 
+            cycle_id_before_take_profit = state.cycle_id
             day_tp1, day_tp2, profitable_rebuy = self._process_take_profit(
                 state,
                 timestamp,
@@ -237,6 +260,10 @@ class BacktestEngine:
             )
             tp1_hits += day_tp1
             tp2_hits += day_tp2
+            if day_tp1 and cycle_id_before_take_profit:
+                tp1_reached_cycles.add(cycle_id_before_take_profit)
+            if day_tp2 and cycle_id_before_take_profit:
+                tp2_reached_cycles.add(cycle_id_before_take_profit)
             rebuy_profitable_cycles += profitable_rebuy
 
             if (
@@ -285,6 +312,8 @@ class BacktestEngine:
             capital_utilization=capital_utilization,
             tp1_hits=tp1_hits,
             tp2_hits=tp2_hits,
+            tp1_reached_cycles=len(tp1_reached_cycles),
+            tp2_reached_cycles=len(tp2_reached_cycles),
             rebuy_cycles=rebuy_cycles,
             rebuy_profitable_cycles=rebuy_profitable_cycles,
             annualization_days=self.config.backtest.annualization_days,

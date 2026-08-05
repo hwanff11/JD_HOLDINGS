@@ -9,10 +9,11 @@ from jd_holdings.config import ConfigError, PositionConfig, validate_config
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-1.1.2"
+    assert config.version == "JDSS-1.2.0"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert sum(config.position.stage_weights) == Decimal("1")
     assert config.global_.stop_loss_enabled is False
+    assert config.scoring["grades"] == {"S": 92, "A": 88, "B": 82, "WATCH": 76}
 
 
 def test_invalid_stage_weights_are_rejected(config):
@@ -25,3 +26,18 @@ def test_invalid_stage_weights_are_rejected(config):
     )
     with pytest.raises(ConfigError):
         validate_config(broken)
+
+
+def test_invalid_calibration_exponent_is_rejected(config):
+    scoring = {
+        **config.scoring,
+        "calibration": {
+            **config.scoring["calibration"],
+            "exponents": {
+                **config.scoring["calibration"]["exponents"],
+                "volume": 0,
+            },
+        },
+    }
+    with pytest.raises(ConfigError, match="volume 보정 지수"):
+        validate_config(replace(config, scoring=scoring))

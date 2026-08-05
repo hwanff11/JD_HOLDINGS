@@ -1,11 +1,12 @@
 # JD_HOLDINGS
 
-JDSS(JH Dynamic Score Swing Strategy) v1.1.2를 TQQQ와 SOXL에 적용하는 독립형
+JDSS(JH Dynamic Score Swing Strategy) v1.2.0을 TQQQ와 SOXL에 적용하는 독립형
 Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비스, 배포 경로를
 공유하지 않습니다.
 
-> 현재 상태: **연구 및 dry-run 전용**. 기준선 백테스트에서 유효 신호가 0회였으므로
-> `live` 전환 승인이 나기 전까지 실거래로 배포하지 마세요.
+> 현재 상태: **검증 완료·dry-run 전용**. v1.2.0 잠금 OOS는 양수였지만 SOXL 개별
+> 사이클의 최악 MAE가 -79.66%였으므로 `live` 전환 승인이 나기 전까지 실거래로
+> 배포하지 마세요.
 
 ## 구현 범위
 
@@ -20,8 +21,9 @@ Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비�
 - 별도 `jd_holdings_bot.service`와 버전 디렉터리 기반 Oracle 배포
 
 원본 전략 문서는 [`docs/spec`](docs/spec), 구현 판단은
-[`docs/DECISIONS.md`](docs/DECISIONS.md), 최초 실데이터 검증 결과는
-[`docs/BASELINE_BACKTEST.md`](docs/BASELINE_BACKTEST.md)에 있습니다.
+[`docs/DECISIONS.md`](docs/DECISIONS.md), v1.1.2 기준선은
+[`docs/BASELINE_BACKTEST.md`](docs/BASELINE_BACKTEST.md), v1.2.0 연구 결과는
+[`docs/SCORE_CALIBRATION_V1.2.md`](docs/SCORE_CALIBRATION_V1.2.md)에 있습니다.
 
 ## 빠른 시작
 

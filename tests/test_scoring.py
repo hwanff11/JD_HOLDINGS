@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -14,7 +15,7 @@ from jd_holdings.core.scoring import calculate_score
     ("cci", "expected"),
     [(-99.99, 0), (-100, 6), (-150, 10), (-200, 13), (-250, 13)],
 )
-def test_cci_boundaries(config, cci, expected):
+def test_cci_boundaries(baseline_config, cci, expected):
     snapshot = make_snapshot(
         cci5=cci,
         cci10=0,
@@ -29,13 +30,13 @@ def test_cci_boundaries(config, cci, expected):
         volume_ratio=0.5,
         atr_pct=0.005,
     )
-    result = calculate_score(snapshot, MarketRegime.RED, config)
+    result = calculate_score(snapshot, MarketRegime.RED, baseline_config)
     assert result.oversold_score == expected
 
 
-def test_score_components_and_grade(config):
+def test_score_components_and_grade(baseline_config):
     snapshot = make_snapshot()
-    result = calculate_score(snapshot, MarketRegime.GREEN, config)
+    result = calculate_score(snapshot, MarketRegime.GREEN, baseline_config)
     assert result.regime_score == 25
     assert result.reversal_score == 10
     assert result.oversold_score == 31
@@ -43,6 +44,73 @@ def test_score_components_and_grade(config):
     assert result.atr_score == 5
     assert result.total == 78
     assert result.grade == SignalGrade.WATCH
+
+
+def test_v1_2_selected_curve_keeps_raw_audit_and_reaches_s_grade(config):
+    result = calculate_score(make_snapshot(), MarketRegime.GREEN, config)
+    assert result.total == 97
+    assert result.grade == SignalGrade.S
+    assert result.detail()["raw_components"] == {
+        "regime_score": 25,
+        "oversold_score": 31,
+        "reversal_score": 10,
+        "volume_score": 7,
+        "atr_score": 5,
+    }
+    assert result.detail()["calibration_applied"] is True
+
+
+def test_power_calibration_preserves_maxima_and_grade_boundaries(baseline_config):
+    calibrated = replace(
+        baseline_config,
+        scoring={
+            **baseline_config.scoring,
+            "calibration": {
+                "enabled": True,
+                "method": "power",
+                "exponents": {
+                    "regime": 1.0,
+                    "oversold": 0.5,
+                    "reversal": 0.5,
+                    "volume": 0.5,
+                    "atr": 1.0,
+                },
+            },
+        },
+    )
+    result = calculate_score(make_snapshot(), MarketRegime.GREEN, calibrated)
+    assert result.total == 87
+    assert result.grade == SignalGrade.B
+    assert result.oversold_score == 35
+    assert result.reversal_score == 14
+    assert result.volume_score == 8
+    assert result.detail()["raw_components"]["oversold_score"] == 31
+    assert result.detail()["calibration_applied"] is True
+
+
+def test_unit_exponents_reproduce_v1_1_2(baseline_config):
+    calibrated = replace(
+        baseline_config,
+        scoring={
+            **baseline_config.scoring,
+            "calibration": {
+                "enabled": True,
+                "method": "power",
+                "exponents": {
+                    "regime": 1.0,
+                    "oversold": 1.0,
+                    "reversal": 1.0,
+                    "volume": 1.0,
+                    "atr": 1.0,
+                },
+            },
+        },
+    )
+    baseline = calculate_score(make_snapshot(), MarketRegime.GREEN, baseline_config)
+    result = calculate_score(make_snapshot(), MarketRegime.GREEN, calibrated)
+    assert result.total == baseline.total
+    assert result.detail()["raw_components"] == baseline.detail()["raw_components"]
+    assert result.detail()["calibration_applied"] is False
 
 
 def test_market_regime_boundaries():

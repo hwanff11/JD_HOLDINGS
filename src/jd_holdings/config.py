@@ -275,7 +275,24 @@ def validate_config(config: StrategyConfig) -> None:
         errors.append("실행 토큰 TTL은 양수여야 합니다")
     if config.global_.entry_max_chase_pct < 0:
         errors.append("추격매수 상한은 0 이상이어야 합니다")
+    calibration = config.scoring.get("calibration", {})
+    if calibration:
+        if calibration.get("method", "power") != "power":
+            errors.append("scoring.calibration.method는 power만 지원합니다")
+        exponents = calibration.get("exponents", {})
+        allowed_components = {"regime", "oversold", "reversal", "volume", "atr"}
+        unknown_components = set(exponents) - allowed_components
+        if unknown_components:
+            errors.append("알 수 없는 점수 보정 항목: " + ", ".join(sorted(unknown_components)))
+        for component in allowed_components:
+            try:
+                exponent = float(exponents.get(component, 1.0))
+            except (TypeError, ValueError):
+                errors.append(f"{component} 보정 지수는 숫자여야 합니다")
+                continue
+            if not 0 < exponent <= 2:
+                errors.append(f"{component} 보정 지수는 0 초과 2 이하여야 합니다")
     if config.global_.stop_loss_enabled:
-        errors.append("JDSS v1.1.2는 자동 손절을 허용하지 않습니다")
+        errors.append("JDSS는 자동 손절을 허용하지 않습니다")
     if errors:
         raise ConfigError("; ".join(errors))

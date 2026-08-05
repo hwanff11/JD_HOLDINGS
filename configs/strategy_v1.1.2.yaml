@@ -1,5 +1,5 @@
-version: JDSS-1.2.0
-config_version: "1.1.0"
+version: JDSS-1.1.2
+config_version: "1.0.0"
 
 global:
   capital_per_symbol: 10000
@@ -43,15 +43,6 @@ market_regime:
   red_score: 0
 
 scoring:
-  calibration:
-    enabled: true
-    method: power
-    exponents:
-      regime: 1.0
-      oversold: 0.10
-      reversal: 0.125
-      volume: 0.025
-      atr: 1.0
   cci5:
     bands: [[-200, 13], [-150, 10], [-100, 6]]
   cci10:

@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import math
+
 from jd_holdings.config import StrategyConfig
 
 from .enums import MarketRegime, SignalGrade
 from .models import IndicatorSnapshot, ScoreResult
+
+_COMPONENT_MAXIMA = {
+    "regime": 25,
+    "oversold": 40,
+    "reversal": 20,
+    "volume": 10,
+    "atr": 5,
+}
 
 
 def _lte_band_score(value: float, bands: list[list[float | int]]) -> int:
@@ -32,6 +42,24 @@ def calculate_grade(total: int, config: StrategyConfig) -> SignalGrade:
     if total >= int(grades["WATCH"]):
         return SignalGrade.WATCH
     return SignalGrade.NO_TRADE
+
+
+def _calibrate_component(
+    component: str,
+    raw_score: int,
+    config: StrategyConfig,
+) -> int:
+    calibration = config.scoring.get("calibration", {})
+    if not calibration.get("enabled", False):
+        return raw_score
+    exponent = float(calibration.get("exponents", {}).get(component, 1.0))
+    maximum = _COMPONENT_MAXIMA[component]
+    if raw_score <= 0:
+        return 0
+    if raw_score >= maximum:
+        return maximum
+    calibrated = maximum * (raw_score / maximum) ** exponent
+    return min(maximum, math.floor(calibrated + 0.5))
 
 
 def calculate_score(
@@ -78,6 +106,22 @@ def calculate_score(
     else:
         atr_score = atr_scores[3]
 
+    raw_scores = {
+        "regime": regime_score,
+        "oversold": oversold_score,
+        "reversal": reversal_score,
+        "volume": volume_score,
+        "atr": atr_score,
+    }
+    calibrated_scores = {
+        component: _calibrate_component(component, score, config)
+        for component, score in raw_scores.items()
+    }
+    regime_score = calibrated_scores["regime"]
+    oversold_score = calibrated_scores["oversold"]
+    reversal_score = calibrated_scores["reversal"]
+    volume_score = calibrated_scores["volume"]
+    atr_score = calibrated_scores["atr"]
     total = regime_score + oversold_score + reversal_score + volume_score + atr_score
     total = max(0, min(100, total))
     return ScoreResult(
@@ -89,4 +133,9 @@ def calculate_score(
         reversal_score=reversal_score,
         volume_score=volume_score,
         atr_score=atr_score,
+        raw_regime_score=raw_scores["regime"],
+        raw_oversold_score=raw_scores["oversold"],
+        raw_reversal_score=raw_scores["reversal"],
+        raw_volume_score=raw_scores["volume"],
+        raw_atr_score=raw_scores["atr"],
     )

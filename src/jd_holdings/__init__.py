@@ -1,3 +1,3 @@
-"""JD Holdings — JDSS v1.1.2 trading system."""
+"""JD Holdings — JDSS v1.2.0 trading system."""
 
 __version__ = "0.1.0"

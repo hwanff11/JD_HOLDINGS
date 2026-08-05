@@ -52,6 +52,8 @@ def summarize_performance(
     capital_utilization: list[float],
     tp1_hits: int,
     tp2_hits: int,
+    tp1_reached_cycles: int,
+    tp2_reached_cycles: int,
     rebuy_cycles: int,
     rebuy_profitable_cycles: int,
     annualization_days: int,
@@ -95,10 +97,10 @@ def summarize_performance(
         "average_mfe_pct": round(float(np.mean(mfes)) * 100, 2) if mfes else 0.0,
         "tp1_hits": tp1_hits,
         "tp2_hits": tp2_hits,
-        "tp1_reach_rate_pct": round(tp1_hits / executed_entries * 100, 2)
+        "tp1_reach_rate_pct": round(tp1_reached_cycles / executed_entries * 100, 2)
         if executed_entries
         else 0.0,
-        "tp2_reach_rate_pct": round(tp2_hits / executed_entries * 100, 2)
+        "tp2_reach_rate_pct": round(tp2_reached_cycles / executed_entries * 100, 2)
         if executed_entries
         else 0.0,
         "rebuy_cycles": rebuy_cycles,

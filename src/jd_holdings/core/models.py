@@ -50,17 +50,42 @@ class ScoreResult:
     reversal_score: int
     volume_score: int
     atr_score: int
+    raw_regime_score: int | None = None
+    raw_oversold_score: int | None = None
+    raw_reversal_score: int | None = None
+    raw_volume_score: int | None = None
+    raw_atr_score: int | None = None
 
     def detail(self) -> dict[str, Any]:
-        return {
-            "total": self.total,
-            "grade": self.grade.value,
-            "regime": self.regime.value,
+        raw_components = {
+            "regime_score": self.raw_regime_score
+            if self.raw_regime_score is not None
+            else self.regime_score,
+            "oversold_score": self.raw_oversold_score
+            if self.raw_oversold_score is not None
+            else self.oversold_score,
+            "reversal_score": self.raw_reversal_score
+            if self.raw_reversal_score is not None
+            else self.reversal_score,
+            "volume_score": self.raw_volume_score
+            if self.raw_volume_score is not None
+            else self.volume_score,
+            "atr_score": self.raw_atr_score if self.raw_atr_score is not None else self.atr_score,
+        }
+        calibrated_components = {
             "regime_score": self.regime_score,
             "oversold_score": self.oversold_score,
             "reversal_score": self.reversal_score,
             "volume_score": self.volume_score,
             "atr_score": self.atr_score,
+        }
+        return {
+            "total": self.total,
+            "grade": self.grade.value,
+            "regime": self.regime.value,
+            **calibrated_components,
+            "raw_components": raw_components,
+            "calibration_applied": raw_components != calibrated_components,
         }
 
 
