@@ -26,6 +26,7 @@ SERVER_HOST="$(read_env_value SERVER_HOST)"
 SERVER_USER="$(read_env_value SERVER_USER)"
 SERVER_TARGET_DIR="$(read_env_value SERVER_TARGET_DIR)"
 SYSTEMD_SERVICE="$(read_env_value SYSTEMD_SERVICE)"
+REMOTE_PYTHON_BIN="$(read_env_value REMOTE_PYTHON_BIN)"
 LOCAL_PYTHON="${LOCAL_PYTHON:-$PROJECT_ROOT/.venv/bin/python}"
 
 : "${SSH_KEY_PATH:?SSH_KEY_PATH가 필요합니다}"
@@ -33,6 +34,7 @@ LOCAL_PYTHON="${LOCAL_PYTHON:-$PROJECT_ROOT/.venv/bin/python}"
 SERVER_USER="${SERVER_USER:-ubuntu}"
 SERVER_TARGET_DIR="${SERVER_TARGET_DIR:-/home/ubuntu/jd_holdings}"
 SYSTEMD_SERVICE="${SYSTEMD_SERVICE:-jd_holdings_bot}"
+REMOTE_PYTHON_BIN="${REMOTE_PYTHON_BIN:-python3.12}"
 
 if [[ "$SERVER_TARGET_DIR" != /home/*/jd_holdings && "$SERVER_TARGET_DIR" != /opt/jd_holdings ]]; then
   echo "안전하지 않은 SERVER_TARGET_DIR입니다: $SERVER_TARGET_DIR" >&2
@@ -40,6 +42,10 @@ if [[ "$SERVER_TARGET_DIR" != /home/*/jd_holdings && "$SERVER_TARGET_DIR" != /op
 fi
 if [[ "$SYSTEMD_SERVICE" != "jd_holdings_bot" ]]; then
   echo "SYSTEMD_SERVICE는 jd_holdings_bot만 허용합니다." >&2
+  exit 1
+fi
+if [[ ! "$REMOTE_PYTHON_BIN" =~ ^(/[-._/A-Za-z0-9]+|python3\.(11|12|13|14))$ ]]; then
+  echo "안전하지 않은 REMOTE_PYTHON_BIN입니다: $REMOTE_PYTHON_BIN" >&2
   exit 1
 fi
 if [[ ! -f "$SSH_KEY_PATH" ]]; then
@@ -82,14 +88,25 @@ scp "${SSH_ARGS[@]}" "$ARCHIVE_PATH" "$SERVER_USER@$SERVER_HOST:$REMOTE_ARCHIVE"
 scp "${SSH_ARGS[@]}" "$SERVICE_PATH" "$SERVER_USER@$SERVER_HOST:$REMOTE_SERVICE"
 
 ssh "${SSH_ARGS[@]}" "$SERVER_USER@$SERVER_HOST" bash -s -- \
-  "$SERVER_TARGET_DIR" "$COMMIT_SHA" "$REMOTE_ARCHIVE" "$REMOTE_SERVICE" "$SYSTEMD_SERVICE" <<'REMOTE'
+  "$SERVER_TARGET_DIR" "$COMMIT_SHA" "$REMOTE_ARCHIVE" "$REMOTE_SERVICE" \
+  "$SYSTEMD_SERVICE" "$REMOTE_PYTHON_BIN" <<'REMOTE'
 set -Eeuo pipefail
 target_dir="$1"
 commit_sha="$2"
 remote_archive="$3"
 remote_service="$4"
 service_name="$5"
+remote_python="$6"
 release_dir="$target_dir/releases/$commit_sha"
+
+if ! command -v "$remote_python" >/dev/null 2>&1; then
+  echo "Python 3.11+ 실행파일이 없습니다: $remote_python" >&2
+  exit 1
+fi
+if ! "$remote_python" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
+  echo "JD_HOLDINGS는 Python 3.11 이상이 필요합니다." >&2
+  exit 1
+fi
 
 mkdir -p "$target_dir/releases" "$target_dir/shared/data" "$target_dir/shared/logs"
 if [[ ! -f "$target_dir/shared/.env" ]]; then
@@ -101,7 +118,7 @@ mkdir -p "$release_dir"
 tar -xzf "$remote_archive" -C "$release_dir"
 
 if [[ ! -x "$target_dir/venv/bin/python" ]]; then
-  python3 -m venv "$target_dir/venv"
+  "$remote_python" -m venv "$target_dir/venv"
 fi
 "$target_dir/venv/bin/python" -m pip install --upgrade pip
 "$target_dir/venv/bin/python" -m pip install "$release_dir"

@@ -5,6 +5,10 @@
 Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요합니다. 기본
 배포 경로는 `/home/ubuntu/jd_holdings`이고 기존 CCI 프로젝트와 별도입니다.
 
+현재 확인된 기존 서버 기본 Python은 3.8.10이므로 그대로는 배포할 수 없습니다.
+Python 3.12와 해당 버전의 `venv` 모듈을 먼저 설치하고, 로컬 배포 설정에 실제 실행파일을
+지정합니다.
+
 서버 공인 IP를 Toss Securities OpenAPI 허용 IP에 등록합니다. 첫 배포 전에 서버에서
 다음 파일을 직접 만들고 권한을 제한합니다.
 
@@ -31,6 +35,7 @@ SERVER_HOST=203.0.113.10
 SERVER_USER=ubuntu
 SERVER_TARGET_DIR=/home/ubuntu/jd_holdings
 SYSTEMD_SERVICE=jd_holdings_bot
+REMOTE_PYTHON_BIN=python3.12
 ```
 
 Git 작업트리가 깨끗한 `main`이어야 하며 remote URL에는 토큰을 포함하지 않습니다.
