@@ -1,0 +1,44 @@
+# 구현 결정 기록
+
+## D-001 — 프로젝트 격리
+
+- 로컬 경로: `JD_HOLDINGS`
+- 패키지: `jd_holdings`
+- DB: `data/jdss.db`
+- 로그: `logs/jdss.log`
+- systemd: `jd_holdings_bot.service`
+- 서버 기본 경로: `/home/ubuntu/jd_holdings`
+
+기존 `cci_nvdl`의 폴더, DB, 로그, 서비스 이름과 겹치지 않는다.
+
+## D-002 — 시장 데이터와 지표
+
+- 장기 연구와 신호는 yfinance 수정주가 일봉을 사용한다.
+- 분석은 exchange-calendars의 가장 최근 완결 XNYS 세션까지만 수행한다.
+- RSI와 ATR은 Wilder 방식, Bollinger 표준편차는 `ddof=0`을 사용한다.
+- 거래량 비율의 20일 기준은 당일 거래량을 제외한다.
+- 실주문 현재가는 Toss에서 다시 조회한다. dry-run 현재가는 yfinance 시간외 1분봉을 쓴다.
+
+## D-003 — 주문 안전성
+
+- 모든 매수는 검토와 실행의 일회용 토큰 두 단계를 거친다.
+- 원문 토큰은 DB에 저장하지 않고 SHA-256 해시만 저장한다.
+- 매수 주문은 전략 상한을 넘지 않는 지정가만 사용한다.
+- `clientOrderId`와 로컬 UNIQUE 제약으로 재시도 중복 주문을 차단한다.
+- 응답 유실 주문은 UNKNOWN과 대기 상태로 유지하며 새 매수를 막는다.
+- DB/브로커 수량 또는 미체결 주문 불일치는 SAFE_MODE로 전환한다.
+- TP 부분체결은 누적 수량으로 반영하고 취소된 잔여 주문은 새 revision으로 재생성한다.
+
+## D-004 — 비밀정보와 Git
+
+- `.env`, SSH 키, SQLite, 캐시, 로그, 보고서는 Git에서 제외한다.
+- Git remote에는 PAT, OAuth token, 사용자 비밀번호를 넣지 않는다.
+- remote는 `https://github.com/<owner>/JD_HOLDINGS.git` 형태만 사용하고 인증은 OS
+  credential helper 또는 GitHub CLI가 담당한다.
+- 배포 서버 `.env`는 `0600` 권한을 사용한다.
+
+## D-005 — 승격 기준
+
+`dry_run → live`는 자동 변경하지 않는다. 기준선 백테스트, 전략 개정 및 OOS 검증,
+Telegram dry-run 관찰, Toss 조회 smoke test, 서버 정합성 검사를 통과하고 운영자가 명시적으로
+승인해야 한다.

@@ -1,0 +1,430 @@
+from __future__ import annotations
+
+import html
+import logging
+import threading
+import time
+from decimal import Decimal
+
+import telebot
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from jd_holdings import __version__
+from jd_holdings.application.analysis_service import AnalysisResult, AnalysisService
+from jd_holdings.application.database import SQLiteRepository
+from jd_holdings.application.order_monitor import OrderMonitor
+from jd_holdings.application.reconciliation import ReconciliationService
+from jd_holdings.application.trading_service import QuoteChangedError, TradingService
+from jd_holdings.backtest.engine import BacktestEngine
+from jd_holdings.config import StrategyConfig
+from jd_holdings.infrastructure.market_clock import MarketClock
+from jd_holdings.infrastructure.market_data import YFinanceDataSource
+from jd_holdings.settings import RuntimeSettings
+
+LOGGER = logging.getLogger(__name__)
+
+
+class TelegramBotApp:
+    def __init__(
+        self,
+        config: StrategyConfig,
+        settings: RuntimeSettings,
+        repository: SQLiteRepository,
+        analysis_service: AnalysisService,
+        trading_service: TradingService,
+        order_monitor: OrderMonitor,
+        reconciliation_service: ReconciliationService,
+        data_source: YFinanceDataSource,
+        market_clock: MarketClock,
+    ) -> None:
+        if not settings.telegram_bot_token:
+            raise ValueError("TELEGRAM_BOT_TOKEN이 설정되지 않았습니다")
+        if len(settings.allowed_chat_ids) != 1:
+            raise ValueError("JDSS Telegram은 정확히 1개의 관리자 Chat ID만 허용합니다")
+        self.config = config
+        self.settings = settings
+        self.repository = repository
+        self.analysis_service = analysis_service
+        self.trading_service = trading_service
+        self.order_monitor = order_monitor
+        self.reconciliation_service = reconciliation_service
+        self.data_source = data_source
+        self.market_clock = market_clock
+        self.allowed_chat_id = settings.allowed_chat_ids[0]
+        self.bot = telebot.TeleBot(settings.telegram_bot_token, threaded=True)
+        self._stop = threading.Event()
+        self._last_monitor = 0.0
+        self._register_handlers()
+
+    def _authorized_message(self, message) -> bool:
+        return int(message.chat.id) == self.allowed_chat_id
+
+    def _authorized_callback(self, call) -> bool:
+        return (
+            int(call.message.chat.id) == self.allowed_chat_id
+            and int(call.from_user.id) == self.allowed_chat_id
+        )
+
+    def _send(self, text: str, *, markup=None, chat_id: int | None = None) -> None:
+        self.bot.send_message(
+            chat_id or self.allowed_chat_id,
+            text,
+            parse_mode="HTML",
+            reply_markup=markup,
+            disable_web_page_preview=True,
+        )
+
+    def _register_handlers(self) -> None:
+        bot = self.bot
+
+        @bot.message_handler(commands=["ping", "p"])
+        def ping(message):
+            if not self._authorized_message(message):
+                return
+            lock = "해제" if self.settings.live_trading_enabled else "잠금"
+            self._send(
+                f"🏓 <b>JDSS 정상</b>\n버전: {__version__}\n"
+                f"모드: {html.escape(self.settings.trading_mode)}\n실주문: {lock}"
+            )
+
+        @bot.message_handler(commands=["dashboard", "d"])
+        def dashboard(message):
+            if not self._authorized_message(message):
+                return
+            try:
+                results = self.analysis_service.analyze_all()
+                lines = ["📊 <b>JDSS 대시보드</b>"]
+                if results:
+                    lines.append(f"시장국면: <b>{results[0].score.regime.value}</b>")
+                    lines.append(f"분석일: {results[0].trade_date.isoformat()}")
+                lines.append(f"운영모드: {html.escape(self.settings.trading_mode)}")
+                for result in results:
+                    position = self.repository.get_position(result.symbol)
+                    lines.extend(
+                        [
+                            "",
+                            f"<b>{result.symbol}</b>",
+                            f"상태: {position.state.value}",
+                            f"JDSS: {result.score.total}점 / {result.score.grade.value}",
+                            f"보유: {position.quantity}주 / 평단 ${position.average_price:.2f}",
+                            f"사이클 허용액: ${position.cycle_exposure_cap:.2f}",
+                            f"단계매수 누적액: ${position.staged_entry_capital:.2f}",
+                            f"다음 판단: {result.decision.action.value}",
+                        ]
+                    )
+                self._send("\n".join(lines))
+                self.notify_new_signals(results)
+            except Exception as exc:
+                LOGGER.exception("dashboard 실패")
+                self._send(f"❌ 대시보드 생성 실패: {html.escape(str(exc))}")
+
+        @bot.message_handler(commands=["score", "sc", "indicator", "i"])
+        def score(message):
+            if not self._authorized_message(message):
+                return
+            requested = self._requested_symbol(message.text)
+            try:
+                results = self.analysis_service.analyze_all()
+                for result in results:
+                    if requested and result.symbol != requested:
+                        continue
+                    s = result.snapshot
+                    score_result = result.score
+                    text = (
+                        f"🎯 <b>{result.symbol} JDSS 점수</b>\n\n"
+                        f"총점: <b>{score_result.total} / 100</b> ({score_result.grade.value})\n"
+                        f"시장국면: {score_result.regime.value} ({score_result.regime_score}/25)\n"
+                        f"과매도: {score_result.oversold_score}/40\n"
+                        f"반등: {score_result.reversal_score}/20\n"
+                        f"거래량: {score_result.volume_score}/10\n"
+                        f"ATR: {score_result.atr_score}/5\n\n"
+                        f"CCI5/10: {s.cci5:.2f} / {s.cci10:.2f}\n"
+                        f"RSI5/14: {s.rsi5:.2f} / {s.rsi14:.2f}\n"
+                        f"ATR%: {s.atr_pct * 100:.2f}%\n"
+                        f"거래량 비율: {s.volume_ratio:.2f}배\n"
+                        f"종가 위치: {s.close_position:.2f}\n\n"
+                        f"결론: <b>{result.decision.action.value}</b>"
+                    )
+                    self._send(text)
+                self.notify_new_signals(results)
+            except Exception as exc:
+                LOGGER.exception("score 실패")
+                self._send(f"❌ 점수 계산 실패: {html.escape(str(exc))}")
+
+        @bot.message_handler(commands=["signal", "sg"])
+        def signal(message):
+            if not self._authorized_message(message):
+                return
+            signals = self.repository.active_signals()
+            if not signals:
+                self._send("현재 실행 가능한 JDSS 매수신호가 없습니다.")
+                return
+            for item in signals:
+                self._send_signal(item)
+
+        @bot.message_handler(commands=["status", "st"])
+        def status(message):
+            if not self._authorized_message(message):
+                return
+            requested = self._requested_symbol(message.text)
+            for symbol in self.config.enabled_symbols:
+                if requested and symbol != requested:
+                    continue
+                position = self.repository.get_position(symbol)
+                plan = self.repository.active_tp_plan(symbol)
+                lines = [
+                    f"📦 <b>{symbol} 포지션</b>",
+                    f"상태: {position.state.value}",
+                    f"사이클: {html.escape(position.cycle_id or '-')}",
+                    f"수량: {position.quantity}주",
+                    f"평단: ${position.average_price:.4f}",
+                    f"현재 원가: ${position.current_cost_basis:.2f}",
+                    f"사이클 허용액: ${position.cycle_exposure_cap:.2f}",
+                    f"단계매수액: ${position.staged_entry_capital:.2f}",
+                    f"1차 기준가격: ${position.anchor_price:.4f}",
+                    f"재매수 횟수: {position.rebuy_count}",
+                ]
+                if plan:
+                    lines.extend(
+                        [
+                            f"TP1: ${Decimal(plan['tp1_price']):.2f} × {plan['tp1_target_qty']}주",
+                            f"TP2: ${Decimal(plan['tp2_price']):.2f} × {plan['tp2_target_qty']}주",
+                        ]
+                    )
+                self._send("\n".join(lines))
+
+        @bot.message_handler(commands=["order", "o"])
+        def orders(message):
+            if not self._authorized_message(message):
+                return
+            values = self.repository.open_orders()
+            if not values:
+                self._send("현재 JDSS 미체결 주문이 없습니다.")
+                return
+            lines = ["📋 <b>JDSS 미체결 주문</b>"]
+            for item in values:
+                lines.append(
+                    f"{item['symbol']} {item['purpose']} {item['side']} "
+                    f"{item['qty']}주 @ ${html.escape(str(item['price'] or '시장가'))} "
+                    f"({item['status']})"
+                )
+            self._send("\n".join(lines))
+
+        @bot.message_handler(commands=["errors", "err"])
+        def errors(message):
+            if not self._authorized_message(message):
+                return
+            events = self.repository.recent_events(10)
+            if not events:
+                self._send("기록된 JDSS 이벤트가 없습니다.")
+                return
+            lines = ["🧾 <b>최근 JDSS 이벤트</b>"]
+            for event in events:
+                lines.append(
+                    f"{event['created_at'][:19]} [{event['severity']}] "
+                    f"{html.escape(event['event_type'])}: {html.escape(event['message'])}"
+                )
+            self._send("\n".join(lines))
+
+        @bot.message_handler(commands=["backtest", "bt"])
+        def backtest(message):
+            if not self._authorized_message(message):
+                return
+            symbol = self._requested_symbol(message.text) or self.config.enabled_symbols[0]
+            if symbol not in self.config.enabled_symbols:
+                self._send("지원 종목은 TQQQ, SOXL입니다. 예: /bt TQQQ")
+                return
+            self._send(f"🧪 {symbol} 장기 백테스트를 시작합니다. 완료 후 결과를 전송합니다.")
+            threading.Thread(
+                target=self._run_backtest_and_send, args=(symbol,), daemon=True
+            ).start()
+
+        @bot.message_handler(commands=["help", "h", "start"])
+        def help_handler(message):
+            if not self._authorized_message(message):
+                return
+            self._send(
+                "<b>JDSS 명령어</b>\n"
+                "/dashboard /d — 통합 대시보드\n"
+                "/score /sc [종목] — JDSS 점수\n"
+                "/signal /sg — 활성 매매신호\n"
+                "/status /st [종목] — 포지션\n"
+                "/indicator /i [종목] — 지표\n"
+                "/backtest /bt [종목] — 장기 백테스트\n"
+                "/order /o — JDSS 주문\n"
+                "/errors /err — 최근 이벤트\n"
+                "/ping /p — 상태 확인\n\n"
+                "모든 매수는 검토와 최종 실행의 2단계 승인이 필요합니다."
+            )
+
+        @bot.callback_query_handler(func=lambda call: call.data.startswith("rv|"))
+        def review_callback(call):
+            if not self._authorized_callback(call):
+                bot.answer_callback_query(call.id, "권한이 없습니다.", show_alert=True)
+                return
+            try:
+                _, approval_id, token = call.data.split("|", 2)
+                quote = self.trading_service.consume_review(int(approval_id), token)
+                markup = InlineKeyboardMarkup()
+                markup.add(
+                    InlineKeyboardButton(
+                        "✅ 최종 매수 실행",
+                        callback_data=(f"ex|{quote.execution_approval_id}|{quote.execution_token}"),
+                    )
+                )
+                markup.add(InlineKeyboardButton("❌ 취소", callback_data="cancel|review"))
+                self._send(
+                    f"📋 <b>{quote.symbol} 최종 주문 확인</b>\n\n"
+                    f"주문 세션: {quote.session}\n"
+                    f"실시간 현재가: ${quote.current_price:.4f}\n"
+                    f"전략상 상한: ${quote.execution_ceiling:.4f}\n"
+                    f"최종 지정가: <b>${quote.limit_price:.4f}</b>\n"
+                    f"수량: <b>{quote.quantity}주</b>\n"
+                    f"예상 수수료: ${quote.estimated_fee:.2f}\n"
+                    f"계획예산: ${quote.planned_budget:.2f}\n\n"
+                    "실행 승인은 "
+                    f"{self.config.global_.execution_token_ttl_seconds}초 동안 유효합니다.",
+                    markup=markup,
+                )
+                bot.answer_callback_query(call.id, "최종 주문조건을 계산했습니다.")
+            except Exception as exc:
+                LOGGER.exception("매수 검토 실패")
+                bot.answer_callback_query(call.id, str(exc), show_alert=True)
+
+        @bot.callback_query_handler(func=lambda call: call.data.startswith("ex|"))
+        def execute_callback(call):
+            if not self._authorized_callback(call):
+                bot.answer_callback_query(call.id, "권한이 없습니다.", show_alert=True)
+                return
+            try:
+                _, approval_id, token = call.data.split("|", 2)
+                receipt = self.trading_service.execute(int(approval_id), token)
+                mode_text = "모의주문" if self.settings.trading_mode == "dry_run" else "실주문"
+                self._send(
+                    f"✅ <b>{mode_text} 접수</b>\n"
+                    f"주문번호: {html.escape(receipt.broker_order_id)}\n"
+                    f"상태: {html.escape(receipt.status)}\n"
+                    f"수량: {receipt.quantity}주 / 체결: {receipt.filled_quantity}주"
+                )
+                bot.answer_callback_query(call.id, f"{mode_text}이 처리되었습니다.")
+            except QuoteChangedError as exc:
+                bot.answer_callback_query(call.id, str(exc), show_alert=True)
+            except Exception as exc:
+                LOGGER.exception("최종 주문 실행 실패")
+                bot.answer_callback_query(call.id, str(exc), show_alert=True)
+
+        @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel|"))
+        def cancel_callback(call):
+            if self._authorized_callback(call):
+                bot.answer_callback_query(call.id, "취소했습니다.")
+
+    def notify_new_signals(self, results: list[AnalysisResult]) -> None:
+        for result in results:
+            if result.signal_created and result.signal_id is not None:
+                self._send_signal(self.repository.get_signal(result.signal_id))
+
+    def _send_signal(self, signal: dict) -> None:
+        approval_id, token = self.trading_service.create_review_approval(signal["signal_id"])
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("✅ 매수 검토", callback_data=f"rv|{approval_id}|{token}"))
+        markup.add(InlineKeyboardButton("❌ 무시", callback_data="cancel|signal"))
+        detail = signal.get("score_detail")
+        if detail is None and signal.get("score_detail_json"):
+            import json
+
+            detail = json.loads(signal["score_detail_json"])
+        detail = detail or {}
+        self._send(
+            f"🎯 <b>JDSS 매수 후보 — {signal['symbol']}</b>\n\n"
+            f"행동: {signal['action']}\n"
+            f"JDSS: <b>{signal['score']}점 / {signal['grade']}</b>\n"
+            f"시장국면: {signal['regime']}\n"
+            f"반등점수: {detail.get('reversal_score', '-')} / 20\n"
+            f"신호 종가: ${Decimal(signal['signal_close']):.4f}\n"
+            f"추격매수 상한: ${Decimal(signal['max_chase_price']):.4f}\n"
+            f"예정 투자금: ${Decimal(signal['planned_budget']):.2f}\n"
+            f"유효시간: {signal['valid_until'][:19]} UTC",
+            markup=markup,
+        )
+
+    def _run_backtest_and_send(self, symbol: str) -> None:
+        try:
+            completed = self.market_clock.latest_completed_session()
+            start = self.config.backtest.default_start
+            target = self.data_source.daily(symbol, start, completed)
+            spy = self.data_source.daily("SPY", start, completed)
+            qqq = self.data_source.daily("QQQ", start, completed)
+            result = BacktestEngine(self.config).run(
+                symbol, target, spy, qqq, start=start, end=completed
+            )
+            metrics = result.metrics
+            self._send(
+                f"🧪 <b>{symbol} JDSS 백테스트</b>\n"
+                f"기간: {result.start_date} ~ {result.end_date}\n"
+                f"최종자산: ${metrics['final_equity']:,.2f}\n"
+                f"총수익률: {metrics['total_return_pct']:+.2f}%\n"
+                f"CAGR: {metrics['cagr_pct']:+.2f}%\n"
+                f"MDD: {metrics['mdd_pct']:.2f}%\n"
+                f"완료 사이클: {metrics['closed_cycles']}회\n"
+                f"승률: {metrics['win_rate_pct']:.2f}%\n"
+                f"Profit Factor: {metrics['profit_factor']}\n"
+                f"연평균 신호: {metrics['signals_per_year']}회\n"
+                f"최악 MAE: {metrics['worst_mae_pct']:.2f}%\n"
+                f"최대 보유일: {metrics['maximum_holding_days']}일"
+            )
+        except Exception as exc:
+            LOGGER.exception("Telegram 백테스트 실패")
+            self._send(f"❌ {symbol} 백테스트 실패: {html.escape(str(exc))}")
+
+    @staticmethod
+    def _requested_symbol(text: str) -> str | None:
+        parts = (text or "").split()
+        return parts[1].upper() if len(parts) >= 2 else None
+
+    def _scheduler_loop(self) -> None:
+        while not self._stop.wait(self.config.scheduler.poll_interval_seconds):
+            try:
+                completed = self.market_clock.latest_completed_session(
+                    delay_minutes=self.config.scheduler.signal_delay_minutes
+                )
+                last_analysis = self.repository.get_system_value("last_analysis_trade_date")
+                if last_analysis != completed.isoformat():
+                    results = self.analysis_service.analyze_all()
+                    self.notify_new_signals(results)
+                monitor_due = (
+                    time.monotonic() - self._last_monitor
+                    >= self.config.scheduler.order_monitor_interval_seconds
+                )
+                if monitor_due:
+                    for event in self.order_monitor.run_once():
+                        self._send(f"ℹ️ {html.escape(event)}")
+                    mismatches = self.reconciliation_service.run()
+                    for symbol, issues in mismatches.items():
+                        self._send(
+                            f"🚨 <b>{symbol} SAFE_MODE</b>\n"
+                            + "\n".join(html.escape(issue) for issue in issues)
+                        )
+                    self._last_monitor = time.monotonic()
+                self.repository.expire_stale_signals()
+            except Exception as exc:
+                LOGGER.exception("scheduler 실패")
+                self.repository.log_event("WARNING", "SCHEDULER_ERROR", str(exc))
+
+    def run(self) -> None:
+        self.bot.set_my_commands(
+            [
+                telebot.types.BotCommand("dashboard", "JDSS 통합 대시보드"),
+                telebot.types.BotCommand("score", "JDSS 점수"),
+                telebot.types.BotCommand("signal", "활성 매매신호"),
+                telebot.types.BotCommand("status", "포지션 상태"),
+                telebot.types.BotCommand("indicator", "기술지표"),
+                telebot.types.BotCommand("backtest", "장기 백테스트"),
+                telebot.types.BotCommand("order", "JDSS 주문"),
+                telebot.types.BotCommand("errors", "최근 이벤트"),
+                telebot.types.BotCommand("ping", "봇 상태"),
+                telebot.types.BotCommand("help", "도움말"),
+            ]
+        )
+        threading.Thread(target=self._scheduler_loop, daemon=True).start()
+        LOGGER.info("JDSS Telegram polling 시작")
+        self.bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)

@@ -1,0 +1,133 @@
+version: JDSS-1.1.2
+config_version: "1.0.0"
+
+global:
+  capital_per_symbol: 10000
+  buy_fee: 0.001
+  sell_fee: 0.001
+  approval_required: true
+  stop_loss_enabled: false
+  entry_score: 82
+  minimum_reversal_score: 5
+  entry_max_chase_pct: 0.02
+  buy_limit_buffer: 0.005
+  trading_sessions:
+    regular: false
+    after_hours: true
+    pre_market: true
+  review_token_ttl_minutes: 30
+  execution_token_ttl_seconds: 60
+  buy_fill_timeout_seconds: 120
+
+symbols:
+  TQQQ:
+    enabled: true
+  SOXL:
+    enabled: true
+
+indicators:
+  cci_periods: [5, 10]
+  rsi_periods: [5, 14]
+  ema_periods: [5, 20, 60]
+  bollinger_window: 20
+  bollinger_stddev: 2.0
+  atr_period: 14
+  volume_window: 20
+  volume_baseline_excludes_current_day: true
+
+market_regime:
+  short_ema: 20
+  long_ema: 60
+  green_score: 25
+  yellow_score: 15
+  red_score: 0
+
+scoring:
+  cci5:
+    bands: [[-200, 13], [-150, 10], [-100, 6]]
+  cci10:
+    bands: [[-200, 13], [-150, 10], [-100, 6]]
+  rsi5:
+    bands: [[20, 7], [25, 5], [30, 3]]
+  rsi14:
+    bands: [[35, 4], [40, 2]]
+  bollinger:
+    deep_multiplier: 0.98
+    deep_score: 3
+    touch_score: 2
+  reversal_points_per_condition: 5
+  reversal_close_position_threshold: 0.5
+  volume_bands: [[1.0, 2], [1.2, 4], [1.5, 7], [2.0, 10]]
+  atr_bands:
+    low_1: 0.01
+    low_2: 0.02
+    high: 0.10
+    scores: [0, 3, 5, 2]
+  grades:
+    S: 92
+    A: 88
+    B: 82
+    WATCH: 76
+
+position:
+  stage_weights: [0.15, 0.20, 0.25, 0.40]
+  cumulative_weights: [0.15, 0.35, 0.60, 1.00]
+
+exposure:
+  score_82_87: 0.60
+  score_88_91: 0.80
+  score_92_100: 1.00
+  allow_cap_increase: true
+  allow_cap_decrease_during_cycle: false
+
+additional_entry:
+  anchor: first_entry_fill_price
+  max_stage_per_day: 1
+  stage2:
+    min_drop_from_anchor: 0.03
+    min_score: 84
+  stage3:
+    min_drop_from_anchor: 0.05
+    min_score: 86
+  stage4:
+    min_drop_from_anchor: 0.08
+    min_score: 88
+
+take_profit:
+  tp1_base: 0.04
+  tp2_base: 0.08
+  use_atr: true
+  tp1_atr_multiplier: 0.8
+  tp2_atr_multiplier: 1.6
+
+rebuy:
+  enabled: true
+  minimum_score: 82
+  minimum_reversal_score: 5
+  min_drop_from_avg: 0.02
+  max_rebuy_per_cycle: 1
+  recovery:
+    cci5_gt: -100
+    rsi5_gte: 35
+    close_above_ema5: true
+    mode: any
+  reoversold:
+    cci5_lte: -150
+    rsi5_lte: 25
+    close_below_lower_band: true
+    mode: any
+
+risk_review:
+  info_days: 10
+  review_days: 20
+  high_days: 40
+
+scheduler:
+  signal_delay_minutes: 5
+  poll_interval_seconds: 30
+  order_monitor_interval_seconds: 60
+
+backtest:
+  default_start: "2011-01-01"
+  default_slippage: 0.001
+  annualization_days: 252

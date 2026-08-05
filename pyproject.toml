@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=83.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jd-holdings"
+version = "0.1.0"
+description = "JDSS v1.1.2 semi-automated trading bot"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "exchange-calendars==4.13.2",
+  "numpy==2.5.1",
+  "pandas==3.0.3",
+  "pyTelegramBotAPI==4.36.0",
+  "python-dotenv==1.2.2",
+  "PyYAML==6.0.3",
+  "requests==2.34.2",
+  "scipy==1.18.0",
+  "yfinance==1.5.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "ruff==0.15.22",
+]
+
+[project.scripts]
+jdss = "jd_holdings.cli:main"
+jdss-bot = "jd_holdings.bot:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
