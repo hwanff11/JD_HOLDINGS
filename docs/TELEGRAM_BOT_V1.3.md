@@ -69,11 +69,14 @@
 - API 키, Telegram 토큰, 계좌번호는 메시지와 로그에 출력하지 않는다.
 - `JDSS_TRADING_MODE=dry_run`과 비어 있는 `JDSS_LIVE_CONFIRMATION`을 유지한다.
 - `/bt`는 `BacktestEngine`만 사용하며 주문 승인·주문 실행 코드를 호출하지 않는다.
+- 토스 인증정보가 있어도 `dry_run`에서는 토스 클라이언트를 계좌 조회에만 사용한다.
+- `/account`는 실제 보유종목과 USD 주문가능금액을 조회하며 주문 API를 호출하지 않는다.
 
 ## 운영 명령
 
 ```text
 /dashboard /d                 통합 대시보드
+/account /acct                토스 실제 계좌 조회
 /score /sc [종목]             JDSS 점수
 /signal /sg                   활성 매매신호
 /status /st [종목]            포지션 상태

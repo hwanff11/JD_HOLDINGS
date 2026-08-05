@@ -24,6 +24,7 @@ from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_met
 from jd_holdings.config import StrategyConfig
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
+from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import RuntimeSettings
 
 LOGGER = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ class TelegramBotApp:
         reconciliation_service: ReconciliationService,
         data_source: YFinanceDataSource,
         market_clock: MarketClock,
+        account_client: TossClient | None = None,
     ) -> None:
         if not settings.telegram_bot_token:
             raise ValueError("TELEGRAM_BOT_TOKEN이 설정되지 않았습니다")
@@ -118,6 +120,7 @@ class TelegramBotApp:
         self.reconciliation_service = reconciliation_service
         self.data_source = data_source
         self.market_clock = market_clock
+        self.account_client = account_client
         self.allowed_chat_id = settings.allowed_chat_ids[0]
         self.bot = telebot.TeleBot(settings.telegram_bot_token, threaded=True)
         self._stop = threading.Event()
@@ -186,6 +189,38 @@ class TelegramBotApp:
             except Exception as exc:
                 LOGGER.exception("dashboard 실패")
                 self._send(f"❌ 대시보드 생성 실패: {html.escape(str(exc))}")
+
+        @bot.message_handler(commands=["account", "acct", "balance"])
+        def account(message):
+            if not self._authorized_message(message):
+                return
+            if self.account_client is None:
+                self._send("토스 계좌 조회 인증정보가 설정되지 않았습니다.")
+                return
+            try:
+                buying_power = self.account_client.get_buying_power()
+                holdings = self.account_client.get_holdings()
+                lines = [
+                    "🏦 <b>토스 실제 계좌</b>",
+                    f"주문가능금액(USD): <b>${buying_power:,.2f}</b>",
+                    f"보유종목: {len(holdings)}개",
+                    "⚠️ 조회 전용·실주문 잠금",
+                ]
+                for item in holdings:
+                    symbol = str(item.get("symbol") or item.get("stockCode") or "-").upper()
+                    quantity = item.get("quantity") or item.get("holdingQuantity") or "0"
+                    average = item.get("averagePrice") or item.get("averagePurchasePrice")
+                    current = item.get("currentPrice") or item.get("lastPrice")
+                    detail = f"{html.escape(symbol)} {html.escape(str(quantity))}주"
+                    if average is not None:
+                        detail += f" / 평단 ${html.escape(str(average))}"
+                    if current is not None:
+                        detail += f" / 현재 ${html.escape(str(current))}"
+                    lines.append(detail)
+                self._send("\n".join(lines))
+            except Exception as exc:
+                LOGGER.exception("계좌 조회 실패")
+                self._send(f"❌ 토스 계좌 조회 실패: {html.escape(str(exc))}")
 
         @bot.message_handler(commands=["score", "sc", "indicator", "i"])
         def score(message):
@@ -342,6 +377,7 @@ class TelegramBotApp:
             self._send(
                 "<b>JDSS 명령어</b>\n"
                 "/dashboard /d — 통합 대시보드\n"
+                "/account /acct — 토스 실제 계좌 조회\n"
                 "/score /sc [종목] — JDSS 점수\n"
                 "/signal /sg — 활성 매매신호\n"
                 "/status /st [종목] — 포지션\n"
@@ -567,6 +603,7 @@ class TelegramBotApp:
         self.bot.set_my_commands(
             [
                 telebot.types.BotCommand("dashboard", "JDSS 통합 대시보드"),
+                telebot.types.BotCommand("account", "토스 실제 계좌 조회"),
                 telebot.types.BotCommand("score", "JDSS 점수"),
                 telebot.types.BotCommand("signal", "활성 매매신호"),
                 telebot.types.BotCommand("status", "포지션 상태"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 from pathlib import Path
 
 from jd_holdings.application.analysis_service import AnalysisService
@@ -50,6 +51,11 @@ def main() -> None:
             data_source,
             buying_power=config.global_.capital_per_symbol * len(config.enabled_symbols),
         )
+    account_client = (
+        TossClient()
+        if os.getenv("TOSS_APP_KEY") and os.getenv("TOSS_APP_SECRET")
+        else None
+    )
     order_manager = OrderManager(repository, broker, settings)
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
@@ -85,6 +91,7 @@ def main() -> None:
         reconciliation_service,
         data_source,
         market_clock,
+        account_client,
     ).run()
 
 
