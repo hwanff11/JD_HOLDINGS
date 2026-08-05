@@ -654,12 +654,13 @@ class TelegramBotApp:
         try:
             start = request.start.isoformat()
             end = request.end.isoformat()
-            spy = self.data_source.daily("SPY", start, end)
-            qqq = self.data_source.daily("QQQ", start, end)
+            warmup_start = (request.start - timedelta(days=400)).isoformat()
+            spy = self.data_source.daily("SPY", warmup_start, end)
+            qqq = self.data_source.daily("QQQ", warmup_start, end)
             engine = BacktestEngine(self.config)
             results = {}
             for symbol in request.symbols:
-                target = self.data_source.daily(symbol, start, end)
+                target = self.data_source.daily(symbol, warmup_start, end)
                 results[symbol] = engine.run(symbol, target, spy, qqq, start=start, end=end)
             self._send_long(self._format_backtest_results(results))
         except Exception as exc:
