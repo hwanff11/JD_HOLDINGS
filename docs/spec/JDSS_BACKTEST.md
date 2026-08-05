@@ -1,5 +1,9 @@
 # JDSS 백테스트 명세서(Backtest Specification)
 
+> **레거시 v1.1.2 기준선 문서.** 현재 v1.3 백테스트 규칙과 Telegram 출력은
+> [`../STRATEGY_V1.3.md`](../STRATEGY_V1.3.md)와
+> [`../TELEGRAM_BOT_V1.3.md`](../TELEGRAM_BOT_V1.3.md)를 따른다.
+
 **v1.1.2 — 공식 기준선(Official Baseline)**
 
 ---

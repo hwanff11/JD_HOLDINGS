@@ -1,5 +1,9 @@
 # JDSS — JH Dynamic Score Swing Strategy (JH 동적 점수형 스윙 전략)
 
+> **레거시 v1.1.2 기준선 문서.** 현재 소스 v1.3 전략은
+> [`../STRATEGY_V1.3.md`](../STRATEGY_V1.3.md)와 [`../../strategy.yaml`](../../strategy.yaml)을
+> 최종 기준으로 삼는다.
+
 **전략 명세서(Strategy Specification) v1.1.2 — 공식 기준선(Official Baseline)**
 
 > v1.1.2는 v1.1.1의 전략 로직을 유지하면서, 정규장 종가 신호를 같은 날 애프터마켓 또는 다음 거래일 프리마켓에서 승인·실행할 수 있도록 주문시간 규칙을 보완한 버전이다.

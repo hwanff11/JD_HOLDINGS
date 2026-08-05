@@ -1,5 +1,8 @@
 # JDSS Telegram Bot 명세서
 
+> **레거시 v1.1.2 기준선 문서.** 현재 배포된 v1.3 Telegram 메뉴·계좌·백테스트
+> 동작은 [`../TELEGRAM_BOT_V1.3.md`](../TELEGRAM_BOT_V1.3.md)를 최종 기준으로 삼는다.
+
 **Telegram Bot Specification(텔레그램 봇 명세) v1.1.2 — 공식 기준선**
 
 ---

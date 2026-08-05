@@ -1,5 +1,9 @@
 # JDSS 구현 명세서(Implementation Specification)
 
+> **레거시 v1.1.2 기준선 문서.** 현재 v1.3의 실행 규칙은
+> [`../STRATEGY_V1.3.md`](../STRATEGY_V1.3.md), Telegram 동작은
+> [`../TELEGRAM_BOT_V1.3.md`](../TELEGRAM_BOT_V1.3.md)를 우선한다.
+
 **v1.1.2 — 공식 기준선(Official Baseline)**
 
 ---
