@@ -32,11 +32,11 @@ LOCAL_PYTHON="${LOCAL_PYTHON:-$PROJECT_ROOT/.venv/bin/python}"
 : "${SSH_KEY_PATH:?SSH_KEY_PATH가 필요합니다}"
 : "${SERVER_HOST:?SERVER_HOST가 필요합니다}"
 SERVER_USER="${SERVER_USER:-ubuntu}"
-SERVER_TARGET_DIR="${SERVER_TARGET_DIR:-/home/ubuntu/jd_holdings}"
+SERVER_TARGET_DIR="${SERVER_TARGET_DIR:-/home/ubuntu/JD_HOLDINGS}"
 SYSTEMD_SERVICE="${SYSTEMD_SERVICE:-jd_holdings_bot}"
 REMOTE_PYTHON_BIN="${REMOTE_PYTHON_BIN:-python3.12}"
 
-if [[ "$SERVER_TARGET_DIR" != /home/*/jd_holdings && "$SERVER_TARGET_DIR" != /opt/jd_holdings ]]; then
+if [[ "$SERVER_TARGET_DIR" != /home/*/JD_HOLDINGS && "$SERVER_TARGET_DIR" != /opt/JD_HOLDINGS ]]; then
   echo "안전하지 않은 SERVER_TARGET_DIR입니다: $SERVER_TARGET_DIR" >&2
   exit 1
 fi

@@ -80,12 +80,12 @@ def create_approved_entry(repository, trading, config):
 def test_two_step_dry_run_order_flow(tmp_path, config):
     repository, broker, trading, _ = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
-    assert quote.quantity == 8
+    assert quote.quantity == 29
     receipt = trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     assert receipt.status == "FILLED"
     position = repository.get_position("TQQQ")
     assert position.state == PositionState.HOLDING_1ST
-    assert position.quantity == 8
+    assert position.quantity == quote.quantity
     assert repository.active_tp_plan("TQQQ") is not None
     assert len(repository.open_orders("TQQQ")) == 2
 
@@ -93,6 +93,7 @@ def test_two_step_dry_run_order_flow(tmp_path, config):
 def test_partial_tp_is_applied_cumulatively_and_recovered(tmp_path, config):
     repository, broker, trading, monitor = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
+    initial_quantity = quote.quantity
     trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     tp1_local = next(order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP1")
     tp1 = broker.orders[tp1_local["broker_order_id"]]
@@ -102,14 +103,14 @@ def test_partial_tp_is_applied_cumulatively_and_recovered(tmp_path, config):
     broker._apply_fill(tp1)
 
     monitor.run_once()
-    assert repository.get_position("TQQQ").quantity == 6
+    assert repository.get_position("TQQQ").quantity == initial_quantity - 2
     assert repository.get_order_by_client_id(tp1_local["client_order_id"])["applied"] == 0
 
     tp1["status"] = "CANCELED"
     events = monitor.run_once()
     recovered = repository.open_orders("TQQQ")
     assert any("자동 복구" in event for event in events)
-    assert sum(int(order["qty"]) for order in recovered) == 6
+    assert sum(int(order["qty"]) for order in recovered) == initial_quantity - 2
     assert repository.get_order_by_client_id(tp1_local["client_order_id"])["applied"] == 1
 
 

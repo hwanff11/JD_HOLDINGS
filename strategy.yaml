@@ -1,5 +1,5 @@
-version: JDSS-1.2.0
-config_version: "1.1.0"
+version: JDSS-1.3.0
+config_version: "1.2.0"
 
 global:
   capital_per_symbol: 10000
@@ -7,8 +7,8 @@ global:
   sell_fee: 0.001
   approval_required: true
   stop_loss_enabled: false
-  entry_score: 82
-  minimum_reversal_score: 5
+  entry_score: 76
+  minimum_reversal_score: 0
   entry_max_chase_pct: 0.02
   buy_limit_buffer: 0.005
   trading_sessions:
@@ -79,12 +79,12 @@ scoring:
     WATCH: 76
 
 position:
-  stage_weights: [0.15, 0.20, 0.25, 0.40]
-  cumulative_weights: [0.15, 0.35, 0.60, 1.00]
+  stage_weights: [0.30, 0.25, 0.25, 0.20]
+  cumulative_weights: [0.30, 0.55, 0.80, 1.00]
 
 exposure:
-  score_82_87: 0.60
-  score_88_91: 0.80
+  score_82_87: 1.00
+  score_88_91: 1.00
   score_92_100: 1.00
   allow_cap_increase: true
   allow_cap_decrease_during_cycle: false
@@ -93,24 +93,24 @@ additional_entry:
   anchor: first_entry_fill_price
   max_stage_per_day: 1
   stage2:
-    min_drop_from_anchor: 0.03
-    min_score: 84
+    min_drop_from_anchor: 0.04
+    min_score: 82
   stage3:
-    min_drop_from_anchor: 0.05
-    min_score: 86
-  stage4:
     min_drop_from_anchor: 0.08
-    min_score: 88
+    min_score: 82
+  stage4:
+    min_drop_from_anchor: 0.15
+    min_score: 82
 
 take_profit:
-  tp1_base: 0.04
-  tp2_base: 0.08
-  use_atr: true
-  tp1_atr_multiplier: 0.8
-  tp2_atr_multiplier: 1.6
+  tp1_base: 0.08
+  tp2_base: 0.16
+  use_atr: false
+  tp1_atr_multiplier: 0.0
+  tp2_atr_multiplier: 0.0
 
 rebuy:
-  enabled: true
+  enabled: false
   minimum_score: 82
   minimum_reversal_score: 5
   min_drop_from_avg: 0.02

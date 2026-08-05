@@ -1,17 +1,16 @@
 # JD_HOLDINGS
 
-JDSS(JH Dynamic Score Swing Strategy) v1.2.0을 TQQQ와 SOXL에 적용하는 독립형
+JDSS(JH Dynamic Score Swing Strategy) v1.3.0을 TQQQ와 SOXL에 적용하는 독립형
 Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비스, 배포 경로를
 공유하지 않습니다.
 
-> 현재 상태: **검증 완료·dry-run 전용**. v1.2.0 잠금 OOS는 양수였지만 SOXL 개별
-> 사이클의 최악 MAE가 -79.66%였으므로 `live` 전환 승인이 나기 전까지 실거래로
-> 배포하지 마세요.
+> 현재 상태: **연구 구현 완료·dry-run 전용**. v1.3.0은 WATCH 진입 병목을 완화한
+> 후보이며, 전진 관찰과 사용자 승인 전까지 실거래로 배포하지 마세요.
 
 ## 구현 범위
 
 - yfinance 수정주가 일봉과 완결 거래일 검증
-- JDSS 점수, 시장 국면, 4단계 분할매수, 재매수, ATR 적응형 TP
+- JDSS 점수, 시장 국면, 고정 10,000달러 한도의 4단계 분할매수, 고정 TP
 - 다음 거래일 시가 체결 대용 모델을 사용하는 노룩어헤드 백테스트
 - SQLite WAL, 상태 전이, 낙관적 잠금, 신호/주문 멱등성
 - Telegram 관리자 1명 제한 및 매수 검토 → 최종 실행의 2단계 승인
@@ -23,7 +22,8 @@ Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비�
 원본 전략 문서는 [`docs/spec`](docs/spec), 구현 판단은
 [`docs/DECISIONS.md`](docs/DECISIONS.md), v1.1.2 기준선은
 [`docs/BASELINE_BACKTEST.md`](docs/BASELINE_BACKTEST.md), v1.2.0 연구 결과는
-[`docs/SCORE_CALIBRATION_V1.2.md`](docs/SCORE_CALIBRATION_V1.2.md)에 있습니다.
+[`docs/SCORE_CALIBRATION_V1.2.md`](docs/SCORE_CALIBRATION_V1.2.md), v1.3.0 연구는
+[`docs/STRATEGY_V1.3.md`](docs/STRATEGY_V1.3.md)에 있습니다.
 
 ## 빠른 시작
 

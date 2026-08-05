@@ -14,7 +14,7 @@ def score_to_exposure(score: int, config: StrategyConfig) -> Decimal:
         ratio = config.exposure.score_92_100
     elif score >= 88:
         ratio = config.exposure.score_88_91
-    elif score >= 82:
+    elif score >= config.global_.entry_score:
         ratio = config.exposure.score_82_87
     else:
         return Decimal("0")

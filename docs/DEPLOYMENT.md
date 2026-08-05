@@ -33,7 +33,7 @@ JDSS_LIVE_CONFIRMATION=
 SSH_KEY_PATH=/absolute/path/to/oracle.key
 SERVER_HOST=203.0.113.10
 SERVER_USER=ubuntu
-SERVER_TARGET_DIR=/home/ubuntu/jd_holdings
+SERVER_TARGET_DIR=/home/ubuntu/JD_HOLDINGS
 SYSTEMD_SERVICE=jd_holdings_bot
 REMOTE_PYTHON_BIN=python3.12
 ```
