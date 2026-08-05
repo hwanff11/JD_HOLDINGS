@@ -61,8 +61,11 @@ sudo journalctl -u jd_holdings_bot -n 100 --no-pager
 ls -l /home/ubuntu/JD_HOLDINGS/current
 ```
 
-Telegram `/ping`, `/dashboard`, `/score TQQQ`를 확인합니다. 실주문 전에는 로컬 또는
-서버에서 `jdss toss-smoke`를 실행해 조회 전용 인증을 확인합니다.
+Telegram `/ping`, `/dashboard`, `/account`, `/backtest`를 확인합니다. 인자 없는
+`/backtest`는 SOXL 최근 300거래일을 실행하며, 신호·매수·미체결·TP1·TP2 내역이
+종목당 최근 15건까지 표시되는지 확인합니다. `/account`는 미국주식과
+수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서
+`jdss toss-smoke`를 실행해 조회 전용 인증을 확인합니다.
 
 ## 4. 롤백
 

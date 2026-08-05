@@ -52,6 +52,10 @@ def parse_backtest_request(
     """Parse `/bt [ALL|SYMBOL] [START] [END]` without accepting arbitrary input."""
     parts = (text or "").split()[1:]
     selected = enabled_symbols
+    if not parts:
+        if "SOXL" not in enabled_symbols:
+            raise BacktestCommandError("기본 종목 SOXL이 활성화되지 않았습니다.")
+        parts = ["SOXL", "300"]
     if parts and not _looks_like_iso_date(parts[0]):
         requested = parts.pop(0).upper()
         if requested == "ALL":
@@ -512,9 +516,9 @@ class TelegramBotApp:
                 self._send(
                     f"⚠️ <b>{html.escape(str(exc))}</b>\n\n"
                     "💡 <b>사용 예시</b>\n"
-                    "<code>/bt</code> (전체 종목 백테스트)\n"
-                    "<code>/bt ALL 2025-01-01</code>\n"
-                    "<code>/bt TQQQ 2021-01-01 2024-12-31</code>"
+                    "<code>/bt</code> (SOXL 최근 300거래일)\n"
+                    "<code>/bt TQQQ 100</code>\n"
+                    "<code>/bt ALL 250</code>"
                 )
                 return
             if not self._backtest_lock.acquire(blocking=False):
@@ -549,7 +553,8 @@ class TelegramBotApp:
                 "🚨 <b>/signal</b> (<code>/sg</code>) — 활성 매수 신호 조회\n"
                 "📦 <b>/status</b> (<code>/st</code>) [종목] — 상세 포지션 현황\n"
                 "🏦 <b>/account</b> (<code>/acct</code>) — 토스증권 실제 계좌 잔고\n"
-                "🧪 <b>/backtest</b> (<code>/bt</code>) [종목] [기간] — 백테스트 실행\n"
+                "🧪 <b>/backtest</b> — SOXL 최근 300거래일\n"
+                "   <code>/bt TQQQ 100</code> — 종목·거래일 지정\n"
                 "📋 <b>/order</b> (<code>/o</code>) — 미체결 주문 현황\n"
                 "🧾 <b>/errors</b> (<code>/err</code>) — 최근 시스템 로그\n"
                 "🏓 <b>/ping</b> (<code>/p</code>) — 봇 상태 및 시스템 확인\n\n"
@@ -670,7 +675,7 @@ class TelegramBotApp:
             self._backtest_lock.release()
 
     @staticmethod
-    def _format_trade_timeline(result: BacktestResult, limit: int = 24) -> list[str]:
+    def _format_trade_timeline(result: BacktestResult, limit: int = 15) -> list[str]:
         events: list[tuple[str, int, str]] = []
         action_labels = {
             "FIRST_ENTRY_CANDIDATE": "1차 매수 신호",
@@ -690,6 +695,22 @@ class TelegramBotApp:
                     0,
                     f"📣 {signal['trade_date']}  {action} "
                     f"· {signal['score']}점 · {_money(signal['signal_close'])}",
+                )
+            )
+        skipped_labels = {
+            "SKIPPED_BY_CHASE_RULE": "추격매수 상한 초과",
+            "STAGE_PRICE_RECOVERED": "추가매수 가격 회복",
+            "SLIPPAGE_EXCEEDS_PRICE_CEILING": "허용 매수가 초과",
+            "ZERO_QUANTITY": "매수 가능 수량 부족",
+            "EXPOSURE_BLOCK": "투자 한도 초과",
+        }
+        for skipped in result.skipped_signals:
+            reason = skipped_labels.get(str(skipped.get("reason")), "매수 조건 미충족")
+            events.append(
+                (
+                    str(skipped["execution_date"]),
+                    1,
+                    f"⚪ {skipped['execution_date']}  매수 미체결 · {reason}",
                 )
             )
         for trade in result.trades:
@@ -713,7 +734,7 @@ class TelegramBotApp:
         selected = events[-limit:]
         lines = [event[2] for event in selected]
         if omitted:
-            lines.insert(0, f"… 앞선 기록 {omitted}건은 생략했습니다.")
+            lines.insert(0, f"… 전체 {len(events)}건 중 최근 {limit}건만 표시합니다.")
         return lines
 
     def _format_backtest_results(self, results: dict[str, BacktestResult]) -> str:

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
@@ -16,10 +17,11 @@ SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
 
 
-def test_backtest_command_defaults_to_all_symbols_and_full_period():
+def test_backtest_command_defaults_to_soxl_and_300_trading_days():
     request = parse_backtest_request("/bt", SYMBOLS, "2011-01-01", LATEST)
-    assert request.symbols == SYMBOLS
-    assert request.start == date(2011, 1, 1)
+    assert request.symbols == ("SOXL",)
+    calendar = MarketClock().calendar
+    assert len(calendar.sessions_in_range(request.start, request.end)) == 300
     assert request.end == LATEST
 
 
@@ -99,12 +101,19 @@ def test_backtest_timeline_includes_signal_buy_and_take_profit_sales():
                 "price": 55.555,
             },
         ),
+        skipped_signals=(
+            {
+                "execution_date": "2026-07-03",
+                "reason": "SKIPPED_BY_CHASE_RULE",
+            },
+        ),
     )
     timeline = TelegramBotApp._format_trade_timeline(result)
     assert "1차 매수 신호" in timeline[0]
     assert "1차 매수" in timeline[1]
-    assert "1차 매도" in timeline[2]
-    assert "2차 매도" in timeline[3]
+    assert "매수 미체결" in timeline[2]
+    assert "1차 매도" in timeline[3]
+    assert "2차 매도" in timeline[4]
 
 
 @pytest.mark.parametrize(
