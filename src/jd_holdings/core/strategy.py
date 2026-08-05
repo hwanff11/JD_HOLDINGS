@@ -44,6 +44,39 @@ def calculate_stage_budget(
     return target, budget
 
 
+def soxl_sector_guard_blocks(
+    symbol: str,
+    target_stage: int,
+    sector_benchmarks: dict[str, IndicatorSnapshot] | None,
+    config: StrategyConfig,
+) -> bool:
+    """Block deep SOXL averaging when semiconductor benchmarks are below EMA60.
+
+    The guard is deliberately narrow: it applies only to SOXL and only to configured
+    additional-entry stages. Missing benchmark data follows the configured
+    ``warn_and_allow`` policy so existing analysis cannot fail closed accidentally.
+    """
+    guard = config.market_regime.get("soxl_sector_guard", {})
+    if symbol.upper() != "SOXL" or not guard.get("enabled", False):
+        return False
+    blocked_stages = {int(stage) for stage in guard.get("blocked_stages", (3, 4))}
+    if target_stage not in blocked_stages:
+        return False
+    if not sector_benchmarks:
+        return False
+
+    candidates = [str(value).upper() for value in guard.get("benchmark_candidates", ("SOXX", "SMH"))]
+    available = [sector_benchmarks[name] for name in candidates if name in sector_benchmarks]
+    if not available:
+        return False
+
+    rule = str(guard.get("rule", "any_benchmark_below_ema60"))
+    below = [float(snapshot.close) < snapshot.ema60 for snapshot in available]
+    if rule == "all_benchmarks_below_ema60":
+        return all(below)
+    return any(below)
+
+
 def evaluate_entry(
     snapshot: IndicatorSnapshot,
     score: ScoreResult,
@@ -99,6 +132,7 @@ def evaluate_additional_entry(
     *,
     data_ok: bool = True,
     system_ok: bool = True,
+    sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
     if target_stage not in config.additional_entry.stages:
         raise ValueError("추가매수 단계는 2, 3, 4 중 하나여야 합니다")
@@ -125,6 +159,8 @@ def evaluate_additional_entry(
         reasons.append("ANCHOR_MISSING")
     elif snapshot.close > trigger:
         reasons.append("STAGE_TRIGGER_NOT_MET")
+    if soxl_sector_guard_blocks(snapshot.symbol, target_stage, sector_benchmarks, config):
+        reasons.append("SOXL_SECTOR_GUARD")
     allowed = not reasons
     return TradeDecision(
         action=DecisionType.ADD_ENTRY_CANDIDATE if allowed else DecisionType.NO_ACTION,
@@ -218,6 +254,7 @@ def evaluate_strategy(
     *,
     data_ok: bool = True,
     system_ok: bool = True,
+    sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
     if position.state == PositionState.EMPTY:
         return evaluate_entry(
@@ -236,6 +273,7 @@ def evaluate_strategy(
             config,
             data_ok=data_ok,
             system_ok=system_ok,
+            sector_benchmarks=sector_benchmarks,
         )
     if position.state == PositionState.PARTIAL_TP_1:
         return evaluate_rebuy(
