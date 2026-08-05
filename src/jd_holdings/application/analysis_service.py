@@ -54,17 +54,35 @@ class AnalysisService:
         qqq = calculate_indicators(
             self.data_source.daily("QQQ", start, completed, refresh=True), self.config
         )
+
+        sector_frames: dict[str, object] = {}
+        guard = self.config.market_regime.get("soxl_sector_guard", {})
+        if guard.get("enabled", False):
+            for benchmark in guard.get("benchmark_candidates", ("SOXX", "SMH")):
+                name = str(benchmark).upper()
+                try:
+                    sector_frames[name] = calculate_indicators(
+                        self.data_source.daily(name, start, completed, refresh=True), self.config
+                    )
+                except Exception as exc:  # pragma: no cover - external data failure path
+                    self.repository.log_event(
+                        "WARNING",
+                        "SOXL_SECTOR_DATA_MISSING",
+                        f"{name} 섹터 기준 데이터 조회 실패: {exc}",
+                        context={"benchmark": name, "trade_date": completed.isoformat()},
+                    )
+
         results: list[AnalysisResult] = []
         for symbol in self.config.enabled_symbols:
             target = calculate_indicators(
                 self.data_source.daily(symbol, start, completed, refresh=True), self.config
             )
-            results.append(self._analyze(symbol, completed, target, spy, qqq))
+            results.append(self._analyze(symbol, completed, target, spy, qqq, sector_frames))
         self.repository.set_system_value("last_analysis_trade_date", completed.isoformat())
         self.repository.set_system_value("last_analysis_at", current.astimezone(UTC).isoformat())
         return results
 
-    def _analyze(self, symbol, completed, target, spy, qqq) -> AnalysisResult:
+    def _analyze(self, symbol, completed, target, spy, qqq, sector_frames=None) -> AnalysisResult:
         timestamp = next(
             (
                 index
@@ -82,6 +100,12 @@ class AnalysisService:
         score = calculate_score(snapshot, regime, self.config)
         position = self.repository.get_position(symbol)
 
+        sector_benchmarks: dict[str, IndicatorSnapshot] = {}
+        if symbol.upper() == "SOXL" and sector_frames:
+            for name, frame in sector_frames.items():
+                if timestamp in frame.index:
+                    sector_benchmarks[name] = snapshot_from_row(name, timestamp, frame.loc[timestamp])
+
         if (
             position.state.value == "PARTIAL_TP_1"
             and not position.rebuy_recovery_armed
@@ -95,7 +119,13 @@ class AnalysisService:
                 updates={"rebuy_recovery_armed": True},
                 expected_version=position.version,
             )
-        decision = evaluate_strategy(snapshot, score, position, self.config)
+        decision = evaluate_strategy(
+            snapshot,
+            score,
+            position,
+            self.config,
+            sector_benchmarks=sector_benchmarks or None,
+        )
         signal_id = None
         created = False
         if decision.allowed:
