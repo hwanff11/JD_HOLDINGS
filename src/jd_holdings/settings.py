@@ -18,6 +18,7 @@ class RuntimeSettings:
     database_path: Path
     log_path: Path
     cache_path: Path = Path("data/cache")
+    config_path: Path = Path("strategy.yaml")
 
     @property
     def live_trading_enabled(self) -> bool:
@@ -53,4 +54,5 @@ def load_runtime_settings(env_path: str | Path | None = None) -> RuntimeSettings
         database_path=Path(os.getenv("JDSS_DB_PATH", "data/jdss.db")),
         log_path=Path(os.getenv("JDSS_LOG_PATH", "logs/jdss.log")),
         cache_path=Path(os.getenv("JDSS_CACHE_PATH", "data/cache")),
+        config_path=Path(os.getenv("JDSS_CONFIG_PATH", "strategy.yaml")),
     )

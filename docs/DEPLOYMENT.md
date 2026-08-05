@@ -50,6 +50,8 @@ git remote -v
 DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
 Telegram 백테스트의 yfinance 캐시도
 `/home/ubuntu/JD_HOLDINGS/shared/data/cache`에 저장되어 읽기 전용 릴리스와 분리됩니다.
+`JDSS_CONFIG_PATH`는 `/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정해
+설치형 패키지에서도 현재 릴리스의 설정을 사용합니다.
 
 ## 3. 검증
 

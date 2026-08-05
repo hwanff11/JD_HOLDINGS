@@ -36,8 +36,8 @@ def configure_logging(log_path: Path) -> None:
 
 
 def main() -> None:
-    config = load_config()
     settings = load_runtime_settings()
+    config = load_config(settings.config_path)
     configure_logging(settings.log_path)
     repository = SQLiteRepository(settings.database_path, config)
     data_source = YFinanceDataSource(settings.cache_path)
