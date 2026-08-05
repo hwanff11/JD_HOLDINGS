@@ -41,6 +41,20 @@ def test_backtest_command_accepts_all_with_start_only():
     assert request.end == LATEST
 
 
+def test_backtest_command_accepts_recent_trading_days():
+    request = parse_backtest_request("/bt TQQQ 100", SYMBOLS, "2011-01-01", LATEST)
+    assert request.symbols == ("TQQQ",)
+    assert request.start == date(2026, 3, 12)
+    assert request.end == LATEST
+
+
+def test_backtest_command_accepts_all_recent_trading_days():
+    request = parse_backtest_request("/bt ALL 250", SYMBOLS, "2011-01-01", LATEST)
+    assert request.symbols == SYMBOLS
+    assert request.start == date(2025, 8, 6)
+    assert request.end == LATEST
+
+
 @pytest.mark.parametrize(
     ("command", "message"),
     [
@@ -50,6 +64,8 @@ def test_backtest_command_accepts_all_with_start_only():
         ("/bt ALL 2025-01-01 2024-01-01", "늦을 수 없습니다"),
         ("/bt ALL 2025-01-01 2026-08-05", "최신 완결 거래일"),
         ("/bt ALL 2025-01-01 2026-08-04 extra", "형식"),
+        ("/bt TQQQ 0", "1~5000"),
+        ("/bt TQQQ 5001", "1~5000"),
     ],
 )
 def test_backtest_command_rejects_unsafe_or_invalid_input(command, message):
