@@ -45,3 +45,44 @@ def test_backtest_executes_signal_on_later_session(config):
     assert result.metrics["mdd_pct"] <= 0
     assert result.metrics["tp1_reach_rate_pct"] <= 100
     assert result.metrics["tp2_reach_rate_pct"] <= 100
+    assert "median_mae_pct" in result.metrics
+    assert "mae_p90_pct" in result.metrics
+    assert "mae_p95_pct" in result.metrics
+    assert result.metrics["sector_guard_requested"] == 0
+    assert result.metrics["sector_guard_applied"] == 0
+
+
+def test_soxl_backtest_reports_sector_guard_application(config):
+    length = 220
+    benchmark = np.linspace(100, 150, length)
+    target = np.linspace(80, 110, length)
+    sector = np.linspace(90, 130, length)
+    result = BacktestEngine(config).run(
+        "SOXL",
+        make_market_frame(target, bullish_candles=True),
+        make_market_frame(benchmark),
+        make_market_frame(benchmark * 1.1),
+        slippage=0,
+        sector_data={
+            "SOXX": make_market_frame(sector),
+            "SMH": make_market_frame(sector * 1.05),
+        },
+    )
+    assert result.metrics["sector_guard_requested"] == 1
+    assert result.metrics["sector_guard_applied"] == 1
+    assert result.metrics["sector_guard_blocks"] >= 0
+
+
+def test_soxl_backtest_marks_missing_sector_data(config):
+    length = 220
+    benchmark = np.linspace(100, 150, length)
+    target = np.linspace(80, 110, length)
+    result = BacktestEngine(config).run(
+        "SOXL",
+        make_market_frame(target, bullish_candles=True),
+        make_market_frame(benchmark),
+        make_market_frame(benchmark * 1.1),
+        slippage=0,
+    )
+    assert result.metrics["sector_guard_requested"] == 1
+    assert result.metrics["sector_guard_applied"] == 0
