@@ -36,11 +36,13 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 - 고수익률 & 고회전 파라미터 Grid Search 백테스트 시뮬레이션 및 A안(`ultra_hf_50_tp48`) 최종 채택
 - `strategy.yaml` 및 전략 파라미터 업데이트 (진입 score 50점, TP1 4%, TP2 8%)
 - 텔레그램 백테스트(`/bt`)의 임의 주식 티커 제한 해제 (예: `/bt NVDA 100`, `/bt ALL`은 TQQQ+SOXL 유지)
-- Codex, ChatGPT, Antigravity 3개 AI 환경 통합 협업 규칙 문서 반영 (`AGENTS.md`, `CURRENT_WORK.md`, `docs/DEVELOPMENT_WORKFLOW.md`)
-- Telegram 메시지 포맷팅 및 메뉴 구성을 `cci_nvdl` 스타일로 대폭 개편
+- 신규 `/guide` (📖 JDSS 용어 & 지표 상세 가이드) 명령어 생성 및 텔레그램 메인 메뉴 추가
+- 포지션 상태 4단계 이모티콘 색상화(🟢 1차, 🟡 2차, 🟠 3차, 🔴 4차) 및 관망중 ☕ 밝은 이모티콘 전환
+- 대시보드 모바일 20자 구분선, 하단 인라인 버튼 제거 및 응답 속도 최적화, 누적매수금 분모($10,000) 버그 수정
+- `docs/STRATEGY_V2.0_SWING.md`, `docs/BACKTEST_HIGH_RETURN_V2.0.md`, `README.md` 전면 상세화 및 부장님 스타일 개편
 - 전체 단위 테스트(57개) 통과 및 ruff 정적 검사 통과
-- `main` 브랜치 병합 및 GitHub 원격 저장소 커밋/푸시 완료 (`e6dba91`)
-- Oracle Cloud 서버 자동 배포(`deploy.sh`) 및 텔레그램 배포 완료 알림 전송
+- `main` 브랜치 병합 및 GitHub 원격 저장소 커밋/푸시 완료 (`e2f1707`)
+- Oracle Cloud 서버 자동 배포(`deploy.sh`) 완수 및 서비스 재시작
 
 ## 다음 작업
 
@@ -73,8 +75,8 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 ## 마지막 인수인계
 
 - 작성 주체: Antigravity (JH홀딩스 개발부장)
-- 상태: JDSS 2.0 A안 적용, 백테스트 티커 제한 해제, Oracle Cloud 배포 및 텔레그램 알림 완료
-- 마지막 관련 커밋: `e6dba91` (`chore: update deploy.sh git push resilience`)
+- 상태: JDSS 2.0 A안 적용, 티커 백테스트 해제, /guide 명령어 추가, 4단계 포지션 색상화, Oracle Cloud 배포 완수
+- 마지막 관련 커밋: `e2f1707` (`fix: escape unescaped ampersand in telegram /guide command HTML`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙
