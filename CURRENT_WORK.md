@@ -7,7 +7,7 @@
 
 ## 현재 활성 개발 브랜치
 
-`codex/jdss-v1.3.1-review`
+`main`
 
 ## 기준 브랜치
 
@@ -19,35 +19,33 @@
 
 ## 현재 전략 버전
 
-JDSS 2.0 Swing review candidate
+JDSS 2.0 Swing (Option A: ultra_hf_50_tp48)
 
 ## 현재 개발 목표
 
-TQQQ/SOXL의 변동성을 활용하는 고회전 단타 스윙 전략을 검증하고 안정화한다.
+TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전략을 검증하고 안정화한다.
 
 중점 사항:
 
-- 반등 확인 없이 진입 가능한 문제 방지
-- 점수 calibration 과도한 상향 문제 개선
-- TQQQ/SOXL 분할매수 및 익절 구조 검증
-- SOXL 추가매수 리스크 필터 검토/검증
-- 백테스트 구현 신뢰성 검증
-- 위험을 통제하면서 백테스트 및 실제 운용의 기대수익률 개선
+- 고수익률 & 고회전 파라미터 조합 (진입 50점, TP 4%/8%) 실거래 dry_run 모니터링
+- 임의 주식 티커 백테스트 기능 제공 (`/bt [티커] [기간]`)
+- Oracle Cloud 서버 상 봇 서비스 안정 운영
 
 ## 마지막 완료 작업
 
-- Codex, ChatGPT, Antigravity 3개 AI 개발 환경 통합 협업 규칙 문서 반영 (`AGENTS.md`, `CURRENT_WORK.md`, `docs/DEVELOPMENT_WORKFLOW.md`)
-- Telegram 매새지 및 메뉴 구성을 `cci_nvdl` 스타일로 시각적 가시성 및 가이드 문구 대폭 향상
-- JDSS 2.0 Swing 후보를 진입 60점, 추가매수 -2/-4/-7%, TP1 +3%, TP2 +6%로 전면 재구성
-- 2021~2024 +30.57%·MDD -12.18%·33사이클, 2025 +13.74%·16사이클, 2026년 1~7월 +5.29%·6사이클 확인
-- 장기 2011~2026 결과 +157.55%·CAGR +6.26%·MDD -15.09%·153사이클 확인
-- `docs/STRATEGY_V2.0_SWING.md`, 후보 탐색 스크립트와 상세 결과 JSON 추가
+- 고수익률 & 고회전 파라미터 Grid Search 백테스트 시뮬레이션 및 A안(`ultra_hf_50_tp48`) 최종 채택
+- `strategy.yaml` 및 전략 파라미터 업데이트 (진입 score 50점, TP1 4%, TP2 8%)
+- 텔레그램 백테스트(`/bt`)의 임의 주식 티커 제한 해제 (예: `/bt NVDA 100`, `/bt ALL`은 TQQQ+SOXL 유지)
+- Codex, ChatGPT, Antigravity 3개 AI 환경 통합 협업 규칙 문서 반영 (`AGENTS.md`, `CURRENT_WORK.md`, `docs/DEVELOPMENT_WORKFLOW.md`)
+- Telegram 메시지 포맷팅 및 메뉴 구성을 `cci_nvdl` 스타일로 대폭 개편
+- 전체 단위 테스트(57개) 통과 및 ruff 정적 검사 통과
+- `main` 브랜치 병합 및 GitHub 원격 저장소 커밋/푸시 완료 (`e6dba91`)
+- Oracle Cloud 서버 자동 배포(`deploy.sh`) 및 텔레그램 배포 완료 알림 전송
 
 ## 다음 작업
 
-1. 점수 가중치, 진입 컷오프(entry_score), TP 익절 비율 Grid Search 백테스트 실행 및 고수익률 전략 조합 탐색
-2. JDSS 2.0 Swing의 신호·미체결·TP1/TP2 흐름을 Telegram dry_run에서 확인한다.
-3. 장기 최악 고착(TQQQ 658일, SOXL 727일)을 줄이되 고정손절처럼 수익을 훼손하지 않는 방법을 별도 연구한다.
+1. 텔레그램 봇 `dry_run` 상에서 JDSS 2.0 A안 신호 및 실시간 매수/익절 주문 흐름 모니터링
+2. 백테스트 임의 티커 입력 결과를 바탕으로 종목별 수익률 패턴 비교 및 추가 개선점 탐색
 
 ## 작업 환경
 
@@ -74,9 +72,9 @@ TQQQ/SOXL의 변동성을 활용하는 고회전 단타 스윙 전략을 검증�
 
 ## 마지막 인수인계
 
-- 작성 주체: Codex
-- 상태: JDSS 2.0 Swing 코드·백테스트 검증 및 Oracle dry_run 배포 완료
-- 마지막 관련 커밋: `d346ef3` (`Redesign JDSS as high-turnover swing strategy`)
+- 작성 주체: Antigravity (JH홀딩스 개발부장)
+- 상태: JDSS 2.0 A안 적용, 백테스트 티커 제한 해제, Oracle Cloud 배포 및 텔레그램 알림 완료
+- 마지막 관련 커밋: `e6dba91` (`chore: update deploy.sh git push resilience`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙
