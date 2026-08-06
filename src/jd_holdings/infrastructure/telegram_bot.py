@@ -149,12 +149,38 @@ def _grade_label(value: str) -> str:
 
 def _state_label(value: str) -> str:
     return {
-        "EMPTY": "💤 관망 중",
-        "WATCH": "👀 신호 감시 중",
+        "EMPTY": "☕ 관망 중",
+        "WATCH": "☀️ 신호 감시 중",
         "CYCLING": "🔄 분할매수 진행 중",
         "HOLDING": "📦 보유 중",
         "SAFE_MODE": "🚨 안전 점검 필요",
     }.get(value, value.replace("_", " "))
+
+
+def _format_position_state(position) -> str:
+    state_val = (
+        position.state.value
+        if hasattr(position.state, "value")
+        else str(position.state)
+    )
+    if state_val == "EMPTY":
+        return "☕ 관망 중"
+    if state_val == "WATCH":
+        return "☀️ 신호 감시 중"
+    if state_val in {"CYCLING", "HOLDING"}:
+        count = getattr(position, "entry_count", 0)
+        if count == 1:
+            return "🟢 1차 진입 완료"
+        elif count == 2:
+            return "🟡 2차 분할매수"
+        elif count == 3:
+            return "🟠 3차 분할매수"
+        elif count >= 4:
+            return "🔴 4차 풀매수 완료"
+        return "🔄 분할매수 진행 중"
+    if state_val == "SAFE_MODE":
+        return "🚨 안전 점검 필요"
+    return _state_label(state_val)
 
 
 def _action_label(value: str) -> str:
@@ -386,7 +412,7 @@ class TelegramBotApp:
                 ]
                 if results:
                     lines.append(
-                        f"🟡 <b>시장 국면</b> : {_regime_label(results[0].score.regime.value)}"
+                        f"🟢 <b>시장 국면</b> : {_regime_label(results[0].score.regime.value)}"
                     )
                     lines.append(f"📅 <b>분석 기준일</b> : {results[0].trade_date.isoformat()}")
                 lines.append(f"⚙️ <b>운영 모드</b> : {mode_label}")
@@ -402,7 +428,7 @@ class TelegramBotApp:
                     lines.extend(
                         [
                             f"✨ <b>{result.symbol}</b>",
-                            f"• <b>포지션 상태</b> : {_state_label(position.state.value)}",
+                            f"• <b>포지션 상태</b> : {_format_position_state(position)}",
                             f"• <b>JDSS 점수</b> : <code>{result.score.total}점</code> ({_grade_label(result.score.grade.value)})",
                             f"• <b>보유 잔고</b> : <code>{_quantity(position.quantity)}주</code> (평단 <code>{_money(position.average_price)}</code>)",
                             f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code> / <code>{_money(cap)}</code>",
@@ -413,7 +439,7 @@ class TelegramBotApp:
                 lines.extend(
                     [
                         "━━━━━━━━━━━━━━━━━━━━",
-                        "💡 <i>/status [종목] 명령어로 세부 포지션을 조회하실 수 있습니다.</i>",
+                        "💡 <i>/status [종목] 및 /score [종목] 명령어로 세부 정보를 확인하실 수 있습니다.</i>",
                     ]
                 )
                 self._send("\n".join(lines), markup=None)
@@ -465,6 +491,42 @@ class TelegramBotApp:
                 if requested and symbol != requested:
                     continue
                 self._send(self._format_status_message(symbol))
+
+        @bot.message_handler(commands=["guide", "g", "info", "explain"])
+        def guide(message):
+            if not self._authorized_message(message):
+                return
+            text = (
+                "📖 <b>[JDSS v2.0 지표 & 전략 상세 가이드]</b>\n\n"
+                "🎯 <b>1. JDSS 점수 체계 (100점 만점)</b>\n"
+                "• <b>50점 이상</b> : 1차 매수 진입 타점 포착 🟢\n"
+                "• <b>82점 이상</b> : 강력 매수 구간 (상승 파동 고승률)\n"
+                "• <b>90점 이상</b> : 극상의 최적 매수 조건 (S등급)\n\n"
+                "🟢 <b>2. 시장 국면 지표 (25점 만점)</b>\n"
+                "• <b>20일 / 60일 이동평균선(EMA)</b> 교차 상태 분석\n"
+                "• <b>🟢 강세장 (25점)</b> : 20일 EMA > 60일 EMA (상승 추세)\n"
+                "• <b>🟡 중립장 (15점)</b> : 20일/60일 EMA 횡보 구간\n"
+                "• <b>🔴 약세장 ( 0점)</b> : 20일 EMA < 60일 EMA (하락 추세)\n\n"
+                "📉 <b>3. 과매도 지표 (40점 만점)</b>\n"
+                "• <b>CCI (5 / 10)</b> : -200 이하 시 주가가 기술적 바닥권에 진입\n"
+                "• <b>RSI (5 / 14)</b> : 20~30 이하 시 과도한 투매 발생 상태\n"
+                "• <b>볼린저 밴드</b> : 하단선(0.98배) 이탈 시 깊은 저점 형성\n\n"
+                "🔄 <b>4. 반등 확정 지표 (20점 만점)</b>\n"
+                "• 추락하는 칼날을 방지하기 위해 당일 캔들 양봉 전환 및 종가 위치(0.5 이상) 확인 시 안전 반등 점수 부여\n\n"
+                "📊 <b>5. 거래량 & 변동성 (15점 만점)</b>\n"
+                "• <b>거래량 비율</b> : 20일 평균 대비 1.5~2.0배 이상 수급 분출\n"
+                "• <b>ATR 변동성</b> : 적정 변동성 폭 유지 확인\n\n"
+                "🛒 <b>6. 4단계 분할 매수 시스템</b>\n"
+                "• <b>1차 매수 (40%)</b> : JDSS 50점 & 반등 5점 충족 🟢\n"
+                "• <b>2차 매수 (30%)</b> : 1차 진입가 대비 <b>-2% 하락</b> 🟡\n"
+                "• <b>3차 매수 (20%)</b> : 1차 진입가 대비 <b>-4% 하락</b> 🟠\n"
+                "• <b>4차 매수 (10%)</b> : 1차 진입가 대비 <b>-7% 하락</b> 🔴\n\n"
+                "💰 <b>7. 목표 익절 메커니즘 (Take Profit)</b>\n"
+                "• <b>1차 익절 (TP1)</b> : 평단 대비 <b>+4.0%</b> 도달 시 수량 50% 분할 매도\n"
+                "• <b>2차 익절 (TP2)</b> : 평단 대비 <b>+8.0%</b> 도달 시 전량 매도 및 사이클 종료\n\n"
+                "💡 <i>/score [종목] 명령어로 현재 세부 지표를 조회하실 수 있습니다.</i>"
+            )
+            self._send(text)
 
         @bot.message_handler(commands=["order", "o"])
         def orders(message):
@@ -557,6 +619,7 @@ class TelegramBotApp:
                 "• <code>/signal</code> : 활성 매수 신호\n"
                 "• <code>/account</code> : 토스 계좌 조회\n"
                 "• <code>/backtest</code> : 자유 종목 백테스트\n"
+                "• <code>/guide</code> : 📖 JDSS 용어 & 지표 가이드\n"
                 "• <code>/order</code> : 미체결 주문 현황\n"
                 "• <code>/errors</code> : 최근 시스템 기록\n"
                 "• <code>/ping</code> : 봇 상태 확인\n\n"
@@ -856,6 +919,7 @@ class TelegramBotApp:
                 telebot.types.BotCommand("signal", "🚨 활성 매수 신호"),
                 telebot.types.BotCommand("account", "💰 토스 계좌 잔고"),
                 telebot.types.BotCommand("backtest", "🌞 백테스트 실행"),
+                telebot.types.BotCommand("guide", "📖 JDSS 용어 & 지표 설명서"),
                 telebot.types.BotCommand("order", "🌟 미체결 주문 현황"),
                 telebot.types.BotCommand("ping", "🏓 봇 상태 확인"),
                 telebot.types.BotCommand("help", "🤖 메뉴 안내"),
