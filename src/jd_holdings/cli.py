@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from jd_holdings.application.analysis_service import AnalysisService
@@ -17,7 +17,7 @@ from jd_holdings.settings import load_runtime_settings
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="JDSS v1.3.0 운영 도구")
+    parser = argparse.ArgumentParser(description="JDSS v1.3.1 운영 도구")
     parser.add_argument("--config", default="strategy.yaml", help="strategy.yaml 경로")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -85,8 +85,23 @@ def main(argv: list[str] | None = None) -> int:
         start = args.start or config.backtest.default_start
         end = args.end or completed.isoformat()
         symbols = config.enabled_symbols if args.symbol == "ALL" else (args.symbol,)
-        spy = data_source.daily("SPY", start, end, refresh=args.refresh)
-        qqq = data_source.daily("QQQ", start, end, refresh=args.refresh)
+
+        # 지표 초기값(EMA60/ATR/RSI 등)이 요청 시작일 전에 충분히 형성되도록
+        # 약 400일의 워밍업 데이터를 함께 조회한다. 성과 집계는 engine.run(start=...)에서
+        # 사용자가 요청한 기간부터만 시작한다.
+        warmup_start = (datetime.fromisoformat(start).date() - timedelta(days=400)).isoformat()
+        spy = data_source.daily("SPY", warmup_start, end, refresh=args.refresh)
+        qqq = data_source.daily("QQQ", warmup_start, end, refresh=args.refresh)
+
+        guard = config.market_regime.get("soxl_sector_guard", {})
+        sector_data: dict[str, object] = {}
+        if "SOXL" in symbols and guard.get("enabled", False):
+            for benchmark in guard.get("benchmark_candidates", ("SOXX", "SMH")):
+                name = str(benchmark).upper()
+                sector_data[name] = data_source.daily(
+                    name, warmup_start, end, refresh=args.refresh
+                )
+
         output: dict[str, object] = {
             "generated_at": datetime.now(UTC).isoformat(),
             "strategy_version": config.version,
@@ -95,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         engine = BacktestEngine(config)
         for symbol in symbols:
-            target = data_source.daily(symbol, start, end, refresh=args.refresh)
+            target = data_source.daily(symbol, warmup_start, end, refresh=args.refresh)
             result = engine.run(
                 symbol,
                 target,
@@ -104,13 +119,21 @@ def main(argv: list[str] | None = None) -> int:
                 start=start,
                 end=end,
                 slippage=args.slippage,
+                sector_data=sector_data if symbol == "SOXL" else None,
             )
             output["results"][symbol] = result.to_dict(include_equity=False)
             metrics = result.metrics
+            sector_text = ""
+            if symbol == "SOXL" and metrics.get("sector_guard_requested"):
+                sector_text = (
+                    f" sector_guard={int(metrics['sector_guard_applied'])}"
+                    f" blocks={int(metrics['sector_guard_blocks'])}"
+                )
             print(
                 f"{symbol}: return={metrics['total_return_pct']:+.2f}% "
                 f"CAGR={metrics['cagr_pct']:+.2f}% MDD={metrics['mdd_pct']:.2f}% "
                 f"cycles={metrics['closed_cycles']} signals={metrics['signals']}"
+                f"{sector_text}"
             )
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
