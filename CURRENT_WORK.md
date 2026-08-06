@@ -74,7 +74,7 @@ JDSS v1.3의 전략 로직을 검증하고 v1.3.1 후보를 안정화한다.
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: Telegram UI·계좌 표시 개선 완료, Oracle 배포 확인 진행
+- 상태: Telegram UI·계좌 표시 개선 및 GitHub push 완료, main 병합·Oracle 배포 대기
 - 마지막 관련 커밋: `e783936` (`Improve Telegram dashboard and account display`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
