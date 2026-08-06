@@ -77,13 +77,14 @@ def summarize_performance(
     maes = [float(cycle["mae"]) for cycle in closed_cycles]
     mfes = [float(cycle["mfe"]) for cycle in closed_cycles]
     periods_years = max(elapsed_days / 365.2425, 1 / 365.2425)
+    closed_count = len(closed_cycles)
     return {
         "initial_equity": round(initial, 2),
         "final_equity": round(final, 2),
         "total_return_pct": round(total_return * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
         "mdd_pct": round(maximum_drawdown(equity) * 100, 2),
-        "closed_cycles": len(closed_cycles),
+        "closed_cycles": closed_count,
         "win_rate_pct": round(len(wins) / len(pnls) * 100, 2) if pnls else 0.0,
         "profit_factor": round(profit_factor, 3) if math.isfinite(profit_factor) else math.inf,
         "expectancy_usd": round(float(np.mean(pnls)), 2) if pnls else 0.0,
@@ -93,6 +94,9 @@ def summarize_performance(
         "median_holding_days": round(float(np.median(holding_days)), 2) if holding_days else 0.0,
         "maximum_holding_days": max(holding_days, default=0),
         "average_mae_pct": round(float(np.mean(maes)) * 100, 2) if maes else 0.0,
+        "median_mae_pct": round(float(np.median(maes)) * 100, 2) if maes else 0.0,
+        "mae_p90_pct": round(float(np.percentile(maes, 10)) * 100, 2) if maes else 0.0,
+        "mae_p95_pct": round(float(np.percentile(maes, 5)) * 100, 2) if maes else 0.0,
         "worst_mae_pct": round(min(maes, default=0.0) * 100, 2),
         "average_mfe_pct": round(float(np.mean(mfes)) * 100, 2) if mfes else 0.0,
         "tp1_hits": tp1_hits,
@@ -103,6 +107,12 @@ def summarize_performance(
         "tp2_reach_rate_pct": round(tp2_reached_cycles / executed_entries * 100, 2)
         if executed_entries
         else 0.0,
+        "tp1_reach_rate_closed_pct": round(tp1_reached_cycles / closed_count * 100, 2)
+        if closed_count
+        else 0.0,
+        "tp2_reach_rate_closed_pct": round(tp2_reached_cycles / closed_count * 100, 2)
+        if closed_count
+        else 0.0,
         "rebuy_cycles": rebuy_cycles,
         "rebuy_success_rate_pct": round(rebuy_profitable_cycles / rebuy_cycles * 100, 2)
         if rebuy_cycles
@@ -111,6 +121,12 @@ def summarize_performance(
         "signals_per_year": round(signal_count / periods_years, 2),
         "executed_entries": executed_entries,
         "average_capital_utilization_pct": round(float(np.mean(capital_utilization)) * 100, 2)
+        if capital_utilization
+        else 0.0,
+        "invested_trading_days": sum(value > 0 for value in capital_utilization),
+        "invested_trading_days_pct": round(
+            sum(value > 0 for value in capital_utilization) / len(capital_utilization) * 100, 2
+        )
         if capital_utilization
         else 0.0,
         "maximum_underwater_trading_days": maximum_underwater_days(equity),
