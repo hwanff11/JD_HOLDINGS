@@ -46,10 +46,13 @@ def test_score_components_and_grade(baseline_config):
     assert result.grade == SignalGrade.WATCH
 
 
-def test_v1_2_selected_curve_keeps_raw_audit_and_reaches_s_grade(config):
+def test_v1_3_1_calibration_keeps_raw_audit_without_near_max_inflation(config):
     result = calculate_score(make_snapshot(), MarketRegime.GREEN, config)
-    assert result.total == 97
-    assert result.grade == SignalGrade.S
+    assert result.total == 84
+    assert result.grade == SignalGrade.B
+    assert result.oversold_score == 34
+    assert result.reversal_score == 12
+    assert result.volume_score == 8
     assert result.detail()["raw_components"] == {
         "regime_score": 25,
         "oversold_score": 31,
