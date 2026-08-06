@@ -17,7 +17,7 @@ from jd_holdings.application.trading_service import TradingService
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
-from jd_holdings.infrastructure.telegram_bot import TelegramBotApp
+from jd_holdings.infrastructure.telegram_bot_v131 import ValidatedTelegramBotApp
 from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import load_runtime_settings
 
@@ -81,7 +81,7 @@ def main() -> None:
     if mismatches:
         logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
     analysis_service = AnalysisService(config, repository, data_source, market_clock)
-    TelegramBotApp(
+    ValidatedTelegramBotApp(
         config,
         settings,
         repository,
