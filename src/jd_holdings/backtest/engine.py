@@ -75,7 +75,7 @@ class BacktestResult:
 
 @dataclass
 class _Pending:
-    snapshot: Any
+    snapshot: IndicatorSnapshot
     score: ScoreResult
     decision: TradeDecision
 
@@ -103,6 +103,7 @@ class _SimulationState:
     tp1_done: bool = False
     cycle_number: int = 0
     cycle_start_date: date | None = None
+    cycle_start_equity: Decimal = Decimal("0")
     cycle_cashflows: Decimal = Decimal("0")
     cycle_holding_days: int = 0
     cycle_mae: float = 0.0
@@ -147,24 +148,44 @@ class BacktestEngine:
         indicators_precomputed: bool = False,
         snapshots_precomputed: Mapping[str, Mapping[pd.Timestamp, IndicatorSnapshot]] | None = None,
         regimes_precomputed: Mapping[pd.Timestamp, MarketRegime] | None = None,
+        sector_data: Mapping[str, pd.DataFrame] | None = None,
     ) -> BacktestResult:
         symbol = symbol.upper()
         configured_slippage = (
             slippage if slippage is not None else self.config.backtest.default_slippage
         )
         slip = Decimal(str(configured_slippage))
-        target = (
-            symbol_data
-            if indicators_precomputed
-            else calculate_indicators(symbol_data, self.config)
-        )
+        target = symbol_data if indicators_precomputed else calculate_indicators(symbol_data, self.config)
         spy = spy_data if indicators_precomputed else calculate_indicators(spy_data, self.config)
         qqq = qqq_data if indicators_precomputed else calculate_indicators(qqq_data, self.config)
+
+        sector_frames: dict[str, pd.DataFrame] = {}
+        guard = self.config.market_regime.get("soxl_sector_guard", {})
+        guard_candidates = tuple(
+            str(value).upper() for value in guard.get("benchmark_candidates", ("SOXX", "SMH"))
+        )
+        guard_requested = symbol == "SOXL" and bool(guard.get("enabled", False))
+        if guard_requested and sector_data:
+            for benchmark in guard_candidates:
+                frame = sector_data.get(benchmark)
+                if frame is None:
+                    continue
+                sector_frames[benchmark] = (
+                    frame if indicators_precomputed else calculate_indicators(frame, self.config)
+                )
+        sector_guard_applied = guard_requested and all(
+            benchmark in sector_frames for benchmark in guard_candidates
+        )
+
         common_index = target.index.intersection(spy.index).intersection(qqq.index)
+        if sector_guard_applied:
+            for frame in sector_frames.values():
+                common_index = common_index.intersection(frame.index)
         if start:
             common_index = common_index[common_index >= pd.Timestamp(start)]
         if end:
             common_index = common_index[common_index <= pd.Timestamp(end)]
+
         required_columns = [
             "cci5",
             "cci10",
@@ -185,6 +206,11 @@ class BacktestEngine:
             & spy.loc[common_index, required_columns].notna().all(axis=1)
             & qqq.loc[common_index, required_columns].notna().all(axis=1)
         ]
+        if sector_guard_applied:
+            for frame in sector_frames.values():
+                common_index = common_index[
+                    frame.loc[common_index, required_columns].notna().all(axis=1)
+                ]
         if len(common_index) < 2:
             raise ValueError("백테스트 가능한 공통 거래일이 부족합니다")
 
@@ -208,6 +234,7 @@ class BacktestEngine:
         tp2_reached_cycles: set[str] = set()
         rebuy_cycles = 0
         rebuy_profitable_cycles = 0
+        sector_guard_blocks = 0
 
         for timestamp in common_index:
             row = target.loc[timestamp]
@@ -215,6 +242,7 @@ class BacktestEngine:
                 snapshot = snapshot_from_row(symbol, timestamp, row)
             else:
                 snapshot = snapshots_precomputed[symbol][timestamp]
+
             if regimes_precomputed is None:
                 spy_snapshot = snapshot_from_row("SPY", timestamp, spy.loc[timestamp])
                 qqq_snapshot = snapshot_from_row("QQQ", timestamp, qqq.loc[timestamp])
@@ -222,6 +250,17 @@ class BacktestEngine:
             else:
                 regime = regimes_precomputed[timestamp]
             score = calculate_score(snapshot, regime, self.config)
+
+            sector_benchmarks: dict[str, IndicatorSnapshot] | None = None
+            if sector_guard_applied:
+                sector_benchmarks = {}
+                for benchmark, frame in sector_frames.items():
+                    if snapshots_precomputed and benchmark in snapshots_precomputed:
+                        sector_benchmarks[benchmark] = snapshots_precomputed[benchmark][timestamp]
+                    else:
+                        sector_benchmarks[benchmark] = snapshot_from_row(
+                            benchmark, timestamp, frame.loc[timestamp]
+                        )
 
             if pending is not None:
                 filled, reason = self._execute_pending(
@@ -243,10 +282,20 @@ class BacktestEngine:
                     )
                 pending = None
 
-            if state.quantity > 0 and state.average_price > 0:
+            if state.quantity > 0 and state.cycle_start_equity > 0:
                 state.cycle_holding_days += 1
-                low_return = float(Decimal(str(row["low"])) / state.average_price - Decimal("1"))
-                high_return = float(Decimal(str(row["high"])) / state.average_price - Decimal("1"))
+                low_equity = state.cash + (
+                    Decimal(state.quantity)
+                    * Decimal(str(row["low"]))
+                    * (Decimal("1") - self.config.global_.sell_fee)
+                )
+                high_equity = state.cash + (
+                    Decimal(state.quantity)
+                    * Decimal(str(row["high"]))
+                    * (Decimal("1") - self.config.global_.sell_fee)
+                )
+                low_return = float(low_equity / state.cycle_start_equity - Decimal("1"))
+                high_return = float(high_equity / state.cycle_start_equity - Decimal("1"))
                 state.cycle_mae = min(state.cycle_mae, low_return)
                 state.cycle_mfe = max(state.cycle_mfe, high_return)
 
@@ -273,7 +322,15 @@ class BacktestEngine:
             ):
                 state.rebuy_recovery_armed = True
 
-            decision = evaluate_strategy(snapshot, score, state.snapshot(), self.config)
+            decision = evaluate_strategy(
+                snapshot,
+                score,
+                state.snapshot(),
+                self.config,
+                sector_benchmarks=sector_benchmarks,
+            )
+            if "SOXL_SECTOR_GUARD" in decision.reason_codes:
+                sector_guard_blocks += 1
             if decision.allowed:
                 pending = _Pending(snapshot=snapshot, score=score, decision=decision)
                 signals.append(
@@ -303,6 +360,16 @@ class BacktestEngine:
                 float(state.current_cost_basis / state.capital) if state.capital > 0 else 0.0
             )
 
+        if pending is not None:
+            skipped.append(
+                {
+                    "signal_date": pending.snapshot.trade_date.isoformat(),
+                    "execution_date": None,
+                    "action": pending.decision.action.value,
+                    "reason": "NO_NEXT_SESSION_IN_RANGE",
+                }
+            )
+
         equity = pd.Series(equity_values, index=pd.DatetimeIndex(equity_dates), name=symbol)
         metrics = summarize_performance(
             equity,
@@ -318,6 +385,10 @@ class BacktestEngine:
             rebuy_profitable_cycles=rebuy_profitable_cycles,
             annualization_days=self.config.backtest.annualization_days,
         )
+        metrics["sector_guard_requested"] = int(guard_requested)
+        metrics["sector_guard_applied"] = int(sector_guard_applied)
+        metrics["sector_guard_blocks"] = sector_guard_blocks
+
         open_position = {
             "state": state.state.value,
             "quantity": state.quantity,
@@ -361,14 +432,12 @@ class BacktestEngine:
             return False, "SKIPPED_BY_CHASE_RULE"
         if (
             decision.action
-            in {
-                DecisionType.ADD_ENTRY_CANDIDATE,
-                DecisionType.REBUY_CANDIDATE,
-            }
+            in {DecisionType.ADD_ENTRY_CANDIDATE, DecisionType.REBUY_CANDIDATE}
             and decision.stage_trigger_price is not None
+            and next_open > decision.stage_trigger_price
         ):
-            if next_open > decision.stage_trigger_price:
-                return False, "STAGE_PRICE_RECOVERED"
+            return False, "STAGE_PRICE_RECOVERED"
+
         fill_price = next_open * (Decimal("1") + slippage)
         ceiling = calculate_execution_price_ceiling(
             decision.action,
@@ -394,6 +463,7 @@ class BacktestEngine:
         if gross > state.cash or gross > decision.planned_budget:
             return False, "EXPOSURE_BLOCK"
 
+        cash_before = state.cash
         prior_qty = state.quantity
         prior_cost = state.current_cost_basis
         new_cost = prior_cost + Decimal(quantity) * fill_price
@@ -410,6 +480,7 @@ class BacktestEngine:
             state.cycle_number += 1
             state.cycle_id = f"BT-{state.symbol}-{state.cycle_number:05d}"
             state.cycle_start_date = timestamp.date()
+            state.cycle_start_equity = cash_before
             state.cycle_holding_days = 0
             state.cycle_mae = 0.0
             state.cycle_mfe = 0.0
@@ -483,9 +554,7 @@ class BacktestEngine:
         if state.quantity == 0:
             cycle = {
                 "cycle_id": state.cycle_id,
-                "start_date": state.cycle_start_date.isoformat()
-                if state.cycle_start_date
-                else None,
+                "start_date": state.cycle_start_date.isoformat() if state.cycle_start_date else None,
                 "end_date": timestamp.date().isoformat(),
                 "holding_days": state.cycle_holding_days,
                 "pnl": round(float(state.cycle_cashflows), 2),
@@ -549,6 +618,7 @@ class BacktestEngine:
         state.tp_plan = None
         state.tp1_done = False
         state.cycle_start_date = None
+        state.cycle_start_equity = Decimal("0")
         state.cycle_cashflows = Decimal("0")
         state.cycle_holding_days = 0
         state.cycle_mae = 0.0
