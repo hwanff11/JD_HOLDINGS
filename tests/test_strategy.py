@@ -33,7 +33,7 @@ def test_watch_grade_without_reversal_is_blocked(config):
         config,
     )
     assert not decision.allowed
-    assert "REVERSAL_SCORE_LOW" in decision.reason_codes
+    assert "REVERSAL_GATE_FAIL" in decision.reason_codes
 
 
 def test_watch_grade_with_one_reversal_condition_can_enter(config):
@@ -80,7 +80,7 @@ def test_additional_entry_without_reversal_is_blocked(config):
         make_snapshot(close=Decimal("96")), make_score(89, reversal=0), position, 2, config
     )
     assert not decision.allowed
-    assert "REVERSAL_SCORE_LOW" in decision.reason_codes
+    assert "REVERSAL_GATE_FAIL" in decision.reason_codes
 
 
 def test_soxl_sector_guard_blocks_stage3_when_semiconductor_benchmark_below_ema60(config):
