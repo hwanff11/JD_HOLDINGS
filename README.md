@@ -1,17 +1,16 @@
 # JD_HOLDINGS
 
-JDSS(JH Dynamic Score Swing Strategy) v1.3.0을 TQQQ와 SOXL에 적용하는 독립형
-Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비스, 배포 경로를
-공유하지 않습니다.
+JDSS(JH Dynamic Score Swing Strategy) v2.0.0 A안을 TQQQ와 SOXL 및 미국주식에 적용하는 독립형 Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비스, 배포 경로를 공유하지 않습니다.
 
-> 현재 상태: **연구 구현 완료·dry-run 전용**. v1.3.0은 WATCH 진입 병목을 완화한
-> 후보이며, 전진 관찰과 사용자 승인 전까지 실거래로 배포하지 마세요.
+> 현재 상태: **JDSS 2.0 A안 적용·Oracle 서버 dry-run 배포 완료**. 
+> 진입 점수 50점, 4단계 분할매수(40%:30%:20%:10%), 목표 익절 TP1(+4%)/TP2(+8%) 및 텔레그램 자유 티커 백테스트가 적용되었습니다.
 
 ## 구현 범위
 
 - yfinance 수정주가 일봉과 완결 거래일 검증
 - JDSS 점수, 시장 국면, 고정 10,000달러 한도의 4단계 분할매수, 고정 TP
 - 다음 거래일 시가 체결 대용 모델을 사용하는 노룩어헤드 백테스트
+- 텔레그램 임의 주식 티커 백테스트 (예: `/bt NVDA 100`, `/bt TSLA`, `/bt ALL`)
 - SQLite WAL, 상태 전이, 낙관적 잠금, 신호/주문 멱등성
 - Telegram 관리자 1명 제한 및 매수 검토 → 최종 실행의 2단계 승인
 - dry-run 기본값과 실주문 이중 잠금
@@ -19,12 +18,7 @@ Telegram 반자동 매매 봇입니다. 기존 `cci_nvdl`과 코드, DB, 서비�
 - 부분체결, TP 취소·재생성, 시작/주기 정합성 검사와 SAFE_MODE
 - 별도 `jd_holdings_bot.service`와 버전 디렉터리 기반 Oracle 배포
 
-원본 전략 문서는 [`docs/spec`](docs/spec), 구현 판단은
-[`docs/DECISIONS.md`](docs/DECISIONS.md), v1.1.2 기준선은
-[`docs/BASELINE_BACKTEST.md`](docs/BASELINE_BACKTEST.md), v1.2.0 연구 결과는
-[`docs/SCORE_CALIBRATION_V1.2.md`](docs/SCORE_CALIBRATION_V1.2.md), v1.3.0 연구는
-[`docs/STRATEGY_V1.3.md`](docs/STRATEGY_V1.3.md), Telegram 백테스트 명세는
-[`docs/TELEGRAM_BOT_V1.3.md`](docs/TELEGRAM_BOT_V1.3.md)에 있습니다.
+전략 명세는 [`docs/STRATEGY_V2.0_SWING.md`](docs/STRATEGY_V2.0_SWING.md), 백테스트 리포트는 [`docs/BACKTEST_HIGH_RETURN_V2.0.md`](docs/BACKTEST_HIGH_RETURN_V2.0.md), 개발 협업 워크플로는 [`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md)에 있습니다.
 
 ## 빠른 시작
 
@@ -59,8 +53,9 @@ Telegram에서 다음 명령으로 실제 주문 없이 백테스트를 실행�
 
 ```text
 /backtest          # 기본: SOXL 최근 300거래일
-/bt TQQQ 100       # TQQQ 최근 100거래일
-/bt ALL 250        # TQQQ+SOXL 최근 250거래일
+/bt NVDA 100       # NVDA 최근 100거래일 (자유 티커 지원)
+/bt TSLA 2025-01-01# 2025년부터 테슬라 백테스트
+/bt ALL 250        # 기본 TQQQ+SOXL 합산 최근 250거래일
 ```
 
 결과에는 총수익률·CAGR·MDD와 함께 전략이 포착한 모든 매수 신호, 매수·추가매수·
