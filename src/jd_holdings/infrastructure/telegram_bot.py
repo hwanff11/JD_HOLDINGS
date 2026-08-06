@@ -128,9 +128,9 @@ def _profit_loss(value: object) -> tuple[str, str] | None:
 
 def _regime_label(value: str) -> str:
     return {
-        "GREEN": "🟢 GREEN",
-        "YELLOW": "🟡 YELLOW",
-        "RED": "🔴 RED",
+        "GREEN": "🟢 강세장",
+        "YELLOW": "🟡 중립장",
+        "RED": "🔴 약세장",
         "BULLISH": "🟢 강세장",
         "NEUTRAL": "🟡 중립장",
         "BEARISH": "🔴 약세장",
@@ -254,21 +254,22 @@ class TelegramBotApp:
         snapshot = result.snapshot
         score = result.score
         return (
-            f"🎯 <b>[{result.symbol} JDSS 지표 분석]</b>\n\n"
-            f"📊 <b>총점</b>: <b>{score.total} / 100점</b> ({_grade_label(score.grade.value)})\n\n"
+            f"🎯 <b>[{result.symbol} 지표 상세 분석]</b>\n\n"
+            f"📊 <b>총점</b> : <code>{score.total}점</code> / 100점 ({_grade_label(score.grade.value)})\n"
+            f"🌐 <b>시장 국면</b> : {_regime_label(score.regime.value)}\n\n"
             "✨ <b>점수 구성</b>\n"
-            f"<code>├ 시장 국면   : {score.regime_score:2d} / 25  {_regime_label(score.regime.value)}</code>\n"
-            f"<code>├ 과매도 점수 : {score.oversold_score:2d} / 40</code>\n"
-            f"<code>├ 반등 점수   : {score.reversal_score:2d} / 20</code>\n"
-            f"<code>├ 거래량 점수 : {score.volume_score:2d} / 10</code>\n"
-            f"<code>└ ATR 변동성  : {score.atr_score:2d} /  5</code>\n\n"
+            f"• 시장 국면 : <code>{score.regime_score:2d} / 25점</code>\n"
+            f"• 과매도 점수 : <code>{score.oversold_score:2d} / 40점</code>\n"
+            f"• 반등 점수 : <code>{score.reversal_score:2d} / 20점</code>\n"
+            f"• 거래량 점수 : <code>{score.volume_score:2d} / 10점</code>\n"
+            f"• ATR 변동성 : <code>{score.atr_score:2d} / 5점</code>\n\n"
             "🌞 <b>보조 지표 현황</b>\n"
-            f"<code>├ CCI (5/10)  : {snapshot.cci5:6.1f} / {snapshot.cci10:6.1f}</code>\n"
-            f"<code>├ RSI (5/14)  : {snapshot.rsi5:6.1f} / {snapshot.rsi14:6.1f}</code>\n"
-            f"<code>├ ATR 비율    : {snapshot.atr_pct * 100:6.2f}%</code>\n"
-            f"<code>├ 거래량 비율 : {snapshot.volume_ratio:6.2f}배</code>\n"
-            f"<code>└ 종가 위치   : {snapshot.close_position:6.2f}</code>\n\n"
-            f"💡 <b>최종 전략 판단</b>: <b>{_action_label(result.decision.action.value)}</b>"
+            f"• CCI (5 / 10) : <code>{snapshot.cci5:.1f} / {snapshot.cci10:.1f}</code>\n"
+            f"• RSI (5 / 14) : <code>{snapshot.rsi5:.1f} / {snapshot.rsi14:.1f}</code>\n"
+            f"• ATR 비율 : <code>{snapshot.atr_pct * 100:.2f}%</code>\n"
+            f"• 거래량 비율 : <code>{snapshot.volume_ratio:.2f}배</code>\n"
+            f"• 종가 위치 : <code>{snapshot.close_position:.2f}</code>\n\n"
+            f"💡 <b>최종 전략 판단</b> : <b>{_action_label(result.decision.action.value)}</b>"
         )
 
     def _format_status_message(self, symbol: str) -> str:
@@ -277,20 +278,20 @@ class TelegramBotApp:
         lines = [
             f"✨ <b>[{symbol} 상세 포지션]</b>",
             "",
-            f"<code>├ 상태      : {_state_label(position.state.value)}</code>",
-            f"<code>├ 보유수량  : {_quantity(position.quantity):>10}주</code>",
-            f"<code>├ 평균단가  : {_money(position.average_price):>11}</code>",
-            f"<code>├ 매수원가  : {_money(position.current_cost_basis):>11}</code>",
-            f"<code>├ 누적매수  : {_money(position.staged_entry_capital):>11}</code>",
-            f"<code>└ 1차진입가 : {_money(position.anchor_price):>11}</code>",
+            f"• <b>상태</b> : {_state_label(position.state.value)}",
+            f"• <b>보유 수량</b> : <code>{_quantity(position.quantity)}주</code>",
+            f"• <b>평균 단가</b> : <code>{_money(position.average_price)}</code>",
+            f"• <b>매수 원가</b> : <code>{_money(position.current_cost_basis)}</code>",
+            f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code>",
+            f"• <b>1차 진입가</b> : <code>{_money(position.anchor_price)}</code>",
         ]
         if plan:
             lines.extend(
                 [
                     "",
-                    "🌞 <b>자동 익절 계획</b>",
-                    f"<code>├ 1차 익절 (TP1) : {_money(Decimal(plan['tp1_price']))} × {plan['tp1_target_qty']}주</code>",
-                    f"<code>└ 2차 익절 (TP2) : {_money(Decimal(plan['tp2_price']))} × {plan['tp2_target_qty']}주</code>",
+                    "🎯 <b>자동 익절 목표</b>",
+                    f"• <b>1차 익절 (TP1)</b> : <code>{_money(Decimal(plan['tp1_price']))}</code> (<code>{plan['tp1_target_qty']}주</code>)",
+                    f"• <b>2차 익절 (TP2)</b> : <code>{_money(Decimal(plan['tp2_price']))}</code> (<code>{plan['tp2_target_qty']}주</code>)",
                 ]
             )
         return "\n".join(lines)
@@ -307,36 +308,36 @@ class TelegramBotApp:
                 "☀️ <b>[JH홀딩스 미국주식 계좌]</b>",
                 "",
                 "💰 <b>계좌 요약</b>",
-                f"<code>├ 달러 주문가능 : {_money(buying_power):>12}</code>",
-                f"<code>├ 원화 주문가능 : {_won(krw_buying_power):>12}</code>",
-                f"<code>└ 보유종목 : {len(holdings):>9}개</code>",
+                f"• <b>달러 주문가능</b> : <code>{_money(buying_power)}</code>",
+                f"• <b>원화 주문가능</b> : <code>{_won(krw_buying_power)}</code>",
+                f"• <b>보유 종목</b> : <code>{len(holdings)}개</code>",
             ]
             if holdings:
-                lines.append("\n━━━━━━━━━━")
+                lines.append("\n━━━━━━━━━━━━━━━━━━━━━━━━━━")
             for item in holdings:
                 symbol = str(item.get("symbol") or item.get("stockCode") or "-").upper()
                 name = html.escape(str(item.get("name") or ""))
                 quantity = item.get("quantity") or item.get("holdingQuantity") or "0"
                 average = item.get("averagePrice") or item.get("averagePurchasePrice")
                 current = item.get("currentPrice") or item.get("lastPrice")
-                detail = f"✨ <b>{html.escape(symbol)}</b>"
+                detail = f"🔹 <b>{html.escape(symbol)}</b>"
                 if name:
-                    detail += f" · {name}"
-                detail += f"\n<code>├ 보유수량 : {_quantity(quantity):>10}주</code>"
+                    detail += f" ({name})"
+                detail += f"\n• <b>보유 수량</b> : <code>{_quantity(quantity)}주</code>"
                 if average is not None:
-                    detail += f"\n<code>├ 평균단가 : {_money(average):>11}</code>"
+                    detail += f"\n• <b>평균 단가</b> : <code>{_money(average)}</code>"
                 if current is not None:
-                    detail += f"\n<code>├ 현재가격 : {_money(current):>11}</code>"
+                    detail += f"\n• <b>현재 가격</b> : <code>{_money(current)}</code>"
                 profit = _profit_loss(item.get("profitLoss"))
                 if profit:
-                    detail += f"\n<code>└ 평가손익 : {profit[0]:>10} ({profit[1]})</code>"
+                    detail += f"\n• <b>평가 손익</b> : <code>{profit[0]}</code> (<code>{profit[1]}</code>)"
                 lines.append(detail)
             if not holdings:
                 lines.append("현재 보유 중인 미국주식 종목이 없습니다.")
 
             lines.extend(
                 [
-                    "━━━━━━━━━━━━━━━━━━",
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━",
                     "💡 <i>안전을 위해 조회 전용 모드로 작동하고 있습니다.</i>",
                 ]
             )
@@ -358,15 +359,15 @@ class TelegramBotApp:
                 else "🔒 잠금 (모의 전용)"
             )
             mode_label = (
-                "🧪 모의투자 (dry_run)"
+                "🧪 모의투자"
                 if self.settings.trading_mode == "dry_run"
-                else "🔥 실거래 (live)"
+                else "🔥 실거래"
             )
             self._send(
                 "✨ <b>[JH홀딩스 JDSS 봇 상태]</b>\n\n"
-                f"<code>├ 버전      : v{__version__}</code>\n"
-                f"<code>├ 운영 모드 : {mode_label}</code>\n"
-                f"<code>└ 실주문    : {lock_text}</code>\n\n"
+                f"• <b>버전</b> : v{__version__}\n"
+                f"• <b>운영 모드</b> : {mode_label}\n"
+                f"• <b>실주문 잠금</b> : {lock_text}\n\n"
                 "✅ <b>정상 가동 중입니다.</b>"
             )
 
@@ -385,33 +386,33 @@ class TelegramBotApp:
                 ]
                 if results:
                     lines.append(
-                        f"🌐 <b>시장 국면</b>: {_regime_label(results[0].score.regime.value)}"
+                        f"🌐 <b>시장 국면</b> : {_regime_label(results[0].score.regime.value)}"
                     )
-                    lines.append(f"📅 <b>분석 기준일</b>: {results[0].trade_date.isoformat()}")
-                lines.append(f"⚙️ <b>운영 모드</b>: {mode_label}")
-                lines.append("━━━━━━━━━━━━━━━━━━")
+                    lines.append(f"📅 <b>분석 기준일</b> : {results[0].trade_date.isoformat()}")
+                lines.append(f"⚙️ <b>운영 모드</b> : {mode_label}")
+                lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                 for result in results:
                     position = self.repository.get_position(result.symbol)
                     lines.extend(
                         [
-                            f"✨ <b>[{result.symbol}]</b>",
-                            f"<code>├ 상태      : {_state_label(position.state.value)}</code>",
-                            f"<code>├ JDSS 점수 : {result.score.total:>3}점 · {_grade_label(result.score.grade.value)}</code>",
-                            f"<code>├ 보유      : {_quantity(position.quantity):>8}주</code>",
-                            f"<code>├ 평균단가  : {_money(position.average_price):>10}</code>",
-                            f"<code>├ 누적매수  : {_money(position.staged_entry_capital):>10}</code>",
-                            f"<code>└ 전략판단  : {_action_label(result.decision.action.value)}</code>",
+                            f"🔹 <b>{result.symbol}</b>",
+                            f"• <b>포지션 상태</b> : {_state_label(position.state.value)}",
+                            f"• <b>JDSS 점수</b> : <code>{result.score.total}점</code> ({_grade_label(result.score.grade.value)})",
+                            f"• <b>보유 잔고</b> : <code>{_quantity(position.quantity)}주</code> (평단 <code>{_money(position.average_price)}</code>)",
+                            f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code> / <code>{_money(position.cycle_exposure_cap)}</code>",
+                            f"• <b>전략 판단</b> : <b>{_action_label(result.decision.action.value)}</b>",
                             "",
                         ]
                     )
                 lines.extend(
                     [
-                        "━━━━━━━━━━━━━━━━━━",
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━",
                         "💡 <i>/status [종목] 명령어로 세부 포지션을 조회하실 수 있습니다.</i>",
                     ]
                 )
                 self._send("\n".join(lines), markup=self._dashboard_markup())
+                self.notify_new_signals(results)
                 self.notify_new_signals(results)
             except Exception as exc:
                 LOGGER.exception("dashboard 실패")
@@ -527,8 +528,8 @@ class TelegramBotApp:
             symbols_text = " + ".join(request.symbols)
             self._send(
                 f"🌞 <b>[{symbols_text} 백테스트 시작]</b>\n\n"
-                f"<code>├ 시작일 : {request.start}</code>\n"
-                f"<code>└ 종료일 : {request.end}</code>\n\n"
+                f"• <b>시작일</b> : <code>{request.start}</code>\n"
+                f"• <b>종료일</b> : <code>{request.end}</code>\n\n"
                 "💡 <i>실제 계좌 및 주문에는 전혀 영향을 주지 않습니다.</i>"
             )
             try:
@@ -547,16 +548,16 @@ class TelegramBotApp:
                 return
             self._send(
                 "☀️ <b>[JH홀딩스 JDSS 메뉴]</b>\n\n"
-                "<code>/dashboard  통합 대시보드</code>\n"
-                "<code>/status     종목별 포지션</code>\n"
-                "<code>/score      JDSS 세부 지표</code>\n"
-                "<code>/signal     활성 매수 신호</code>\n"
-                "<code>/account    토스 실제 계좌</code>\n"
-                "<code>/backtest   SOXL 300거래일</code>\n"
-                "<code>/order      미체결 주문</code>\n"
-                "<code>/errors     최근 시스템 기록</code>\n"
-                "<code>/ping       봇 상태 확인</code>\n\n"
-                "✨ <b>예시</b>  <code>/score TQQQ</code>  <code>/bt TQQQ 100</code>\n\n"
+                "• <code>/dashboard</code> : 통합 대시보드\n"
+                "• <code>/status</code> : 종목별 상세 포지션\n"
+                "• <code>/score</code> : JDSS 세부 지표 분석\n"
+                "• <code>/signal</code> : 활성 매수 신호\n"
+                "• <code>/account</code> : 토스 계좌 조회\n"
+                "• <code>/backtest</code> : 자유 종목 백테스트\n"
+                "• <code>/order</code> : 미체결 주문 현황\n"
+                "• <code>/errors</code> : 최근 시스템 기록\n"
+                "• <code>/ping</code> : 봇 상태 확인\n\n"
+                "✨ <b>사용 예시</b> : <code>/score TQQQ</code> · <code>/bt NVDA 100</code>\n\n"
                 "💡 <i>모든 매수는 2단계 안전 승인을 거쳐 실행됩니다.</i>"
             )
 
@@ -606,11 +607,11 @@ class TelegramBotApp:
                 markup.add(InlineKeyboardButton("❌ 취소", callback_data="cancel|review"))
                 self._send(
                     f"🌞 <b>[{quote.symbol} 최종 매수 승인]</b>\n\n"
-                    f"<code>├ 현재가격 : {_money(quote.current_price):>11}</code>\n"
-                    f"<code>├ 지정가격 : {_money(quote.limit_price):>11}</code>\n"
-                    f"<code>├ 주문수량 : {_quantity(quote.quantity):>10}주</code>\n"
-                    f"<code>├ 투자금액 : {_money(quote.planned_budget):>11}</code>\n"
-                    f"<code>└ 예상수수료: {_money(quote.estimated_fee):>11}</code>\n\n"
+                    f"• <b>현재 가격</b> : <code>{_money(quote.current_price)}</code>\n"
+                    f"• <b>지정 가격</b> : <code>{_money(quote.limit_price)}</code>\n"
+                    f"• <b>주문 수량</b> : <code>{_quantity(quote.quantity)}주</code>\n"
+                    f"• <b>투자 금액</b> : <code>{_money(quote.planned_budget)}</code>\n"
+                    f"• <b>예상 수수료</b> : <code>{_money(quote.estimated_fee)}</code>\n\n"
                     f"⏰ <i>{self.config.global_.execution_token_ttl_seconds}초 안에 아래 실행 버튼을 눌러주세요.</i>",
                     markup=markup,
                 )
@@ -630,9 +631,9 @@ class TelegramBotApp:
                 mode_text = "모의주문" if self.settings.trading_mode == "dry_run" else "실주문"
                 self._send(
                     f"✅ <b>[{mode_text} 전송 완료]</b> ✨\n\n"
-                    f"<code>├ 주문번호 : {html.escape(receipt.broker_order_id)}</code>\n"
-                    f"<code>├ 처리상태 : {html.escape(receipt.status)}</code>\n"
-                    f"<code>└ 체결수량 : {_quantity(receipt.filled_quantity)} / {_quantity(receipt.quantity)}주</code>"
+                    f"• <b>주문 번호</b> : <code>{html.escape(receipt.broker_order_id)}</code>\n"
+                    f"• <b>처리 상태</b> : <code>{html.escape(receipt.status)}</code>\n"
+                    f"• <b>체결 수량</b> : <code>{_quantity(receipt.filled_quantity)} / {_quantity(receipt.quantity)}주</code>"
                 )
                 bot.answer_callback_query(call.id, f"{mode_text}이 처리되었습니다.")
             except QuoteChangedError as exc:

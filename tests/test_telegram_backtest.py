@@ -77,9 +77,9 @@ def test_won_formats_with_thousands_separator():
 @pytest.mark.parametrize(
     ("regime", "label"),
     [
-        ("GREEN", "🟢 GREEN"),
-        ("YELLOW", "🟡 YELLOW"),
-        ("RED", "🔴 RED"),
+        ("GREEN", "🟢 강세장"),
+        ("YELLOW", "🟡 중립장"),
+        ("RED", "🔴 약세장"),
     ],
 )
 def test_regime_label_has_visible_color(regime, label):
