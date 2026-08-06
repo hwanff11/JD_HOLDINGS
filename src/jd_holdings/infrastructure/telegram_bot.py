@@ -313,14 +313,14 @@ class TelegramBotApp:
                 f"• <b>보유 종목</b> : <code>{len(holdings)}개</code>",
             ]
             if holdings:
-                lines.append("\n━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                lines.append("\n━━━━━━━━━━━━━━━━━━━━")
             for item in holdings:
                 symbol = str(item.get("symbol") or item.get("stockCode") or "-").upper()
                 name = html.escape(str(item.get("name") or ""))
                 quantity = item.get("quantity") or item.get("holdingQuantity") or "0"
                 average = item.get("averagePrice") or item.get("averagePurchasePrice")
                 current = item.get("currentPrice") or item.get("lastPrice")
-                detail = f"🔹 <b>{html.escape(symbol)}</b>"
+                detail = f"✨ <b>{html.escape(symbol)}</b>"
                 if name:
                     detail += f" ({name})"
                 detail += f"\n• <b>보유 수량</b> : <code>{_quantity(quantity)}주</code>"
@@ -337,7 +337,7 @@ class TelegramBotApp:
 
             lines.extend(
                 [
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                    "━━━━━━━━━━━━━━━━━━━━",
                     "💡 <i>안전을 위해 조회 전용 모드로 작동하고 있습니다.</i>",
                 ]
             )
@@ -386,34 +386,37 @@ class TelegramBotApp:
                 ]
                 if results:
                     lines.append(
-                        f"🌐 <b>시장 국면</b> : {_regime_label(results[0].score.regime.value)}"
+                        f"🟡 <b>시장 국면</b> : {_regime_label(results[0].score.regime.value)}"
                     )
                     lines.append(f"📅 <b>분석 기준일</b> : {results[0].trade_date.isoformat()}")
                 lines.append(f"⚙️ <b>운영 모드</b> : {mode_label}")
-                lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                lines.append("━━━━━━━━━━━━━━━━━━━━")
 
                 for result in results:
                     position = self.repository.get_position(result.symbol)
+                    cap = (
+                        position.cycle_exposure_cap
+                        if position.cycle_exposure_cap > 0
+                        else self.config.global_.capital_per_symbol
+                    )
                     lines.extend(
                         [
-                            f"🔹 <b>{result.symbol}</b>",
+                            f"✨ <b>{result.symbol}</b>",
                             f"• <b>포지션 상태</b> : {_state_label(position.state.value)}",
                             f"• <b>JDSS 점수</b> : <code>{result.score.total}점</code> ({_grade_label(result.score.grade.value)})",
                             f"• <b>보유 잔고</b> : <code>{_quantity(position.quantity)}주</code> (평단 <code>{_money(position.average_price)}</code>)",
-                            f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code> / <code>{_money(position.cycle_exposure_cap)}</code>",
+                            f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code> / <code>{_money(cap)}</code>",
                             f"• <b>전략 판단</b> : <b>{_action_label(result.decision.action.value)}</b>",
                             "",
                         ]
                     )
                 lines.extend(
                     [
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                        "━━━━━━━━━━━━━━━━━━━━",
                         "💡 <i>/status [종목] 명령어로 세부 포지션을 조회하실 수 있습니다.</i>",
                     ]
                 )
-                self._send("\n".join(lines), markup=self._dashboard_markup())
-                self.notify_new_signals(results)
-                self.notify_new_signals(results)
+                self._send("\n".join(lines), markup=None)
             except Exception as exc:
                 LOGGER.exception("dashboard 실패")
                 self._send(f"❌ 대시보드 수집 실패:\n<code>{html.escape(str(exc))}</code>")
