@@ -10,6 +10,8 @@ from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
     _profit_loss,
+    _regime_label,
+    _won,
     parse_backtest_request,
 )
 
@@ -62,10 +64,26 @@ def test_profit_loss_uses_after_cost_values():
     value = {
         "amount": "12.345",
         "amountAfterCost": "10.126",
-        "rate": "1.234",
-        "rateAfterCost": "1.018",
+        "rate": "0.01234",
+        "rateAfterCost": "0.01018",
     }
     assert _profit_loss(value) == ("$10.13", "+1.02%")
+
+
+def test_won_formats_with_thousands_separator():
+    assert _won("1234567.4") == "₩1,234,567"
+
+
+@pytest.mark.parametrize(
+    ("regime", "label"),
+    [
+        ("GREEN", "🟢 GREEN · 강세"),
+        ("YELLOW", "🟡 YELLOW · 중립"),
+        ("RED", "🔴 RED · 약세"),
+    ],
+)
+def test_regime_label_has_visible_color(regime, label):
+    assert _regime_label(regime) == label
 
 
 def test_backtest_timeline_includes_signal_buy_and_take_profit_sales():
