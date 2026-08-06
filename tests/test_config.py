@@ -14,9 +14,9 @@ def test_default_config_is_valid_and_complete(config):
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert sum(config.position.stage_weights) == Decimal("1")
     assert config.global_.stop_loss_enabled is False
-    assert config.global_.entry_score == 60
+    assert config.global_.entry_score == 50
     assert config.global_.minimum_reversal_score == 5
-    assert config.scoring["grades"] == {"S": 90, "A": 82, "B": 72, "WATCH": 60}
+    assert config.scoring["grades"] == {"S": 90, "A": 82, "B": 72, "WATCH": 50}
     assert config.scoring["calibration"]["exponents"] == {
         "regime": 1.0,
         "oversold": 0.45,

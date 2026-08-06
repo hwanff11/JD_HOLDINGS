@@ -157,9 +157,9 @@ def test_quantity_includes_fee(config):
 
 def test_take_profit_odd_quantity_assigns_extra_share_to_tp1(config):
     plan = calculate_take_profit(Decimal("100"), 11, Decimal("0.05"), config)
-    assert plan.tp1_rate == Decimal("0.03")
-    assert plan.tp2_rate == Decimal("0.06")
+    assert plan.tp1_rate == Decimal("0.04")
+    assert plan.tp2_rate == Decimal("0.08")
     assert plan.tp1_quantity == 6
     assert plan.tp2_quantity == 5
-    assert plan.tp1_price == Decimal("103.00")
-    assert plan.tp2_price == Decimal("106.00")
+    assert plan.tp1_price == Decimal("104.00")
+    assert plan.tp2_price == Decimal("108.00")

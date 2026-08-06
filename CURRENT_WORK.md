@@ -1,6 +1,6 @@
 # JD_HOLDINGS Current Work
 
-> 이 파일은 집의 Codex와 외부의 ChatGPT가 작업을 이어받기 위한 **공용 인수인계 상태 파일**이다.
+> 이 파일은 집의 Codex, 외부의 ChatGPT, 그리고 IDE의 Antigravity(안티그라비티)가 작업을 이어받기 위한 **공용 인수인계 상태 파일**이다.
 > `AGENTS.md`의 `작업 시작` / `작업 종료` 규칙과 함께 사용한다.
 >
 > 원칙: 작업자는 세션 시작 시 이 파일을 먼저 읽고, 세션 종료 시 필요한 항목을 최신 상태로 갱신한다.
@@ -36,52 +36,41 @@ TQQQ/SOXL의 변동성을 활용하는 고회전 단타 스윙 전략을 검증�
 
 ## 마지막 완료 작업
 
+- Codex, ChatGPT, Antigravity 3개 AI 개발 환경 통합 협업 규칙 문서 반영 (`AGENTS.md`, `CURRENT_WORK.md`, `docs/DEVELOPMENT_WORKFLOW.md`)
+- Telegram 매새지 및 메뉴 구성을 `cci_nvdl` 스타일로 시각적 가시성 및 가이드 문구 대폭 향상
 - JDSS 2.0 Swing 후보를 진입 60점, 추가매수 -2/-4/-7%, TP1 +3%, TP2 +6%로 전면 재구성
 - 2021~2024 +30.57%·MDD -12.18%·33사이클, 2025 +13.74%·16사이클, 2026년 1~7월 +5.29%·6사이클 확인
 - 장기 2011~2026 결과 +157.55%·CAGR +6.26%·MDD -15.09%·153사이클 확인
-- 20~40일 강제청산과 12~15% 고정손절은 장기수익을 훼손해 기각
 - `docs/STRATEGY_V2.0_SWING.md`, 후보 탐색 스크립트와 상세 결과 JSON 추가
-- `/score` 시장국면 표기를 `🟢 GREEN`, `🟡 YELLOW`, `🔴 RED`로 간결화해 불필요한 한글 설명과 줄바꿈을 제거
-- v1.3.2 후보를 `entry_score=72`, calibration `0.45/0.55/0.65/0.90`, 반등 게이트 5 유지로 선정
-- 후보 비교 결과 2021~2024 +13.28%·CAGR +3.17%·MDD -8.62%, 장기 +74.71%·CAGR +3.65%·MDD -9.63% 확인
-- `docs/STRATEGY_V1.3.2.md` 및 후보 상세 백테스트 결과 추가
-- v1.3.0 / v1.3.1 / v1.3.1 calibration OFF를 동일 데이터·수수료·슬리피지·수정 엔진으로 비교하는 `scripts/compare_v131.py` 추가
-- 2021~2024 핵심 검증 및 2011~2026 장기 백테스트 실행, 상세 JSON과 `docs/BACKTEST_V1.3.1_COMPARISON.md` 업로드
-- 2021~2024 합산 결과: v1.3.0 +26.73%·MDD -21.51%, v1.3.1 +5.27%·MDD -3.41%, calibration OFF 거래 0회
-- v1.3.0의 SOXL 749거래일 미청산 고착과 장기 SOXL MDD -41.35% 확인
-- 검토 브랜치 릴리스 `99c19f4`를 Oracle 서버에 dry_run·실거래 이중잠금 상태로 배포
-- Telegram `/dashboard` 하단을 실제 계좌 버튼 대신 TQQQ/SOXL별 `/status`·`/score` 바로가기 버튼으로 변경
-- `/score`의 5개 점수 구성을 동일한 글꼴·줄맞춤으로 통일하고 GREEN/YELLOW/RED 색상 원형 표시 추가
-- `/account`에 원화 주문가능금액을 추가하고 토스의 소수 비율 수익률을 퍼센트로 올바르게 변환
-- Telegram 명령 메뉴를 dashboard → status → score → signal 순서로 정렬
-- 관련 단위 테스트 추가 후 `ruff check .` 및 전체 56개 테스트 통과
-- Codex ↔ GitHub ↔ ChatGPT 협업 규칙을 `AGENTS.md` 및 `docs/DEVELOPMENT_WORKFLOW.md`에 정의
-- `작업 시작` / `작업 종료` 단축 명령 운영 규칙 정의
-- 공용 인수인계 상태 파일 `CURRENT_WORK.md` 도입
-- JDSS 전략 평가 원칙을 '과최적화 회피'만 강조하는 표현에서 '위험 대비 수익률 극대화 + 재현성 검증' 원칙으로 명확화
 
 ## 다음 작업
 
-1. JDSS 2.0 Swing의 신호·미체결·TP1/TP2 흐름을 Telegram dry_run에서 확인한다.
-2. 장기 최악 고착(TQQQ 658일, SOXL 727일)을 줄이되 고정손절처럼 수익을 훼손하지 않는 방법을 별도 연구한다.
-3. 섹터가드 차단 0회의 원인을 계속 확인하되 신규 조건을 성급히 추가하지 않는다.
-4. ChatGPT와 v1.3.2 결과를 공동 검토한 뒤 PR #2의 병합 여부를 결정한다.
+1. 점수 가중치, 진입 컷오프(entry_score), TP 익절 비율 Grid Search 백테스트 실행 및 고수익률 전략 조합 탐색
+2. JDSS 2.0 Swing의 신호·미체결·TP1/TP2 흐름을 Telegram dry_run에서 확인한다.
+3. 장기 최악 고착(TQQQ 658일, SOXL 727일)을 줄이되 고정손절처럼 수익을 훼손하지 않는 방법을 별도 연구한다.
 
 ## 작업 환경
 
-### 집
+### 집 (Codex)
 
 - 작업자: 사용자 + Codex
 - 저장소: 로컬 clone + GitHub remote
 - 시작: `작업 시작` → status/fetch/pull 후 개발
 - 종료: `작업 종료` → test/commit/push/CURRENT_WORK 갱신
 
-### 외부
+### 외부 (ChatGPT)
 
 - 작업자: 사용자 + ChatGPT
 - 저장소: GitHub 원격 저장소 직접 접근
 - 시작: `작업 시작` → CURRENT_WORK와 활성 개발 브랜치 최신 상태 확인
 - 종료: `작업 종료` → 변경사항 commit/push/CURRENT_WORK 갱신 및 결과 보고
+
+### IDE (Antigravity - JH홀딩스 개발부장)
+
+- 작업자: 사용자 + Antigravity (안티그라비티)
+- 저장소: 로컬 IDE workspace + GitHub remote
+- 시작: `작업 시작` → status/fetch/pull 후 개발 및 실시간 코드 검증
+- 종료: `작업 종료` → test/commit/push/CURRENT_WORK 갱신 및 완료 브리핑
 
 ## 마지막 인수인계
 

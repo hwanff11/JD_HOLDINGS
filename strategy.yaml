@@ -7,9 +7,9 @@ global:
   sell_fee: 0.001
   approval_required: true
   stop_loss_enabled: false
-  entry_score: 60
+  entry_score: 50
   minimum_reversal_score: 5
-  entry_max_chase_pct: 0.04
+  entry_max_chase_pct: 0.05
   buy_limit_buffer: 0.005
   trading_sessions:
     regular: false
@@ -83,7 +83,7 @@ scoring:
     S: 90
     A: 82
     B: 72
-    WATCH: 60
+    WATCH: 50
 
 position:
   stage_weights: [0.40, 0.30, 0.20, 0.10]
@@ -101,17 +101,17 @@ additional_entry:
   max_stage_per_day: 1
   stage2:
     min_drop_from_anchor: 0.02
-    min_score: 64
+    min_score: 52
   stage3:
     min_drop_from_anchor: 0.04
-    min_score: 66
+    min_score: 54
   stage4:
     min_drop_from_anchor: 0.07
-    min_score: 68
+    min_score: 56
 
 take_profit:
-  tp1_base: 0.03
-  tp2_base: 0.06
+  tp1_base: 0.04
+  tp2_base: 0.08
   use_atr: false
   tp1_atr_multiplier: 0.0
   tp2_atr_multiplier: 0.0

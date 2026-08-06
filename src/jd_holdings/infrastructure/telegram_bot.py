@@ -60,10 +60,10 @@ def parse_backtest_request(
         requested = parts.pop(0).upper()
         if requested == "ALL":
             selected = enabled_symbols
-        elif requested in enabled_symbols:
+        elif requested.replace("-", "").replace(".", "").isalnum() and len(requested) <= 10:
             selected = (requested,)
         else:
-            raise BacktestCommandError("지원 종목은 ALL, " + ", ".join(enabled_symbols) + "입니다.")
+            raise BacktestCommandError("유효한 종목 티커를 입력해 주세요. (예: /bt NVDA 100, /bt ALL)")
     if len(parts) > 2:
         raise BacktestCommandError("형식: /bt [ALL|종목] [시작일] [종료일]")
     if len(parts) == 1 and parts[0].isdigit():

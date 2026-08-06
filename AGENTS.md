@@ -1,6 +1,6 @@
 # JD_HOLDINGS Agent Instructions
 
-이 파일은 Codex와 ChatGPT가 이 저장소에서 작업할 때 공통으로 따라야 할 작업 규칙을 정의한다.
+이 파일은 Codex, ChatGPT, 그리고 Antigravity(안티그라비티)가 이 저장소에서 작업할 때 공통으로 따라야 할 작업 규칙을 정의한다.
 
 세부 절차는 `docs/DEVELOPMENT_WORKFLOW.md`를 따른다.
 현재 작업 상태와 인수인계 정보는 `CURRENT_WORK.md`를 Source of Truth로 사용한다.
@@ -12,7 +12,7 @@
 1. 가장 먼저 `CURRENT_WORK.md`를 읽어 현재 활성 개발 브랜치, 전략 버전, 현재 목표, 마지막 완료 작업, 다음 작업을 확인한다.
 2. 현재 브랜치와 저장소 상태를 확인한다.
 3. 원격 GitHub 최신 상태를 확인한다.
-4. 로컬 환경에서는 안전할 때 `git fetch origin` 및 `git pull --ff-only`로 활성 개발 브랜치를 최신화한다.
+4. 로컬/IDE 환경(Codex, Antigravity)에서는 안전할 때 `git fetch origin` 및 `git pull --ff-only`로 활성 개발 브랜치를 최신화한다.
 5. 로컬 미커밋 변경이 있으면 임의로 덮어쓰지 않고 먼저 보고한다.
 6. ChatGPT 환경에서는 GitHub의 활성 개발 브랜치 최신 파일과 커밋을 다시 읽고 `main`과 필요한 차이를 확인한다.
 7. 동기화 상태와 이번 작업 목표를 간단히 보고한 뒤 실제 작업을 시작한다.
@@ -31,7 +31,7 @@
 
 - GitHub 원격 저장소를 Source of Truth로 사용한다.
 - `main`에서 직접 기능 개발하지 않는다. 별도 작업 브랜치를 사용한다.
-- 집 Codex와 외부 ChatGPT가 동일 브랜치를 동시에 수정하지 않는다.
+- Codex, ChatGPT, Antigravity 간 동일 브랜치를 동시에 수정하여 충돌을 일으키지 않는다.
 - 환경 전환 전에는 먼저 commit + push 하고, 다음 환경에서 최신 상태를 동기화한다.
 - 사용자의 명시적 승인 없이 `git push --force`, `git reset --hard`, 위험한 rebase, 대량 삭제를 수행하지 않는다.
 - 충돌 발생 시 임의 해결하지 말고 사용자에게 충돌 내용을 알린다.

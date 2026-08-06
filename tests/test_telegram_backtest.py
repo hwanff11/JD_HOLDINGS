@@ -134,10 +134,15 @@ def test_backtest_timeline_includes_signal_buy_and_take_profit_sales():
     assert "2차 매도" in timeline[4]
 
 
+def test_backtest_command_accepts_arbitrary_ticker():
+    request = parse_backtest_request("/bt NVDA 100", SYMBOLS, "2011-01-01", LATEST)
+    assert request.symbols == ("NVDA",)
+
+
 @pytest.mark.parametrize(
     ("command", "message"),
     [
-        ("/bt NVDA", "지원 종목"),
+        ("/bt VERYLONGSYMBOLNAME12345", "유효한 종목 티커"),
         ("/bt ALL 2025/01/01", "날짜"),
         ("/bt ALL 2010-12-31", "시작일"),
         ("/bt ALL 2025-01-01 2024-01-01", "늦을 수 없습니다"),
