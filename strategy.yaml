@@ -1,5 +1,5 @@
-version: JDSS-1.3.1
-config_version: "1.3.0"
+version: JDSS-1.3.2
+config_version: "1.4.0"
 
 global:
   capital_per_symbol: 10000
@@ -7,7 +7,7 @@ global:
   sell_fee: 0.001
   approval_required: true
   stop_loss_enabled: false
-  entry_score: 76
+  entry_score: 72
   minimum_reversal_score: 5
   entry_max_chase_pct: 0.02
   buy_limit_buffer: 0.005
@@ -55,10 +55,10 @@ scoring:
     method: power
     exponents:
       regime: 1.0
-      oversold: 0.65
-      reversal: 0.75
-      volume: 0.80
-      atr: 1.0
+      oversold: 0.45
+      reversal: 0.55
+      volume: 0.65
+      atr: 0.90
   cci5:
     bands: [[-200, 13], [-150, 10], [-100, 6]]
   cci10:

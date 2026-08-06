@@ -128,9 +128,9 @@ def _profit_loss(value: object) -> tuple[str, str] | None:
 
 def _regime_label(value: str) -> str:
     return {
-        "GREEN": "🟢 GREEN · 강세",
-        "YELLOW": "🟡 YELLOW · 중립",
-        "RED": "🔴 RED · 약세",
+        "GREEN": "🟢 GREEN",
+        "YELLOW": "🟡 YELLOW",
+        "RED": "🔴 RED",
         "BULLISH": "🟢 강세장",
         "NEUTRAL": "🟡 중립장",
         "BEARISH": "🔴 약세장",
