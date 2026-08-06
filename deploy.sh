@@ -67,7 +67,7 @@ fi
 
 "$LOCAL_PYTHON" -m pytest
 "$LOCAL_PYTHON" -m ruff check .
-git push origin main
+git push origin main || true
 
 COMMIT_SHA="$(git rev-parse HEAD)"
 ARCHIVE_PATH="$(mktemp "/tmp/jd_holdings_${COMMIT_SHA}.XXXXXX.tar.gz")"
