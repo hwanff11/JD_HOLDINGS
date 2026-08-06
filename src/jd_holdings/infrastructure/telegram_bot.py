@@ -342,13 +342,10 @@ class TelegramBotApp:
                 lines.append("\n━━━━━━━━━━━━━━━━━━━━")
             for item in holdings:
                 symbol = str(item.get("symbol") or item.get("stockCode") or "-").upper()
-                name = html.escape(str(item.get("name") or ""))
                 quantity = item.get("quantity") or item.get("holdingQuantity") or "0"
                 average = item.get("averagePrice") or item.get("averagePurchasePrice")
                 current = item.get("currentPrice") or item.get("lastPrice")
                 detail = f"✨ <b>{html.escape(symbol)}</b>"
-                if name:
-                    detail += f" ({name})"
                 detail += f"\n• <b>보유 수량</b> : <code>{_quantity(quantity)}주</code>"
                 if average is not None:
                     detail += f"\n• <b>평균 단가</b> : <code>{_money(average)}</code>"
@@ -371,6 +368,35 @@ class TelegramBotApp:
         except Exception as exc:
             LOGGER.exception("계좌 조회 실패")
             self._send(f"❌ 토스 계좌 조회 중 오류 발생:\n<code>{html.escape(str(exc))}</code>")
+
+    def _get_account_lines(self) -> list[str]:
+        if self.account_client is None:
+            return ["💰 <b>[토스 실시간 계좌 잔고]</b>", "💡 <i>토스 계좌 정보 연결 대기 중 (조회 전용)</i>"]
+        try:
+            buying_power = self.account_client.get_buying_power("USD")
+            holdings = [item for item in self.account_client.get_holdings() if _is_us_holding(item)]
+            lines = [
+                "💰 <b>[토스 실시간 계좌 잔고]</b>",
+                f"• <b>주문가능 달러</b> : <code>{_money(buying_power)}</code>",
+            ]
+            for item in holdings:
+                symbol = str(item.get("symbol") or item.get("stockCode") or "-").upper()
+                quantity = item.get("quantity") or item.get("holdingQuantity") or "0"
+                average = item.get("averagePrice") or item.get("averagePurchasePrice")
+                current = item.get("currentPrice") or item.get("lastPrice")
+                detail = f"\n✨ <b>{html.escape(symbol)}</b>"
+                detail += f"\n• <b>수량 / 평단</b> : <code>{_quantity(quantity)}주</code> (평단 <code>{_money(average) if average else '$0.00'}</code>)"
+                profit = _profit_loss(item.get("profitLoss"))
+                if current is not None and profit:
+                    detail += f"\n• <b>현재가 / 손익</b> : <code>{_money(current)}</code> (<code>{profit[0]}</code>, <code>{profit[1]}</code>)"
+                elif current is not None:
+                    detail += f"\n• <b>현재가</b> : <code>{_money(current)}</code>"
+                lines.append(detail)
+            if not holdings:
+                lines.append("현재 보유 중인 미국주식 종목이 없습니다.")
+            return lines
+        except Exception:
+            return ["💰 <b>[토스 실시간 계좌 잔고]</b>", "💡 <i>실시간 계좌 정보 조회 중...</i>"]
 
     def _register_handlers(self) -> None:
         bot = self.bot
@@ -418,6 +444,7 @@ class TelegramBotApp:
                 lines.append(f"⚙️ <b>운영 모드</b> : {mode_label}")
                 lines.append("━━━━━━━━━━━━━━━━━━━━")
 
+                lines.append("🎯 <b>[JDSS 전략 포지션]</b>\n")
                 for result in results:
                     position = self.repository.get_position(result.symbol)
                     cap = (
@@ -436,6 +463,8 @@ class TelegramBotApp:
                             "",
                         ]
                     )
+                lines.append("━━━━━━━━━━━━━━━━━━━━")
+                lines.extend(self._get_account_lines())
                 lines.extend(
                     [
                         "━━━━━━━━━━━━━━━━━━━━",
