@@ -86,8 +86,8 @@ TQQQ/SOXL의 변동성을 활용하는 고회전 단타 스윙 전략을 검증�
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.0 Swing 코드·백테스트 검증 완료, Oracle dry_run 배포 대기
-- 마지막 관련 커밋: 다음 작업 커밋에서 갱신
+- 상태: JDSS 2.0 Swing 코드·백테스트 검증 및 Oracle dry_run 배포 완료
+- 마지막 관련 커밋: `d346ef3` (`Redesign JDSS as high-turnover swing strategy`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙
