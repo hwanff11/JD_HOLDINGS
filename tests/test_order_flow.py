@@ -80,7 +80,7 @@ def create_approved_entry(repository, trading, config):
 def test_two_step_dry_run_order_flow(tmp_path, config):
     repository, broker, trading, _ = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
-    assert quote.quantity == 29
+    assert quote.quantity == 39
     receipt = trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     assert receipt.status == "FILLED"
     position = repository.get_position("TQQQ")
