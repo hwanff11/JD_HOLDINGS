@@ -444,7 +444,6 @@ class TelegramBotApp:
                 lines.append(f"⚙️ <b>운영 모드</b> : {mode_label}")
                 lines.append("━━━━━━━━━━━━━━━━━━━━")
 
-                lines.append("🎯 <b>[JDSS 전략 포지션]</b>\n")
                 for result in results:
                     position = self.repository.get_position(result.symbol)
                     cap = (
@@ -463,8 +462,6 @@ class TelegramBotApp:
                             "",
                         ]
                     )
-                lines.append("━━━━━━━━━━━━━━━━━━━━")
-                lines.extend(self._get_account_lines())
                 lines.extend(
                     [
                         "━━━━━━━━━━━━━━━━━━━━",
@@ -525,37 +522,45 @@ class TelegramBotApp:
         def guide(message):
             if not self._authorized_message(message):
                 return
-            text = (
-                "📖 <b>[JDSS v2.0 지표 및 전략 상세 가이드]</b>\n\n"
-                "🎯 <b>1. JDSS 점수 체계 (100점 만점)</b>\n"
-                "• <b>50점 이상</b> : 1차 매수 진입 타점 포착 🟢\n"
-                "• <b>82점 이상</b> : 강력 매수 구간 (상승 파동 고승률)\n"
-                "• <b>90점 이상</b> : 극상의 최적 매수 조건 (S등급)\n\n"
-                "🟢 <b>2. 시장 국면 지표 (25점 만점)</b>\n"
-                "• <b>20일 / 60일 이동평균선(EMA)</b> 교차 상태 분석\n"
-                "• <b>🟢 강세장 (25점)</b> : 20일 EMA > 60일 EMA (상승 추세)\n"
-                "• <b>🟡 중립장 (15점)</b> : 20일/60일 EMA 횡보 구간\n"
-                "• <b>🔴 약세장 ( 0점)</b> : 20일 EMA < 60일 EMA (하락 추세)\n\n"
-                "📉 <b>3. 과매도 지표 (40점 만점)</b>\n"
-                "• <b>CCI (5 / 10)</b> : -200 이하 시 주가가 기술적 바닥권에 진입\n"
-                "• <b>RSI (5 / 14)</b> : 20~30 이하 시 과도한 투매 발생 상태\n"
-                "• <b>볼린저 밴드</b> : 하단선(0.98배) 이탈 시 깊은 저점 형성\n\n"
-                "🔄 <b>4. 반등 확정 지표 (20점 만점)</b>\n"
-                "• 추락하는 칼날을 방지하기 위해 당일 캔들 양봉 전환 및 종가 위치(0.5 이상) 확인 시 안전 반등 점수 부여\n\n"
-                "📊 <b>5. 거래량 및 변동성 (15점 만점)</b>\n"
-                "• <b>거래량 비율</b> : 20일 평균 대비 1.5~2.0배 이상 수급 분출\n"
-                "• <b>ATR 변동성</b> : 적정 변동성 폭 유지 확인\n\n"
-                "🛒 <b>6. 4단계 분할 매수 시스템</b>\n"
-                "• <b>1차 매수 (40%)</b> : JDSS 50점 및 반등 5점 충족 🟢\n"
-                "• <b>2차 매수 (30%)</b> : 1차 진입가 대비 <b>-2% 하락</b> 🟡\n"
-                "• <b>3차 매수 (20%)</b> : 1차 진입가 대비 <b>-4% 하락</b> 🟠\n"
-                "• <b>4차 매수 (10%)</b> : 1차 진입가 대비 <b>-7% 하락</b> 🔴\n\n"
-                "💰 <b>7. 목표 익절 메커니즘 (Take Profit)</b>\n"
-                "• <b>1차 익절 (TP1)</b> : 평단 대비 <b>+4.0%</b> 도달 시 수량 50% 분할 매도\n"
-                "• <b>2차 익절 (TP2)</b> : 평단 대비 <b>+8.0%</b> 도달 시 전량 매도 및 사이클 종료\n\n"
-                "💡 <i>/score [종목] 명령어로 현재 세부 지표를 조회하실 수 있습니다.</i>"
-            )
-            self._send(text)
+            try:
+                card1 = (
+                    "📖 <b>[JDSS v2.0 지표 및 점수 체계 가이드]</b>\n\n"
+                    "🎯 <b>1. JDSS 점수 체계 (100점 만점)</b>\n"
+                    "• <b>50점 이상</b> : 1차 매수 진입 타점 포착 🟢\n"
+                    "• <b>82점 이상</b> : 강력 매수 구간 (상승 파동 고승률)\n"
+                    "• <b>90점 이상</b> : 극상의 최적 매수 조건 (S등급)\n\n"
+                    "🟢 <b>2. 시장 국면 지표 (25점 만점)</b>\n"
+                    "• <b>20일 / 60일 이동평균선(EMA)</b> 교차 상태 분석\n"
+                    "• <b>🟢 강세장 (25점)</b> : 20일 EMA > 60일 EMA (상승 추세)\n"
+                    "• <b>🟡 중립장 (15점)</b> : 20일/60일 EMA 횡보 구간\n"
+                    "• <b>🔴 약세장 ( 0점)</b> : 20일 EMA < 60일 EMA (하락 추세)\n\n"
+                    "📉 <b>3. 과매도 지표 (40점 만점)</b>\n"
+                    "• <b>CCI (5 / 10)</b> : -200 이하 시 기술적 바닥권 진입\n"
+                    "• <b>RSI (5 / 14)</b> : 20~30 이하 시 과도한 투매 상태\n"
+                    "• <b>볼린저 밴드</b> : 하단선(0.98배) 이탈 시 깊은 저점\n\n"
+                    "🔄 <b>4. 반등 확정 지표 (20점 만점)</b>\n"
+                    "• 추락하는 칼날을 방지하기 위해 당일 캔들 양봉 전환 및 종가 위치(0.5 이상) 확인 시 안전 반등 점수 부여"
+                )
+                card2 = (
+                    "🛒 <b>[JDSS 4단계 분할 매수 및 익절 메커니즘]</b>\n\n"
+                    "📊 <b>5. 거래량 및 변동성 (15점 만점)</b>\n"
+                    "• <b>거래량 비율</b> : 20일 평균 대비 1.5~2.0배 수급 분출\n"
+                    "• <b>ATR 변동성</b> : 적정 변동성 폭 유지 확인\n\n"
+                    "🛒 <b>6. 4단계 분할 매수 시스템</b>\n"
+                    "• <b>1차 매수 (40%)</b> : JDSS 50점 및 반등 5점 충족 🟢\n"
+                    "• <b>2차 매수 (30%)</b> : 1차 진입가 대비 <b>-2% 하락</b> 🟡\n"
+                    "• <b>3차 매수 (20%)</b> : 1차 진입가 대비 <b>-4% 하락</b> 🟠\n"
+                    "• <b>4차 매수 (10%)</b> : 1차 진입가 대비 <b>-7% 하락</b> 🔴\n\n"
+                    "💰 <b>7. 목표 익절 메커니즘 (Take Profit)</b>\n"
+                    "• <b>1차 익절 (TP1)</b> : 평단 대비 <b>+4.0%</b> 도달 시 수량 50% 분할 매도\n"
+                    "• <b>2차 익절 (TP2)</b> : 평단 대비 <b>+8.0%</b> 도달 시 전량 매도 및 사이클 종료\n\n"
+                    "💡 <i>/score [종목] 명령어로 세부 지표를 실시간 확인하실 수 있습니다.</i>"
+                )
+                self._send(card1)
+                self._send(card2)
+            except Exception as exc:
+                LOGGER.exception("guide 실패")
+                self._send(f"❌ 가이드 출력 실패:\n<code>{html.escape(str(exc))}</code>")
 
         @bot.message_handler(commands=["order", "o"])
         def orders(message):
@@ -643,12 +648,12 @@ class TelegramBotApp:
             self._send(
                 "☀️ <b>[JH홀딩스 JDSS 메뉴]</b>\n\n"
                 "• <code>/dashboard</code> : 통합 대시보드\n"
+                "• <code>/account</code> : 💰 토스 계좌 잔고\n"
                 "• <code>/status</code> : 종목별 상세 포지션\n"
                 "• <code>/score</code> : JDSS 세부 지표 분석\n"
                 "• <code>/signal</code> : 활성 매수 신호\n"
-                "• <code>/account</code> : 토스 계좌 조회\n"
                 "• <code>/backtest</code> : 자유 종목 백테스트\n"
-                "• <code>/guide</code> : 📖 JDSS 용어 & 지표 가이드\n"
+                "• <code>/guide</code> : 📖 JDSS 용어 및 지표 가이드\n"
                 "• <code>/order</code> : 미체결 주문 현황\n"
                 "• <code>/errors</code> : 최근 시스템 기록\n"
                 "• <code>/ping</code> : 봇 상태 확인\n\n"
@@ -943,12 +948,12 @@ class TelegramBotApp:
         self.bot.set_my_commands(
             [
                 telebot.types.BotCommand("dashboard", "☀️ 통합 대시보드"),
+                telebot.types.BotCommand("account", "💰 토스 계좌 잔고"),
                 telebot.types.BotCommand("status", "✨ 종목별 포지션 상세"),
                 telebot.types.BotCommand("score", "🎯 JDSS 지표 분석"),
                 telebot.types.BotCommand("signal", "🚨 활성 매수 신호"),
-                telebot.types.BotCommand("account", "💰 토스 계좌 잔고"),
                 telebot.types.BotCommand("backtest", "🌞 백테스트 실행"),
-                telebot.types.BotCommand("guide", "📖 JDSS 용어 & 지표 설명서"),
+                telebot.types.BotCommand("guide", "📖 JDSS 용어 및 지표 설명서"),
                 telebot.types.BotCommand("order", "🌟 미체결 주문 현황"),
                 telebot.types.BotCommand("ping", "🏓 봇 상태 확인"),
                 telebot.types.BotCommand("help", "🤖 메뉴 안내"),
