@@ -639,10 +639,7 @@ class TelegramBotApp:
             self._send(
                 f"🌞 <b>[{symbols_text} 백테스트 시작]</b>\n\n"
                 f"• <b>시작일</b> : <code>{request.start}</code>\n"
-                f"• <b>종료일</b> : <code>{request.end}</code>\n\n"
-                "💡 <i>요청 기간 내 과거 데이터가 부족할 경우,\n"
-                "   데이터가 존재하는 기간까지만 진행됩니다.</i>\n\n"
-                "💡 <i>실제 계좌 및 주문에는 전혀 영향을 주지 않습니다.</i>"
+                f"• <b>종료일</b> : <code>{request.end}</code>"
             )
             try:
                 threading.Thread(
@@ -884,10 +881,10 @@ class TelegramBotApp:
             else:  # SELL
                 details = f"[{qty_str}|{price_str}]"
                 if purpose == "TP1":
-                    label = "1차익절"
+                    label = "1차익절🎉"
                     icon = "⚫"
                 elif purpose == "TP2":
-                    label = "2차완청"
+                    label = "2차완청🎉"
                     icon = "⚫"
                 else:
                     label = "매도"
@@ -915,10 +912,7 @@ class TelegramBotApp:
         ).sum(axis=1)
         initial = float(equity.iloc[0])
         final = float(equity.iloc[-1])
-        elapsed_days = max(1, (equity.index[-1] - equity.index[0]).days)
-        years = elapsed_days / 365.2425
         total_return = final / initial - 1
-        cagr = (final / initial) ** (1 / years) - 1
         first_result = next(iter(results.values()))
         lines = [
             "☀️ <b>[JDSS 전략 백테스트 결과]</b>",
@@ -928,7 +922,6 @@ class TelegramBotApp:
             f"<code>├ 초기자산 : {_money(initial):>12}</code>",
             f"<code>├ 최종자산 : {_money(final):>12}</code>",
             f"<code>├ 누적수익 : {total_return * 100:>+10.2f}%</code>",
-            f"<code>├ 연평균   : {cagr * 100:>+10.2f}%</code>",
             f"<code>└ 최대낙폭 : {maximum_drawdown(equity) * 100:>10.2f}%</code>",
             "━━━━━━━━━━━━━━━━━━",
         ]
@@ -951,12 +944,6 @@ class TelegramBotApp:
             else:
                 lines.append("조건에 도달한 매수 신호가 없었습니다.")
             lines.append("")
-        lines.extend(
-            [
-                "━━━━━━━━━━━━━━━━━━",
-                "💡 <i>종목당 $10,000 고정 한도 기준 (수수료 및 슬리피지 수치 반영)</i>",
-            ]
-        )
         return "\n".join(lines)
 
     @staticmethod
