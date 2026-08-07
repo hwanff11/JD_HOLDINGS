@@ -531,9 +531,9 @@ class TelegramBotApp:
                     "• <b>90점 이상</b> : 극상의 최적 매수 조건 (S등급)\n\n"
                     "🟢 <b>2. 시장 국면 지표 (25점 만점)</b>\n"
                     "• <b>20일 / 60일 이동평균선(EMA)</b> 교차 상태 분석\n"
-                    "• <b>🟢 강세장 (25점)</b> : 20일 EMA > 60일 EMA (상승 추세)\n"
+                    "• <b>🟢 강세장 (25점)</b> : 20일 EMA &gt; 60일 EMA (상승 추세)\n"
                     "• <b>🟡 중립장 (15점)</b> : 20일/60일 EMA 횡보 구간\n"
-                    "• <b>🔴 약세장 ( 0점)</b> : 20일 EMA < 60일 EMA (하락 추세)\n\n"
+                    "• <b>🔴 약세장 ( 0점)</b> : 20일 EMA &lt; 60일 EMA (하락 추세)\n\n"
                     "📉 <b>3. 과매도 지표 (40점 만점)</b>\n"
                     "• <b>CCI (5 / 10)</b> : -200 이하 시 기술적 바닥권 진입\n"
                     "• <b>RSI (5 / 14)</b> : 20~30 이하 시 과도한 투매 상태\n"
@@ -556,11 +556,14 @@ class TelegramBotApp:
                     "• <b>2차 익절 (TP2)</b> : 평단 대비 <b>+8.0%</b> 도달 시 전량 매도 및 사이클 종료\n\n"
                     "💡 <i>/score [종목] 명령어로 세부 지표를 실시간 확인하실 수 있습니다.</i>"
                 )
-                self._send(card1)
-                self._send(card2)
+                self._send(card1, chat_id=message.chat.id)
+                self._send(card2, chat_id=message.chat.id)
             except Exception as exc:
                 LOGGER.exception("guide 실패")
-                self._send(f"❌ 가이드 출력 실패:\n<code>{html.escape(str(exc))}</code>")
+                self._send(
+                    f"❌ 가이드 출력 실패:\n<code>{html.escape(str(exc))}</code>",
+                    chat_id=message.chat.id,
+                )
 
         @bot.message_handler(commands=["order", "o"])
         def orders(message):

@@ -33,6 +33,7 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 
 ## 마지막 완료 작업
 
+- 텔레그램 `/guide` 명령어 400 Bad Request 에러 버그 수정 완료 (HTML 이스케이프 `&gt;`, `&lt;` 및 `chat_id` 매핑 보강)
 - 텔레그램 백테스트(`/bt`) 매매 내역 UI 3차 최적화 완료:
   - `[보유금액]` 삭제로 스마트폰 화면 1줄 고정 (줄바꿈 100% 방지)
   - 매수 4단계 이모지 시각화 (🟢 1차 / 🟡 2차 / 🟠 3차 / 🔴 4차)
@@ -77,7 +78,7 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 
 - 작성 주체: Antigravity (JH홀딩스 개발부장)
 - 상태: 백테스트 매매내역 20건단계별 이모지(🟢🟡🟠🔴🌟🎉)+체결금액 표시 반영 완료, 57개 테스트 통과, OCI 배포 완수
-- 마지막 관련 커밋: `7a0e27d` (`style: remove signal lines, add stage emojis, party popper TP2, and total trade value in backtest timeline`)
+- 마지막 관련 커밋: `3569408` (`fix: escape unescaped HTML entities in /guide handler to prevent 400 Bad Request error`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙
