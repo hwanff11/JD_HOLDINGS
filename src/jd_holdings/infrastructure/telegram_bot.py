@@ -816,53 +816,56 @@ class TelegramBotApp:
     def _format_trade_timeline(result: BacktestResult, limit: int = 20) -> list[str]:
         events: list[tuple[str, int, str]] = []
         action_labels = {
-            "FIRST_ENTRY_CANDIDATE": "1차 매수 신호",
-            "ADD_ENTRY_CANDIDATE": "추가 매수 신호",
-            "REBUY_CANDIDATE": "재매수 신호",
+            "FIRST_ENTRY_CANDIDATE": "1차매수신호",
+            "ADD_ENTRY_CANDIDATE": "추가매수신호",
+            "REBUY_CANDIDATE": "재매수신호",
         }
         buy_labels = {
-            "FIRST_ENTRY_CANDIDATE": "1차 매수",
-            "ADD_ENTRY_CANDIDATE": "추가 매수",
+            "FIRST_ENTRY_CANDIDATE": "1차매수",
+            "ADD_ENTRY_CANDIDATE": "추가매수",
             "REBUY_CANDIDATE": "재매수",
         }
         for signal in result.signals:
-            action = action_labels.get(str(signal["action"]), "매수 신호")
+            action = action_labels.get(str(signal["action"]), "매수신호")
+            d = str(signal["trade_date"]).replace("-", "")[2:]
             events.append(
                 (
                     str(signal["trade_date"]),
                     0,
-                    f"<code>📣 {signal['trade_date']}  {action:<8} · {signal['score']:>3}점 · {_money(signal['signal_close']):>8}</code>",
+                    f"<code>📣[{d}][{action}][{signal['score']}점][{_money(signal['signal_close'])}]</code>",
                 )
             )
         skipped_labels = {
-            "SKIPPED_BY_CHASE_RULE": "추격매수 상한 초과",
-            "STAGE_PRICE_RECOVERED": "추가매수 가격 회복",
-            "SLIPPAGE_EXCEEDS_PRICE_CEILING": "허용 매수가 초과",
-            "ZERO_QUANTITY": "매수 가능 수량 부족",
-            "EXPOSURE_BLOCK": "투자 한도 초과",
+            "SKIPPED_BY_CHASE_RULE": "추격상한초과",
+            "STAGE_PRICE_RECOVERED": "가격회복미체결",
+            "SLIPPAGE_EXCEEDS_PRICE_CEILING": "허용가초과",
+            "ZERO_QUANTITY": "수량부족",
+            "EXPOSURE_BLOCK": "한도초과",
         }
         for skipped in result.skipped_signals:
-            reason = skipped_labels.get(str(skipped.get("reason")), "조건 미충족")
+            reason = skipped_labels.get(str(skipped.get("reason")), "미체결")
+            d = str(skipped["execution_date"]).replace("-", "")[2:]
             events.append(
                 (
                     str(skipped["execution_date"]),
                     1,
-                    f"<code>⚪ {skipped['execution_date']}  매수 미체결 · {reason}</code>",
+                    f"<code>⚪[{d}][매수미체결][{reason}]</code>",
                 )
             )
         for trade in result.trades:
             purpose = str(trade["purpose"])
+            d = str(trade["date"]).replace("-", "")[2:]
             if trade["side"] == "BUY":
                 label = buy_labels.get(purpose, "매수")
                 icon = "🟢" if purpose != "ADD_ENTRY_CANDIDATE" else "🟡"
             else:
-                label = {"TP1": "1차 매도", "TP2": "2차 매도"}.get(purpose, "매도")
+                label = {"TP1": "1차매도", "TP2": "2차매도"}.get(purpose, "매도")
                 icon = "🟠" if purpose == "TP1" else "🌟"
             events.append(
                 (
                     str(trade["date"]),
                     1,
-                    f"<code>{icon} {trade['date']}  {label:<8} · {_quantity(trade['quantity']):>4}주 @ {_money(trade['price']):>8}</code>",
+                    f"<code>{icon}[{d}][{label}][{_quantity(trade['quantity'])}주][{_money(trade['price'])}]</code>",
                 )
             )
         events.sort(key=lambda item: (item[0], item[1]))
@@ -870,7 +873,7 @@ class TelegramBotApp:
         selected = events[-limit:]
         lines = [event[2] for event in selected]
         if omitted:
-            lines.insert(0, f"<code>… 전체 {len(events)}건 중 최근 {limit}건 표시</code>")
+            lines.insert(0, f"<code>…전체 {len(events)}건 중 최근 {limit}건 표시</code>")
         return lines
 
     def _format_backtest_results(self, results: dict[str, BacktestResult]) -> str:
