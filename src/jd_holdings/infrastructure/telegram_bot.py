@@ -633,6 +633,8 @@ class TelegramBotApp:
                 f"🌞 <b>[{symbols_text} 백테스트 시작]</b>\n\n"
                 f"• <b>시작일</b> : <code>{request.start}</code>\n"
                 f"• <b>종료일</b> : <code>{request.end}</code>\n\n"
+                "💡 <i>요청 기간 내 과거 데이터가 부족할 경우,\n"
+                "   데이터가 존재하는 기간까지만 진행됩니다.</i>\n\n"
                 "💡 <i>실제 계좌 및 주문에는 전혀 영향을 주지 않습니다.</i>"
             )
             try:
@@ -812,7 +814,16 @@ class TelegramBotApp:
             self._send_long(self._format_backtest_results(results))
         except Exception as exc:
             LOGGER.exception("Telegram 백테스트 실패")
-            self._send(f"❌ 백테스트를 끝내지 못했어요.\n{html.escape(str(exc))}")
+            error_msg = str(exc)
+            if "지표 계산 데이터 부족" in error_msg:
+                self._send(
+                    f"⚠️ <b>[데이터 부족]</b>\n\n"
+                    f"해당 종목은 상장 기간이 짧거나 주가 데이터가 부족(최소 60거래일 필요)하여 "
+                    f"백테스트를 수행할 수 없습니다.\n"
+                    f"<code>({html.escape(error_msg)})</code>"
+                )
+            else:
+                self._send(f"❌ 백테스트를 끝내지 못했어요.\n{html.escape(error_msg)}")
         finally:
             self._backtest_lock.release()
 
