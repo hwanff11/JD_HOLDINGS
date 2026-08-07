@@ -1,8 +1,8 @@
 # JDSS — JH Dynamic Score Swing Strategy (JH 동적 점수형 스윙 전략)
 
-> **레거시 v1.1.2 기준선 문서.** 현재 소스 v1.3 전략은
-> [`../STRATEGY_V1.3.md`](../STRATEGY_V1.3.md)와 [`../../strategy.yaml`](../../strategy.yaml)을
-> 최종 기준으로 삼는다.
+> [!WARNING]
+> 이 문서는 **v1.1.2 ~ v1.3** 시절의 레거시(Legacy) 명세서입니다.
+> 현재 JDSS 2.0 (Option A) 전략의 최신 스펙은 `docs/STRATEGY_V2.0_SWING.md`를 참조하세요.
 
 **전략 명세서(Strategy Specification) v1.1.2 — 공식 기준선(Official Baseline)**
 
