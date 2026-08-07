@@ -2,7 +2,7 @@
 
 이 파일은 Codex, ChatGPT, 그리고 Antigravity(안티그라비티)가 이 저장소에서 작업할 때 공통으로 따라야 할 작업 규칙을 정의한다.
 
-세부 절차는 `docs/DEVELOPMENT_WORKFLOW.md`를 따른다.
+세부 절차는 `docs/infra/DEVELOPMENT_WORKFLOW.md`를 따른다.
 현재 작업 상태와 인수인계 정보는 `CURRENT_WORK.md`를 Source of Truth로 사용한다.
 
 ## 사용자 단축 명령
@@ -25,7 +25,8 @@
 4. 변경사항을 명확한 커밋 메시지로 commit한다.
 5. 현재 활성 개발 브랜치에 push한다.
 6. `CURRENT_WORK.md`의 마지막 완료 작업, 다음 작업, 마지막 커밋 정보를 최신 상태로 갱신하고 필요하면 함께 commit/push한다.
-7. 마지막 커밋 SHA, 변경 요약, 테스트 결과, 남은 작업을 보고한다.
+7. 필요한 경우(실제 배포 반영 시) `env -u GITHUB_TOKEN ./deploy.sh`를 통해 자동 배포를 수행한다.
+8. 마지막 커밋 SHA, 변경 요약, 테스트 결과, 남은 작업을 보고한다.
 
 ## Git 안전 규칙
 
