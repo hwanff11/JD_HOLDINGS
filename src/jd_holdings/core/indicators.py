@@ -17,7 +17,12 @@ class MarketDataError(ValueError):
 
 
 def normalize_ohlcv(frame: pd.DataFrame) -> pd.DataFrame:
-    """Return a chronological, lowercase, numeric OHLCV frame."""
+    """
+    외부(예: yfinance)에서 수집된 일봉 데이터를 JDSS 엔진이 처리할 수 있는 표준 규격으로 정규화합니다.
+    
+    컬럼명을 소문자로 통일하고 필수 컬럼(open, high, low, close, volume)을 추출하며, 
+    인덱스를 timezone-naive 한 datetime 형태로 변환 및 시간순 정렬합니다.
+    """
     if frame is None or frame.empty:
         raise MarketDataError("OHLCV 데이터가 비어 있습니다")
     result = frame.copy()
@@ -52,6 +57,16 @@ def normalize_ohlcv(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_ohlcv(frame: pd.DataFrame, minimum_rows: int) -> None:
+    """
+    정규화된 OHLCV 데이터가 전략 지표 계산에 충분한지, 결측치(NaN)나 논리적 오류가 없는지 검증합니다.
+    
+    Args:
+        frame: 정규화된 OHLCV 데이터프레임
+        minimum_rows: 지표 워밍업을 위해 필요한 최소 거래일 수
+        
+    Raises:
+        MarketDataError: 데이터 부족, 결측치 존재, 또는 고가가 저가보다 낮은 논리적 모순 발생 시
+    """
     if len(frame) < minimum_rows:
         raise MarketDataError(f"지표 계산 데이터 부족: {len(frame)} < {minimum_rows}")
     if frame[list(REQUIRED_COLUMNS)].isna().any().any():

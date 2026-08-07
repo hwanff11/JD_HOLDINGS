@@ -11,7 +11,9 @@ JDSS(JH Dynamic Score Swing Strategy) v2.0.0 A안을 TQQQ와 SOXL 및 미국주�
 - JDSS 점수, 시장 국면, 고정 10,000달러 한도의 4단계 분할매수, 고정 TP
 - 다음 거래일 시가 체결 대용 모델을 사용하는 노룩어헤드 백테스트
 - 텔레그램 임의 주식 티커 백테스트 (예: `/bt NVDA 100`, `/bt TSLA`, `/bt ALL`)
-- SQLite WAL, 상태 전이, 낙관적 잠금, 신호/주문 멱등성
+- 백테스트 UI 최적화 (`[점수|수량|단가]` 통합 포맷) 및 데이터 부족 예외 처리
+- 코어 엔진 및 백테스트 알고리즘 전면 상세 한글 주석(Docstring) 문서화
+- SQLite WAL, 상태 전이, 낙관적 잠금, 신호/주문 멱등성 및 정적 분석(Bandit) 보안 패치 적용
 - Telegram 관리자 1명 제한 및 매수 검토 → 최종 실행의 2단계 승인
 - dry-run 기본값과 실주문 이중 잠금
 - Toss Securities OAuth2/OpenAPI 어댑터

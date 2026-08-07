@@ -48,8 +48,8 @@ class OrderManager:
                         self.broker.get_order(str(existing["broker_order_id"])),
                         request.client_order_id,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    LOGGER.warning("주문 상태 최신화 중 오류 발생: %s", exc)
             return OrderReceipt(
                 client_order_id=request.client_order_id,
                 broker_order_id=str(existing.get("broker_order_id") or ""),

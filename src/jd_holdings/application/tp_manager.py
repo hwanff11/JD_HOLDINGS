@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from jd_holdings.core.models import OrderReceipt, OrderRequest
@@ -7,6 +8,8 @@ from jd_holdings.core.models import OrderReceipt, OrderRequest
 from .broker import Broker
 from .database import SQLiteRepository
 from .order_manager import OrderManager, build_client_order_id
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TakeProfitManager:
@@ -71,8 +74,8 @@ class TakeProfitManager:
                 continue
             try:
                 self.broker.cancel_order(str(broker_id))
-            except Exception:
-                pass
+            except Exception as exc:
+                LOGGER.warning("기존 TP 주문 취소 중 오류 발생: %s", exc)
             receipt = self.order_manager.refresh_order(order["client_order_id"])
             if receipt.status not in {"FILLED", "CANCELED", "REJECTED", "REPLACED"}:
                 raise RuntimeError(f"{symbol} {order['purpose']} 주문 취소가 확정되지 않았습니다")

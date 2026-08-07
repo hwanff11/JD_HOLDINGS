@@ -32,6 +32,16 @@ def _gte_band_score(value: float, bands: list[list[float | int]]) -> int:
 
 
 def calculate_grade(total: int, config: StrategyConfig) -> SignalGrade:
+    """
+    총점(total)을 기반으로 매수 신호의 등급(S, A, B, WATCH 등)을 판별합니다.
+    
+    Args:
+        total: `calculate_score`를 통해 산출된 0~100 사이의 총점.
+        config: 등급별 컷오프(cutoff) 점수가 정의된 전략 설정 객체.
+        
+    Returns:
+        총점에 부합하는 `SignalGrade` 열거형 값. 매수 기준 미달 시 `NO_TRADE` 반환.
+    """
     grades = config.scoring["grades"]
     if total >= int(grades["S"]):
         return SignalGrade.S
@@ -67,6 +77,19 @@ def calculate_score(
     regime: MarketRegime,
     config: StrategyConfig,
 ) -> ScoreResult:
+    """
+    특정 시점의 시장 데이터(snapshot)와 시장 상황(regime)을 종합하여 
+    최종 매수 매력도 점수(0~100점)를 계산합니다.
+    
+    점수는 다음 5가지 컴포넌트의 합산으로 구성됩니다:
+    1. 시장 상황 (regime_score): GREEN, YELLOW, RED 등급에 따른 기본 점수 배점
+    2. 과매도 (oversold_score): CCI, RSI 지표 및 볼린저 밴드 하단 돌파 여부를 합산 (최대 40점)
+    3. 반등 (reversal_score): 양봉, 종가 상승, 단기 이평선(EMA5) 돌파 등 단기 반등 모멘텀 측정
+    4. 거래량 (volume_score): 거래량 급증 여부를 통한 수급 확인
+    5. 변동성 (atr_score): 종목의 현재 변동성(ATR) 크기에 따른 가점/감점 (낮은 변동성 선호)
+    
+    모든 컴포넌트는 설정에 따라 보정(calibration)을 거치며, 최종 점수는 100점을 초과할 수 없습니다.
+    """
     regime_scores = {
         MarketRegime.GREEN: int(config.market_regime["green_score"]),
         MarketRegime.YELLOW: int(config.market_regime["yellow_score"]),

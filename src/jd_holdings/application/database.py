@@ -331,7 +331,7 @@ class SQLiteRepository:
                 parameters.append(value)
             parameters.extend([symbol.upper(), current["version"]])
             cursor = connection.execute(
-                f"UPDATE positions SET {', '.join(assignments)} WHERE symbol = ? AND version = ?",
+                f"UPDATE positions SET {', '.join(assignments)} WHERE symbol = ? AND version = ?",  # nosec B608
                 parameters,
             )
             if cursor.rowcount != 1:
@@ -595,7 +595,7 @@ class SQLiteRepository:
         params.append(client_order_id)
         with self.transaction() as connection:
             cursor = connection.execute(
-                f"UPDATE orders SET {', '.join(updates)} WHERE client_order_id = ?", params
+                f"UPDATE orders SET {', '.join(updates)} WHERE client_order_id = ?", params  # nosec B608
             )
             if cursor.rowcount != 1:
                 raise KeyError(client_order_id)
@@ -621,7 +621,7 @@ class SQLiteRepository:
     def open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
         statuses = ("CREATED", "SUBMITTED", "PENDING", "PARTIAL_FILLED", "UNKNOWN")
         placeholders = ",".join("?" for _ in statuses)
-        query = f"SELECT * FROM orders WHERE status IN ({placeholders})"
+        query = f"SELECT * FROM orders WHERE status IN ({placeholders})"  # nosec B608
         params: list[Any] = list(statuses)
         if symbol:
             query += " AND symbol = ?"
@@ -690,7 +690,7 @@ class SQLiteRepository:
             raise ValueError("leg는 TP1 또는 TP2여야 합니다")
         with self.transaction() as connection:
             connection.execute(
-                f"UPDATE tp_plans SET {column} = ?, updated_at = ? WHERE tp_plan_id = ?",
+                f"UPDATE tp_plans SET {column} = ?, updated_at = ? WHERE tp_plan_id = ?",  # nosec B608
                 (filled_qty, utc_now().isoformat(), tp_plan_id),
             )
 

@@ -604,6 +604,13 @@ class TelegramBotApp:
 
         @bot.message_handler(commands=["backtest", "bt"])
         def backtest(message):
+            """
+            텔레그램 봇의 /bt (또는 /backtest) 명령어를 처리합니다.
+            
+            사용자로부터 종목명과 테스트 기간(일수)을 입력받아 별도의 스레드에서 백테스트 시뮬레이션을 구동합니다.
+            결과가 생성되면, 타임라인 포맷팅 및 요약 통계를 텔레그램 메시지로 응답합니다.
+            백테스트는 매우 무거운 작업이므로 `_backtest_lock`을 통해 중복 실행을 방지합니다.
+            """
             if not self._authorized_message(message):
                 return
             try:

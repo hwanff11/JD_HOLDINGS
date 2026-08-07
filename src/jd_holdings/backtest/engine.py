@@ -151,8 +151,26 @@ class BacktestEngine:
         sector_data: Mapping[str, pd.DataFrame] | None = None,
     ) -> BacktestResult:
         """
-        주어진 종목(symbol)과 지표(symbol_data)를 바탕으로 백테스트 시뮬레이션을 실행합니다.
-        필요 시 SPY, QQQ, 그리고 섹터 데이터(SOXX, SMH 등)를 활용하여 시장 국면을 평가합니다.
+        주어진 종목(symbol)과 지표 데이터(symbol_data)를 바탕으로 
+        이벤트 기반 백테스트 시뮬레이션을 실행합니다.
+        
+        시뮬레이션 라이프사이클:
+        1. **데이터 웜업**: 대상 종목, SPY, QQQ, 섹터 데이터의 공통 거래일을 찾아 무결성을 확보합니다.
+        2. **루프 진입 (Daily Loop)**: 매 거래일마다 다음을 수행합니다.
+           a. 전일 발생한 '미체결 주문(pending)' 체결 시도 (시가가 허용가 내에 있는지 확인)
+           b. 일일 결산 (사이클 유지일 증가, MFE/MAE 갱신, 파산/청산 여부 점검)
+           c. 시장 상황(Regime) 판별 및 타겟 종목 스코어링 (S, A, B, WATCH 등급 산출)
+           d. 현재 포지션 상태(STATE)에 따른 전략 결정 및 다음날 주문(pending) 생성
+        3. **결산 및 통계 산출**: 모든 거래일 종료 후 누적 수익률(CAGR), MDD 등 퍼포먼스 지표를 계산합니다.
+        
+        Args:
+            symbol: 테스트 대상 종목 심볼 (예: TQQQ)
+            symbol_data, spy_data, qqq_data: 정규화된 OHLCV 및 지표 데이터프레임
+            start, end: 시뮬레이션 기간
+            slippage: 슬리피지 비율 (예: 0.0005 = 0.05%)
+            
+        Returns:
+            BacktestResult: 거래 내역, 누적 통계치, 미체결 사유 등이 포함된 결과 객체
         """
         symbol = symbol.upper()
         configured_slippage = (
