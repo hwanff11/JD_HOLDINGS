@@ -73,8 +73,8 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 ## 마지막 인수인계
 
 - 작성 주체: Antigravity (JH홀딩스 개발부장)
-- 상태: JDSS 2.0 A안 적용, 티커 백테스트 해제, /guide 2카드 정상화, /account 메뉴 2위 배치, Oracle Cloud 배포 완수
-- 마지막 관련 커밋: `3320deb` (`fix: revert dashboard, move /account right after /dashboard, split /guide into 2 cards`)
+- 상태: 마크다운 문서 단일화(STRATEGY_GUIDE.md, BACKTEST_REPORT.md), strategy.py/engine.py 한글 주석 추가 완료, /bt SOXL 섹터 가드 데이터 누락 버그 해결 완료, OCI 배포(deploy.sh) 완료
+- 마지막 관련 커밋: `7475424` (`docs: consolidate docs, fix backtest sector data, add detailed Korean comments`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙
