@@ -839,8 +839,6 @@ class TelegramBotApp:
             d = str(trade["date"]).replace("-", "")[2:]
             qty = trade["quantity"]
             price = Decimal(str(trade["price"]))
-            val = Decimal(str(qty)) * price
-            val_str = _money(val)
             price_str = _money(price)
             qty_str = f"{_quantity(qty)}주"
 
@@ -871,7 +869,7 @@ class TelegramBotApp:
                 (
                     str(trade["date"]),
                     1,
-                    f"<code>{icon}[{d}][{label}][{qty_str}][{price_str}][{val_str}]</code>",
+                    f"<code>{icon}[{d}][{label}][{qty_str}][{price_str}]</code>",
                 )
             )
         events.sort(key=lambda item: (item[0], item[1]))
