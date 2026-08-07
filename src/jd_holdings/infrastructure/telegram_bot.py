@@ -815,26 +815,6 @@ class TelegramBotApp:
     @staticmethod
     def _format_trade_timeline(result: BacktestResult, limit: int = 20) -> list[str]:
         events: list[tuple[str, int, str]] = []
-        action_labels = {
-            "FIRST_ENTRY_CANDIDATE": "1차매수신호",
-            "ADD_ENTRY_CANDIDATE": "추가매수신호",
-            "REBUY_CANDIDATE": "재매수신호",
-        }
-        buy_labels = {
-            "FIRST_ENTRY_CANDIDATE": "1차매수",
-            "ADD_ENTRY_CANDIDATE": "추가매수",
-            "REBUY_CANDIDATE": "재매수",
-        }
-        for signal in result.signals:
-            action = action_labels.get(str(signal["action"]), "매수신호")
-            d = str(signal["trade_date"]).replace("-", "")[2:]
-            events.append(
-                (
-                    str(signal["trade_date"]),
-                    0,
-                    f"<code>📣[{d}][{action}][{signal['score']}점][{_money(signal['signal_close'])}]</code>",
-                )
-            )
         skipped_labels = {
             "SKIPPED_BY_CHASE_RULE": "추격상한초과",
             "STAGE_PRICE_RECOVERED": "가격회복미체결",
@@ -852,20 +832,46 @@ class TelegramBotApp:
                     f"<code>⚪[{d}][매수미체결][{reason}]</code>",
                 )
             )
+        buy_counter: dict[str, int] = {}
         for trade in result.trades:
             purpose = str(trade["purpose"])
+            cycle_id = str(trade.get("cycle_id", "default"))
             d = str(trade["date"]).replace("-", "")[2:]
+            qty = trade["quantity"]
+            price = Decimal(str(trade["price"]))
+            val = Decimal(str(qty)) * price
+            val_str = _money(val)
+            price_str = _money(price)
+            qty_str = f"{_quantity(qty)}주"
+
             if trade["side"] == "BUY":
-                label = buy_labels.get(purpose, "매수")
-                icon = "🟢" if purpose != "ADD_ENTRY_CANDIDATE" else "🟡"
-            else:
-                label = {"TP1": "1차매도", "TP2": "2차매도"}.get(purpose, "매도")
-                icon = "🟠" if purpose == "TP1" else "🌟"
+                if purpose == "FIRST_ENTRY_CANDIDATE":
+                    buy_counter[cycle_id] = 1
+                    label = "1차매수"
+                    icon = "🟢"
+                elif purpose == "REBUY_CANDIDATE":
+                    label = "재매수"
+                    icon = "🟢"
+                else: # ADD_ENTRY_CANDIDATE
+                    count = buy_counter.get(cycle_id, 1) + 1
+                    buy_counter[cycle_id] = count
+                    label = f"{count}차매수"
+                    icon = {2: "🟡", 3: "🟠", 4: "🔴"}.get(count, "🔴")
+            else: # SELL
+                if purpose == "TP1":
+                    label = "1차익절"
+                    icon = "🌟"
+                elif purpose == "TP2":
+                    label = "2차완청"
+                    icon = "🎉"
+                else:
+                    label = "매도"
+                    icon = "🎉"
             events.append(
                 (
                     str(trade["date"]),
                     1,
-                    f"<code>{icon}[{d}][{label}][{_quantity(trade['quantity'])}주][{_money(trade['price'])}]</code>",
+                    f"<code>{icon}[{d}][{label}][{qty_str}][{price_str}][{val_str}]</code>",
                 )
             )
         events.sort(key=lambda item: (item[0], item[1]))

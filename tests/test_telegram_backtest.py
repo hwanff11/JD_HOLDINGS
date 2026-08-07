@@ -127,11 +127,10 @@ def test_backtest_timeline_includes_signal_buy_and_take_profit_sales():
         ),
     )
     timeline = TelegramBotApp._format_trade_timeline(result)
-    assert "1차매수신호" in timeline[0]
-    assert "1차매수" in timeline[1]
-    assert "매수미체결" in timeline[2]
-    assert "1차매도" in timeline[3]
-    assert "2차매도" in timeline[4]
+    assert "1차매수" in timeline[0]
+    assert "매수미체결" in timeline[1]
+    assert "1차익절" in timeline[2]
+    assert "2차완청" in timeline[3]
 
 
 def test_backtest_command_accepts_arbitrary_ticker():
