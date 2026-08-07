@@ -34,10 +34,11 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 ## 마지막 완료 작업
 
 - 텔레그램 `/guide` 명령어 400 Bad Request 에러 버그 수정 완료 (HTML 이스케이프 `&gt;`, `&lt;` 및 `chat_id` 매핑 보강)
-- 텔레그램 백테스트(`/bt`) 매매 내역 UI 3차 최적화 완료:
+- 텔레그램 백테스트(`/bt`) 매매 내역 UI 4차 개편 완료:
+  - 매수신호 1줄 컴팩트 추가 (`📣[260515][2차신호][85점][$205.00]`)
+  - 1차익절 및 2차완청 이모티콘을 검은 동그라미(⚫)로 통일 적용
   - `[보유금액]` 삭제로 스마트폰 화면 1줄 고정 (줄바꿈 100% 방지)
   - 매수 4단계 이모지 시각화 (🟢 1차 / 🟡 2차 / 🟠 3차 / 🔴 4차)
-  - 2차 익절 완청 시 시원한 폭죽 이모티콘(🎉) 적용
 - 텔레그램 백테스트(`/bt`) 매매 내역 가독성 최적화 (기본 최근 20개 출력 및 `<code>` 고정폭 모노스페이스 정렬)
 - 마크다운 문서 최신화 완료 (`TELEGRAM_BOT_GUIDE.md` 생성, `DECISIONS.md` D-008/D-009 반영, `DEVELOPMENT_WORKFLOW.md` 최신화, `STRATEGY_GUIDE.md` 및 `BACKTEST_REPORT.md` 2.0 표기 명시)
 - `docs/` 폴더 내 파편화된 문서들을 `STRATEGY_GUIDE.md`, `BACKTEST_REPORT.md` 로 통합 관리되도록 전면 개편
@@ -78,7 +79,7 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 
 - 작성 주체: Antigravity (JH홀딩스 개발부장)
 - 상태: 백테스트 매매내역 20건단계별 이모지(🟢🟡🟠🔴🌟🎉)+체결금액 표시 반영 완료, 57개 테스트 통과, OCI 배포 완수
-- 마지막 관련 커밋: `3569408` (`fix: escape unescaped HTML entities in /guide handler to prevent 400 Bad Request error`)
+- 마지막 관련 커밋: `287e67c` (`style: add 1-line signal entries, black circle icons for TP1/TP2 in backtest timeline`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙

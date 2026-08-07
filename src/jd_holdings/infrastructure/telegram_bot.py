@@ -818,6 +818,27 @@ class TelegramBotApp:
     @staticmethod
     def _format_trade_timeline(result: BacktestResult, limit: int = 20) -> list[str]:
         events: list[tuple[str, int, str]] = []
+        for signal in result.signals:
+            action = str(signal["action"])
+            stage = signal.get("target_stage")
+            if action == "REBUY_CANDIDATE":
+                label = "재매수신호"
+            elif action == "FIRST_ENTRY_CANDIDATE" or stage == 1:
+                label = "1차신호"
+            elif stage:
+                label = f"{stage}차신호"
+            else:
+                label = "매수신호"
+            d = str(signal["trade_date"]).replace("-", "")[2:]
+            score_str = f"{signal['score']}점"
+            price_str = _money(signal["signal_close"])
+            events.append(
+                (
+                    str(signal["trade_date"]),
+                    0,
+                    f"<code>📣[{d}][{label}][{score_str}][{price_str}]</code>",
+                )
+            )
         skipped_labels = {
             "SKIPPED_BY_CHASE_RULE": "추격상한초과",
             "STAGE_PRICE_RECOVERED": "가격회복미체결",
@@ -853,21 +874,21 @@ class TelegramBotApp:
                 elif purpose == "REBUY_CANDIDATE":
                     label = "재매수"
                     icon = "🟢"
-                else: # ADD_ENTRY_CANDIDATE
+                else:  # ADD_ENTRY_CANDIDATE
                     count = buy_counter.get(cycle_id, 1) + 1
                     buy_counter[cycle_id] = count
                     label = f"{count}차매수"
                     icon = {2: "🟡", 3: "🟠", 4: "🔴"}.get(count, "🔴")
-            else: # SELL
+            else:  # SELL
                 if purpose == "TP1":
                     label = "1차익절"
-                    icon = "🌟"
+                    icon = "⚫"
                 elif purpose == "TP2":
                     label = "2차완청"
-                    icon = "🎉"
+                    icon = "⚫"
                 else:
                     label = "매도"
-                    icon = "🎉"
+                    icon = "⚫"
             events.append(
                 (
                     str(trade["date"]),
