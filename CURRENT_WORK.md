@@ -51,6 +51,9 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
   - 낡은 `docs/spec` 및 `SCORE_CALIBRATION_V1.2.md` 파일을 `docs/archive/spec_v1/`로 이동(레거시 격리).
   - 인프라 및 운영 기술 문서(`DECISIONS.md`, `DEPLOYMENT.md`, `DEVELOPMENT_WORKFLOW.md`)를 `docs/infra/`로 이동.
   - 최상단 `docs/`에는 핵심 문서(전략, 텔레그램 봇 가이드, 리포트) 3개만 남겨 가독성 극대화.
+- 텔레그램 `/bt` 백테스트 응답 메시지 UI 2차 최적화:
+  - 군더더기 안내 문구(과거 데이터 부족 등) 및 쓰이지 않는 연평균(cagr) 행 완전 삭제.
+  - 1차익절 및 2차완청 결과에 폭죽 이모티콘(🎉) 추가.
 
 ## 다음 작업
 
