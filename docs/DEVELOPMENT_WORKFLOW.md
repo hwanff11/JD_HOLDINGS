@@ -4,13 +4,13 @@
 
 집의 Codex, 외부의 ChatGPT, 그리고 IDE의 Antigravity(안티그라비티)가 GitHub 원격 저장소를 단일 기준점(Source of Truth)으로 사용해 같은 작업을 안전하게 이어간다. `main`에는 검증된 안정 버전만 반영한다.
 
-## 현재 검토 브랜치
+## 현재 활성 개발 브랜치
 
 ```text
-codex/jdss-v1.3.1-review
+main
 ```
 
-이 브랜치는 JDSS v1.3.1 전략 검증과 기능 개선을 수행하는 활성 개발 브랜치다. 검증이 끝나면 PR을 통해 `main`에 병합한다.
+현재 주력 전략인 **JDSS 2.0 Swing (A안: ultra_hf_50_tp48)** 검증 및 기능 개선이 이루어지는 기준 브랜치다.
 
 ## 사용자 단축 지시어
 

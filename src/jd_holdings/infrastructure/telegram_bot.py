@@ -813,7 +813,7 @@ class TelegramBotApp:
             self._backtest_lock.release()
 
     @staticmethod
-    def _format_trade_timeline(result: BacktestResult, limit: int = 15) -> list[str]:
+    def _format_trade_timeline(result: BacktestResult, limit: int = 20) -> list[str]:
         events: list[tuple[str, int, str]] = []
         action_labels = {
             "FIRST_ENTRY_CANDIDATE": "1차 매수 신호",
@@ -831,8 +831,7 @@ class TelegramBotApp:
                 (
                     str(signal["trade_date"]),
                     0,
-                    f"📣 {signal['trade_date']}  {action} "
-                    f"· {signal['score']}점 · {_money(signal['signal_close'])}",
+                    f"<code>📣 {signal['trade_date']}  {action:<8} · {signal['score']:>3}점 · {_money(signal['signal_close']):>8}</code>",
                 )
             )
         skipped_labels = {
@@ -843,19 +842,19 @@ class TelegramBotApp:
             "EXPOSURE_BLOCK": "투자 한도 초과",
         }
         for skipped in result.skipped_signals:
-            reason = skipped_labels.get(str(skipped.get("reason")), "매수 조건 미충족")
+            reason = skipped_labels.get(str(skipped.get("reason")), "조건 미충족")
             events.append(
                 (
                     str(skipped["execution_date"]),
                     1,
-                    f"⚪ {skipped['execution_date']}  매수 미체결 · {reason}",
+                    f"<code>⚪ {skipped['execution_date']}  매수 미체결 · {reason}</code>",
                 )
             )
         for trade in result.trades:
             purpose = str(trade["purpose"])
             if trade["side"] == "BUY":
                 label = buy_labels.get(purpose, "매수")
-                icon = "🟢"
+                icon = "🟢" if purpose != "ADD_ENTRY_CANDIDATE" else "🟡"
             else:
                 label = {"TP1": "1차 매도", "TP2": "2차 매도"}.get(purpose, "매도")
                 icon = "🟠" if purpose == "TP1" else "🌟"
@@ -863,8 +862,7 @@ class TelegramBotApp:
                 (
                     str(trade["date"]),
                     1,
-                    f"{icon} {trade['date']}  {label} · "
-                    f"{_quantity(trade['quantity'])}주 @ {_money(trade['price'])}",
+                    f"<code>{icon} {trade['date']}  {label:<8} · {_quantity(trade['quantity']):>4}주 @ {_money(trade['price']):>8}</code>",
                 )
             )
         events.sort(key=lambda item: (item[0], item[1]))
@@ -872,7 +870,7 @@ class TelegramBotApp:
         selected = events[-limit:]
         lines = [event[2] for event in selected]
         if omitted:
-            lines.insert(0, f"… 전체 {len(events)}건 중 최근 {limit}건만 표시합니다.")
+            lines.insert(0, f"<code>… 전체 {len(events)}건 중 최근 {limit}건 표시</code>")
         return lines
 
     def _format_backtest_results(self, results: dict[str, BacktestResult]) -> str:

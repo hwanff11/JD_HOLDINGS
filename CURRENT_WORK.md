@@ -33,14 +33,13 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 
 ## 마지막 완료 작업
 
+- 텔레그램 백테스트(`/bt`) 매매 내역 가독성 최적화 (기본 최근 20개 출력 및 `<code>` 고정폭 모노스페이스 정렬)
+- 마크다운 문서 최신화 완료 (`TELEGRAM_BOT_GUIDE.md` 생성, `DECISIONS.md` D-008/D-009 반영, `DEVELOPMENT_WORKFLOW.md` 최신화, `STRATEGY_GUIDE.md` 및 `BACKTEST_REPORT.md` 2.0 표기 명시)
 - `docs/` 폴더 내 파편화된 문서들을 `STRATEGY_GUIDE.md`, `BACKTEST_REPORT.md` 로 통합 관리되도록 전면 개편
 - `strategy.py`, `engine.py` 등 핵심 전략 코드에 한글 주석 상세 추가하여 1인 유지보수성 극대화
 - 텔레그램 `/bt` 백테스트 명령 시 SOXL 섹터 가드(SOXX, SMH) 데이터를 추가로 불러와 실거래 로직과 일치하도록 불일치 이슈 해결
 - 백테스트 데이터 소스가 `YFinance` 임을 확인 완료 (처음 조회하는 임의 종목도 인터넷을 통해 실시간 구성)
 - 고수익률 & 고회전 파라미터 Grid Search 백테스트 시뮬레이션 및 A안(`ultra_hf_50_tp48`) 최종 채택
-- `strategy.yaml` 및 전략 파라미터 업데이트 (진입 score 50점, TP1 4%, TP2 8%)
-- 텔레그램 백테스트(`/bt`)의 임의 주식 티커 제한 해제 (예: `/bt NVDA 100`, `/bt ALL`은 TQQQ+SOXL 유지)
-- 신규 `/guide` (📖 JDSS 용어 & 지표 상세 설명서) 명령어 개발 및 2개 카드로 분할 발송(100% 무결동작)
 - 전체 단위 테스트(57개) 통과 및 ruff 정적 검사 통과
 
 ## 다음 작업
@@ -73,8 +72,8 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 ## 마지막 인수인계
 
 - 작성 주체: Antigravity (JH홀딩스 개발부장)
-- 상태: 마크다운 문서 단일화(STRATEGY_GUIDE.md, BACKTEST_REPORT.md), strategy.py/engine.py 한글 주석 추가 완료, /bt SOXL 섹터 가드 데이터 누락 버그 해결 완료, OCI 배포(deploy.sh) 완료
-- 마지막 관련 커밋: `7475424` (`docs: consolidate docs, fix backtest sector data, add detailed Korean comments`)
+- 상태: 백테스트 20건 모노스페이스 정렬 완료, 마크다운 문서 2.0 전면 최신화 완료, 57개 테스트 통과, OCI 배포 완료
+- 마지막 관련 커밋: `f8da346` (`style: format backtest timeline with 20 items and monospaced code blocks, update docs for JDSS 2.0`)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙

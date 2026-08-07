@@ -1,8 +1,10 @@
 # JDSS Backtest Reports & History
 
-이 문서는 JDSS 봇의 백테스트 시뮬레이션 결과 및 파라미터 튜닝 리포트를 단일 문서로 관리합니다.
+이 문서는 JDSS 봇의 **현재 백테스트 시뮬레이션 리포트(V2.0)** 및 과거 백테스트 기록을 통합 관리합니다.
 
-## Archive: BACKTEST_HIGH_RETURN_V2.0.md
+---
+
+## 📊 [현재 백테스트 리포트] JDSS v2.0 High-Return Grid Search 백테스트 종합 보고서
 
 # 📊 JDSS v2.0 High-Return Grid Search 백테스트 종합 보고서
 

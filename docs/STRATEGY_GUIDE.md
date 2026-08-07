@@ -1,8 +1,10 @@
 # JDSS Strategy Guide & History
 
-이 문서는 JDSS 봇의 주력 전략(V2.0) 및 과거 전략(V1.x)의 발전 내역을 단일 문서로 통합 관리하기 위해 작성되었습니다.
+이 문서는 JDSS 봇의 **주력 전략(V2.0 Swing)** 및 과거 전략(V1.x)의 발전 내역을 단일 문서로 통합 관리하기 위해 작성되었습니다.
 
-## Archive: STRATEGY_V2.0_SWING.md
+---
+
+## 🔥 [현재 주력] JDSS v2.0.0 High-Turnover Swing Strategy (A안)
 
 # 🚀 JDSS v2.0.0 High-Turnover Swing Strategy (A안)
 
