@@ -256,10 +256,17 @@ def evaluate_strategy(
     system_ok: bool = True,
     sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
+    """
+    현재 계좌 상태(position)에 따라 1차 매수, 추가 매수, 혹은 재매수 로직 중 어떤 것을
+    적용할지 판단하여 그 결과를 반환하는 전략 엔진의 핵심 진입점입니다.
+    """
+    # 1. 보유 종목이 없는 상태 (EMPTY): 신규 1차 진입 평가
     if position.state == PositionState.EMPTY:
         return evaluate_entry(
             snapshot, score, position, config, data_ok=data_ok, system_ok=system_ok
         )
+        
+    # 2. 1차~3차 매수를 이미 진행하여 보유 중인 상태: 추가 진입(물타기 혹은 불타기) 평가
     if position.state in {
         PositionState.HOLDING_1ST,
         PositionState.HOLDING_2ND,
@@ -275,13 +282,18 @@ def evaluate_strategy(
             system_ok=system_ok,
             sector_benchmarks=sector_benchmarks,
         )
+        
+    # 3. 1차 익절을 완료하여 비중이 줄어든 상태: 재진입(리밸런싱 매수) 평가
     if position.state == PositionState.PARTIAL_TP_1:
         return evaluate_rebuy(
             snapshot, score, position, config, data_ok=data_ok, system_ok=system_ok
         )
+        
+    # 4. 그 외 상태(예: 풀매수 상태 등)에서는 추가 매수를 허용하지 않음
     return TradeDecision(
         action=DecisionType.NO_ACTION,
         allowed=False,
         reason_codes=("STATE_NOT_ELIGIBLE",),
         cycle_exposure_cap=position.cycle_exposure_cap,
     )
+

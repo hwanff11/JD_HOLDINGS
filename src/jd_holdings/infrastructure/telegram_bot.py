@@ -783,11 +783,28 @@ class TelegramBotApp:
             warmup_start = (request.start - timedelta(days=400)).isoformat()
             spy = self.data_source.daily("SPY", warmup_start, end)
             qqq = self.data_source.daily("QQQ", warmup_start, end)
+            
+            # 🚀 섹터 가드용 데이터 (실거래와 동일하게 SOXX, SMH 등 벤치마크 데이터를 백테스트 엔진에 전달)
+            sector_data = {}
+            guard_config = self.config.market_regime.get("soxl_sector_guard", {})
+            if guard_config.get("enabled", False):
+                benchmarks = guard_config.get("benchmark_candidates", ["SOXX", "SMH"])
+                for bench in benchmarks:
+                    sector_data[bench] = self.data_source.daily(bench, warmup_start, end)
+            
             engine = BacktestEngine(self.config)
             results = {}
             for symbol in request.symbols:
                 target = self.data_source.daily(symbol, warmup_start, end)
-                results[symbol] = engine.run(symbol, target, spy, qqq, start=start, end=end)
+                results[symbol] = engine.run(
+                    symbol, 
+                    target, 
+                    spy, 
+                    qqq, 
+                    start=start, 
+                    end=end,
+                    sector_data=sector_data if sector_data else None
+                )
             self._send_long(self._format_backtest_results(results))
         except Exception as exc:
             LOGGER.exception("Telegram 백테스트 실패")

@@ -150,15 +150,22 @@ class BacktestEngine:
         regimes_precomputed: Mapping[pd.Timestamp, MarketRegime] | None = None,
         sector_data: Mapping[str, pd.DataFrame] | None = None,
     ) -> BacktestResult:
+        """
+        주어진 종목(symbol)과 지표(symbol_data)를 바탕으로 백테스트 시뮬레이션을 실행합니다.
+        필요 시 SPY, QQQ, 그리고 섹터 데이터(SOXX, SMH 등)를 활용하여 시장 국면을 평가합니다.
+        """
         symbol = symbol.upper()
         configured_slippage = (
             slippage if slippage is not None else self.config.backtest.default_slippage
         )
         slip = Decimal(str(configured_slippage))
+        
+        # 1. 지표 계산 (이미 precomputed 되었다면 생략)
         target = symbol_data if indicators_precomputed else calculate_indicators(symbol_data, self.config)
         spy = spy_data if indicators_precomputed else calculate_indicators(spy_data, self.config)
         qqq = qqq_data if indicators_precomputed else calculate_indicators(qqq_data, self.config)
 
+        # 2. 섹터 가드 설정 (SOXL의 경우에만 활성화되며, SOXX와 SMH의 하락장 여부를 체크)
         sector_frames: dict[str, pd.DataFrame] = {}
         guard = self.config.market_regime.get("soxl_sector_guard", {})
         guard_candidates = tuple(
@@ -173,10 +180,13 @@ class BacktestEngine:
                 sector_frames[benchmark] = (
                     frame if indicators_precomputed else calculate_indicators(frame, self.config)
                 )
+        
+        # 섹터 가드용 데이터가 모두 준비되었는지 확인
         sector_guard_applied = guard_requested and all(
             benchmark in sector_frames for benchmark in guard_candidates
         )
 
+        # 3. 데이터 공통 인덱스 추출 (대상 종목 + SPY + QQQ + [섹터 가드 종목])
         common_index = target.index.intersection(spy.index).intersection(qqq.index)
         if sector_guard_applied:
             for frame in sector_frames.values():
