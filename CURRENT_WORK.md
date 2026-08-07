@@ -47,6 +47,10 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
   - `core/` (스코어링, 지표), `backtest/engine.py` (시뮬레이터 코어), `telegram_bot.py` (봇 명령어) 등 핵심 비즈니스 로직에 상세 한글 Docstring 추가
   - `README.md` 및 `CURRENT_WORK.md` 최신화
 - 전체 단위 테스트(57개) 통과 및 ruff, bandit 정적 검사 무결성 확인 완료
+- 마크다운 문서 생태계 대청소 완료:
+  - 낡은 `docs/spec` 및 `SCORE_CALIBRATION_V1.2.md` 파일을 `docs/archive/spec_v1/`로 이동(레거시 격리).
+  - 인프라 및 운영 기술 문서(`DECISIONS.md`, `DEPLOYMENT.md`, `DEVELOPMENT_WORKFLOW.md`)를 `docs/infra/`로 이동.
+  - 최상단 `docs/`에는 핵심 문서(전략, 텔레그램 봇 가이드, 리포트) 3개만 남겨 가독성 극대화.
 
 ## 다음 작업
 
@@ -78,8 +82,8 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전
 ## 마지막 인수인계
 
 - 작성 주체: Antigravity (JH홀딩스 개발부장)
-- 상태: JDSS 시스템 전체 보안/로직 리뷰, 핵심 엔진 상세 한글 주석화, 마크다운(README 등) 최신화 완수. 단위테스트/정적분석(Ruff, Bandit) All Pass. 
-- 마지막 관련 커밋: (최신 커밋 참고)
+- 상태: 보안 패치, 한글 주석 보강, 마크다운 문서 생태계 대청소 완료. 57개 단위테스트 및 정적분석(Ruff, Bandit) All Pass. 
+- 마지막 관련 커밋: `1a513cc` (docs: clean up markdown files by moving infra docs and legacy score calibration)
 - 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
 
 ## 갱신 규칙
