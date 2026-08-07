@@ -818,27 +818,6 @@ class TelegramBotApp:
     @staticmethod
     def _format_trade_timeline(result: BacktestResult, limit: int = 20) -> list[str]:
         events: list[tuple[str, int, str]] = []
-        for signal in result.signals:
-            action = str(signal["action"])
-            stage = signal.get("target_stage")
-            if action == "REBUY_CANDIDATE":
-                label = "재매수신호"
-            elif action == "FIRST_ENTRY_CANDIDATE" or stage == 1:
-                label = "1차신호"
-            elif stage:
-                label = f"{stage}차신호"
-            else:
-                label = "매수신호"
-            d = str(signal["trade_date"]).replace("-", "")[2:]
-            score_str = f"{signal['score']}점"
-            price_str = _money(signal["signal_close"])
-            events.append(
-                (
-                    str(signal["trade_date"]),
-                    0,
-                    f"<code>📣[{d}][{label}][{score_str}][{price_str}]</code>",
-                )
-            )
         skipped_labels = {
             "SKIPPED_BY_CHASE_RULE": "추격상한초과",
             "STAGE_PRICE_RECOVERED": "가격회복미체결",
@@ -849,11 +828,12 @@ class TelegramBotApp:
         for skipped in result.skipped_signals:
             reason = skipped_labels.get(str(skipped.get("reason")), "미체결")
             d = str(skipped["execution_date"]).replace("-", "")[2:]
+            score_str = f"[{skipped.get('score', 0)}점]" if "score" in skipped else ""
             events.append(
                 (
                     str(skipped["execution_date"]),
                     1,
-                    f"<code>⚪[{d}][매수미체결][{reason}]</code>",
+                    f"<code>⚪[{d}][매수미체결]{score_str}[{reason}]</code>",
                 )
             )
         buy_counter: dict[str, int] = {}
@@ -865,6 +845,7 @@ class TelegramBotApp:
             price = Decimal(str(trade["price"]))
             price_str = _money(price)
             qty_str = f"{_quantity(qty)}주"
+            score_str = f"[{trade.get('score', 0)}점]" if "score" in trade else ""
 
             if trade["side"] == "BUY":
                 if purpose == "FIRST_ENTRY_CANDIDATE":
@@ -880,6 +861,7 @@ class TelegramBotApp:
                     label = f"{count}차매수"
                     icon = {2: "🟡", 3: "🟠", 4: "🔴"}.get(count, "🔴")
             else:  # SELL
+                score_str = "" # 매도 시에는 점수 생략
                 if purpose == "TP1":
                     label = "1차익절"
                     icon = "⚫"
@@ -893,7 +875,7 @@ class TelegramBotApp:
                 (
                     str(trade["date"]),
                     1,
-                    f"<code>{icon}[{d}][{label}][{qty_str}][{price_str}]</code>",
+                    f"<code>{icon}[{d}][{label}]{score_str}[{qty_str}][{price_str}]</code>",
                 )
             )
         events.sort(key=lambda item: (item[0], item[1]))

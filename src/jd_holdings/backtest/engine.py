@@ -288,6 +288,7 @@ class BacktestEngine:
                             "execution_date": timestamp.date().isoformat(),
                             "action": pending.decision.action.value,
                             "reason": reason,
+                            "score": pending.score.total,
                         }
                     )
                 pending = None
@@ -534,6 +535,7 @@ class BacktestEngine:
                 "cash_after": round(float(state.cash), 2),
                 "average_price": round(float(state.average_price), 4),
                 "prior_quantity": prior_qty,
+                "score": pending.score.total,
             }
         )
         return True, None
