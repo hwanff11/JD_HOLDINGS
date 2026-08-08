@@ -878,22 +878,26 @@ class TelegramBotApp:
                     buy_counter[cycle_id] = count
                     label = f"{count}차매수"
                     icon = {2: "🟡", 3: "🟠", 4: "🔴"}.get(count, "🔴")
+                suffix = ""
             else:  # SELL
                 details = f"[{qty_str}|{price_str}]"
                 if purpose == "TP1":
-                    label = "1차익절🎉"
+                    label = "1차익절"
                     icon = "⚫"
+                    suffix = "🎉"
                 elif purpose == "TP2":
-                    label = "2차완청🎉"
+                    label = "2차완청"
                     icon = "⚫"
+                    suffix = "🎉"
                 else:
                     label = "매도"
                     icon = "⚫"
+                    suffix = ""
             events.append(
                 (
                     str(trade["date"]),
                     1,
-                    f"<code>{icon}[{d}][{label}]{details}</code>",
+                    f"<code>{icon}[{d}][{label}]{details}</code>{suffix}",
                 )
             )
         events.sort(key=lambda item: (item[0], item[1]))

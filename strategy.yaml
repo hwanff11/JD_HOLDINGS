@@ -15,7 +15,7 @@ global:
     regular: false
     after_hours: true
     pre_market: true
-  review_token_ttl_minutes: 30
+  review_token_ttl_minutes: 480
   execution_token_ttl_seconds: 60
   buy_fill_timeout_seconds: 120
 

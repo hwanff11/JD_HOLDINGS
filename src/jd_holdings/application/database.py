@@ -521,7 +521,10 @@ class SQLiteRepository:
                     "UPDATE approvals SET status = 'EXPIRED' WHERE approval_id = ?",
                     (approval_id,),
                 )
-                raise ApprovalError("승인 유효시간이 만료되었습니다")
+                raise ApprovalError(
+                    f"승인 유효시간({self.config.global_.review_token_ttl_minutes}분)이 만료되었습니다. "
+                    "다시 매수 신호를 기다려 주세요."
+                )
             if not hmac.compare_digest(row["approval_token_hash"], token_hash):
                 raise ApprovalError("승인 토큰이 올바르지 않습니다")
             connection.execute(
