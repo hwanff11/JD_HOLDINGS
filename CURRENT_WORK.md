@@ -7,15 +7,15 @@
 
 ## 현재 활성 개발 브랜치
 
-`main`
+`research/jdss-v2-swing-optimization`
 
 ## 기준 브랜치
 
 `main`
 
-- `main`: 안정 기준선 및 공통 작업 규칙
-- 활성 개발 브랜치: 실제 기능/전략 개발과 검증을 수행하는 브랜치
-- 기능 검증이 끝나면 PR을 통해 `main`에 병합한다.
+- `main`: 검증된 안정 기준선 및 공통 작업 규칙
+- `research/jdss-v2-swing-optimization`: JDSS 2.0 전략 후보 비교와 백테스트 검증을 수행하는 현재 연구 브랜치
+- 기능/전략 검증이 끝나면 PR을 통해 채택된 변경만 `main`에 병합한다.
 
 ## 현재 전략 버전
 
@@ -23,74 +23,78 @@ JDSS 2.0 Swing (Option A: ultra_hf_50_tp48)
 
 ## 현재 개발 목표
 
-TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단타 스윙 전략을 검증하고 안정화한다.
+TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단기 스윙 전략을 검증하고 안정화한다.
 
-중점 사항:
+현재 연구 목표:
 
-- 고수익률 & 고회전 파라미터 조합 (진입 50점, TP 4%/8%) 실거래 dry_run 모니터링
-- 임의 주식 티커 백테스트 기능 제공 (`/bt [티커] [기간]`)
-- Oracle Cloud 서버 상 봇 서비스 안정 운영
+- JDSS 2.0 A~F 전략 후보를 동일 조건으로 백테스트하여 현재 A안 대비 개선 가능성을 검증한다.
+- 2021~2024 검증구간(OOS 성격)을 우선 평가한다.
+- CAGR/Total Return뿐 아니라 MDD, P95 MAE, 40일 초과 고착비율, 평균 보유기간, 사이클 수 등 위험·회전 지표를 함께 비교한다.
+- TQQQ/SOXL 실거래 후보 전략과 임의 미국주식 연구용 백테스트 기능을 분리하여 관리한다.
+- Oracle Cloud 서버의 JDSS 운영 안정성을 유지하면서 연구용 계산은 운영 프로세스와 분리한다.
+
+## 현재 전략 후보
+
+- A: 현재 기준안 — 진입 50 / 추가매수 -2·-4·-7% / TP 4·8%
+- B: 진입점수 55
+- C: 추가매수 -3·-6·-10%
+- D: TP 3·6%
+- E: 추가매수 -3·-6·-10% + TP 3·6%
+- F: TP 5·10%
 
 ## 마지막 완료 작업
 
-- 텔레그램 `/guide` 명령어 400 Bad Request 에러 버그 수정 완료 (HTML 이스케이프 `&gt;`, `&lt;` 및 `chat_id` 매핑 보강)
-- 토스증권 주간거래 전 주문 리셋(08:50 KST) 완벽 대응 완료:
-  - 08:50 ~ 09:00 KST 사이에는 주문 모니터링 봇을 일시 정지(Pause)시켜 불필요한 API 오류 및 무한 재시도 방지
-  - 09:00 KST 정각에 봇이 깨어나며 기존 취소된 TP1/TP2 주문을 감지하고 자동으로 재접수(복구)하도록 조치
-- 텔레그램 백테스트(`/bt`) 상장 초기 종목 데이터 부족 처리 완료:
-  - `MarketDataError` 발생 시 친절한 에러 문구 표시 및 100일 요청 시 40일치 데이터만 있을 경우 40일치만 진행되는 로직을 안내하는 메시지 추가.
-- 텔레그램 백테스트(`/bt`) 타임라인 출력 포맷 최적화:
-  - 매수, 매도, 미체결 내역의 잔여 정보(점수, 수량, 가격, 사유 등)를 하나의 대괄호 파이프(`|`)로 묶어 가독성 극대화 (`🟢[260805][1차매수][51점|29주|$135.68]`)
-- 전체 소스코드 보안성/로직 점검 및 상세 한글화 완료 (진짜 마지막 작전):
-  - `database.py`: 동적 쿼리 구문 SQL 인젝션 가능성(`bandit B608`) 검토 후 `# nosec` 적용 완료
-  - `order_manager.py`, `tp_manager.py`: 조용한 예외 처리(`try-except-pass`) 구문에 로깅(Warning) 보강
-  - `core/` (스코어링, 지표), `backtest/engine.py` (시뮬레이터 코어), `telegram_bot.py` (봇 명령어) 등 핵심 비즈니스 로직에 상세 한글 Docstring 추가
-  - `README.md` 및 `CURRENT_WORK.md` 최신화
-- 전체 단위 테스트(57개) 통과 및 ruff, bandit 정적 검사 무결성 확인 완료
-- 마크다운 문서 생태계 대청소 완료:
-  - 낡은 `docs/spec` 및 `SCORE_CALIBRATION_V1.2.md` 파일을 `docs/archive/spec_v1/`로 이동(레거시 격리).
-  - 인프라 및 운영 기술 문서(`DECISIONS.md`, `DEPLOYMENT.md`, `DEVELOPMENT_WORKFLOW.md`)를 `docs/infra/`로 이동.
-  - 최상단 `docs/`에는 핵심 문서(전략, 텔레그램 봇 가이드, 리포트) 3개만 남겨 가독성 극대화.
-- 텔레그램 `/bt` 백테스트 응답 메시지 UI 2차 최적화:
-  - 군더더기 안내 문구(과거 데이터 부족 등) 및 쓰이지 않는 연평균(cagr) 행 완전 삭제.
-  - 1차익절 및 2차완청 결과 문자열 맨 끝에 폭죽 이모티콘(🎉) 추가.
-- 텔레그램 실시간 매수 검토 알림(`rv` 콜백) 편의성 개선:
-  - 승인 유효시간(`review_token_ttl_minutes`)을 30분에서 480분(8시간)으로 대폭 연장하여, 새벽 발생 신호를 아침에도 여유롭게 검토 가능하도록 조치.
-  - 토큰 만료 에러 팝업 시 유효시간(분)과 함께 좀 더 친절한 안내 문구가 표시되도록 `database.py` 수정.
+- GitHub Actions와 Oracle Cloud 역할 분리 및 표준 연구/개발 흐름을 `docs/infra/DEVELOPMENT_WORKFLOW.md`에 명문화했다.
+- `AGENTS.md`에도 GitHub Actions=연구/검증, Oracle Cloud=24시간 운영 원칙을 반영하여 문서 간 규칙을 통일했다.
+- 현재 활성 브랜치를 `research/jdss-v2-swing-optimization`, 기준 브랜치를 `main`으로 명확히 구분했다.
+- JDSS 2.0 A~F 후보 비교용 연구 브랜치 및 GitHub Actions 백테스트 흐름을 구성했다.
+- 텔레그램 `/bt` 임의 티커 백테스트 기능과 기존 운영 기능은 유지한다.
 
 ## 다음 작업
 
-1. 텔레그램 봇 `dry_run` 상에서 JDSS 2.0 A안 신호 및 실시간 매수/익절 주문 흐름 모니터링
+1. GitHub Actions의 JDSS 2.0 A~F 백테스트 완료 여부 및 산출물을 확인한다.
+2. TQQQ/SOXL별 및 합산 성과를 비교한다.
+3. 2021~2024 검증구간을 우선으로 CAGR, MDD, P95 MAE, 장기 고착, 평균 보유기간, 사이클 수를 평가한다.
+4. 유의미한 개선 후보가 있으면 과최적화 여부를 추가 검증한 뒤 최종 채택안을 결정한다.
+5. 채택된 전략만 PR 검토 후 `main`에 병합하고 필요 시 Oracle Cloud 운영 서버에 배포한다.
 
-## 작업 환경
+## 실행 환경 역할
 
-### 집 (Codex)
+### 집 (Codex + 로컬 PC)
 
-- 작업자: 사용자 + Codex
-- 저장소: 로컬 clone + GitHub remote
+- 본격 기능 개발, 디버깅, 장시간/대규모 백테스트
 - 시작: `작업 시작` → status/fetch/pull 후 개발
 - 종료: `작업 종료` → test/commit/push/CURRENT_WORK 갱신
 
-### 외부 (ChatGPT)
+### 외부 (ChatGPT + GitHub)
 
-- 작업자: 사용자 + ChatGPT
-- 저장소: GitHub 원격 저장소 직접 접근
-- 시작: `작업 시작` → CURRENT_WORK와 활성 개발 브랜치 최신 상태 확인
-- 종료: `작업 종료` → 변경사항 commit/push/CURRENT_WORK 갱신 및 결과 보고
+- 최신 GitHub 소스를 기준으로 전략 검토, 코드 수정, 테스트 추가, 연구 브랜치/PR 관리
+- 가능한 자동 검증과 전략 비교는 GitHub Actions를 우선 사용
+- 작업 결과는 원격 브랜치에 push하여 Codex가 그대로 이어받도록 한다.
 
-### IDE (Antigravity - JH홀딩스 개발부장)
+### IDE (Antigravity)
 
-- 작업자: 사용자 + Antigravity (안티그라비티)
-- 저장소: 로컬 IDE workspace + GitHub remote
-- 시작: `작업 시작` → status/fetch/pull 후 개발 및 실시간 코드 검증
-- 종료: `작업 종료` → test/commit/push/CURRENT_WORK 갱신 및 완료 브리핑
+- 로컬 IDE workspace + GitHub remote를 사용한 개발 및 실시간 코드 검증
+- 환경 전환 전 commit/push, 시작 시 최신 원격 상태 동기화
+
+### GitHub Actions
+
+- pytest, Ruff, 설정 검증, 전략 A/B 테스트, 장기 백테스트 등 일회성·반복 가능한 연구/검증 작업
+- 가능하면 JSON/Markdown 등의 결과 artifact를 남겨 재검토 가능하게 한다.
+
+### Oracle Cloud
+
+- Telegram Bot, 정규장 종료 후 분석, 승인/주문/포지션 감시 등 24시간 JDSS 운영 서비스
+- 연구용 대규모 백테스트와 분리한다.
+- 검증되어 `main`에 반영된 코드만 운영 배포 대상으로 삼는다.
 
 ## 마지막 인수인계
 
-- 작성 주체: Antigravity (JH홀딩스 개발부장)
-- 상태: 보안 패치, 한글 주석 보강, 마크다운 문서 생태계 대청소 완료. 57개 단위테스트 및 정적분석(Ruff, Bandit) All Pass. 
-- 마지막 관련 커밋: `1a513cc` (docs: clean up markdown files by moving infra docs and legacy score calibration)
-- 주의: 실제 전략 개발은 `main`이 아니라 위의 활성 개발 브랜치에서 수행한다.
+- 작성 주체: ChatGPT
+- 상태: JDSS 2.0 전략 최적화 연구 진행 중. 개발/연구/운영 환경 역할과 브랜치 규칙을 AGENTS.md, CURRENT_WORK.md, DEVELOPMENT_WORKFLOW.md에 일관되게 정리 완료.
+- 활성 브랜치: `research/jdss-v2-swing-optimization`
+- 기준 브랜치: `main`
+- 다음 우선순위: A~F GitHub Actions 백테스트 결과 확인 및 전략 후보 평가
 
 ## 갱신 규칙
 
