@@ -18,6 +18,7 @@ from backtest_v2_focus import (
     combined_metrics,
 )
 from backtest_v2_remainder_exit import RemainderExitEngine
+
 from jd_holdings.config import load_config
 from jd_holdings.core.enums import DecisionType
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
