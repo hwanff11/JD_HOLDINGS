@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the selected D257 FINAL candidate and report calendar-year returns."""
+"""Audit the selected D257 FINAL candidate and report validation and annual returns."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from backtest_v2_focus import combined_metrics
 from backtest_v2_gap_grid import BENCHMARKS, SYMBOLS, _candidate, _run
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
@@ -77,6 +78,11 @@ def main() -> int:
         for symbol in (*SYMBOLS, *BENCHMARKS)
     }
     results = _run(config, frames, "2011-01-01", args.end)
+    validation_results = _run(config, frames, "2021-01-01", "2024-12-31")
+    validation = combined_metrics(
+        validation_results,
+        config.backtest.annualization_days,
+    )
     years = range(2011, datetime.fromisoformat(args.end).year + 1)
     report = {
         "generated_at": datetime.now(UTC).isoformat(),
@@ -84,6 +90,7 @@ def main() -> int:
             "scores 55/55/55/55; weights 40/30/20/10; drops -2/-5/-7; "
             "TP 4/6; SOXL sector guard stages 1/3/4; TP1 remainder 20d avg+2%"
         ),
+        "validation_2021_2024": validation,
         "worst_cycle": worst(results),
         "annual_returns": annual(results, years),
         "symbols": {symbol: result.metrics for symbol, result in results.items()},
@@ -98,6 +105,19 @@ def main() -> int:
     cycle = worst_cycle["cycle"]
     lines = [
         "# JDSS FINAL D257 Report",
+        "",
+        "## Validation 2021-2024",
+        "",
+        (
+            f"CAGR={validation['cagr_pct']:+.2f}% | "
+            f"MDD={validation['mdd_pct']:.2f}% | "
+            f"P95 MAE={validation['mae_p95_worst_symbol_pct']:.2f}% | "
+            f">40d={validation['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
+            f"Max={validation['max_holding_days_worst_symbol_including_open']}d | "
+            f"Cycles={validation['closed_cycles']}"
+        ),
+        "",
+        "## Worst full-history cycle",
         "",
         (
             f"Worst cycle: {worst_cycle['symbol']} {cycle.get('start_date')} -> "
