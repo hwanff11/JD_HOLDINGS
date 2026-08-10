@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import tomllib
-from datetime import UTC, date, datetime
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -26,15 +27,16 @@ from jd_holdings.infrastructure.telegram_bot import (
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
+SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 @pytest.mark.parametrize(
     ("now", "expected"),
     [
-        (datetime(2026, 8, 11, 8, 49, tzinfo=UTC), False),
-        (datetime(2026, 8, 11, 8, 50, tzinfo=UTC), True),
-        (datetime(2026, 8, 11, 8, 59, tzinfo=UTC), True),
-        (datetime(2026, 8, 11, 9, 0, tzinfo=UTC), False),
+        (datetime(2026, 8, 11, 8, 49, tzinfo=SEOUL_TZ), False),
+        (datetime(2026, 8, 11, 8, 50, tzinfo=SEOUL_TZ), True),
+        (datetime(2026, 8, 11, 8, 59, tzinfo=SEOUL_TZ), True),
+        (datetime(2026, 8, 11, 9, 0, tzinfo=SEOUL_TZ), False),
     ],
 )
 def test_toss_order_maintenance_window(now, expected):
