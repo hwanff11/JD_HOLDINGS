@@ -66,6 +66,8 @@ Telegram dry-run 관찰, Toss 조회 smoke test, 서버 정합성 검사를 통�
 
 ## D-008 — Telegram 운영 UI 및 백테스트 2.0 최신화
 
+> 상태: D-011의 FINAL Telegram 표시 계약으로 대체된 역사적 결정.
+
 - 인자 없는 `/backtest`의 기본값은 SOXL 최근 300거래일로 고정한다.
 - 임의 티커 입력 백테스트(`/bt NVDA 100` 등)를 완전 허용한다.
 - SOXL 백테스트 시 SOXX, SMH 섹터 가드 데이터를 자동 동기화하여 실거래와 일치시킨다.
@@ -89,3 +91,11 @@ Telegram dry-run 관찰, Toss 조회 smoke test, 서버 정합성 검사를 통�
 - SOXL 섹터 가드는 1·3·4차에 적용하고 조회 실패는 경고 후 허용한다.
 - 자동손절과 재매수는 사용하지 않으며, 모든 매수는 2단계 사용자 승인을 요구한다.
 - 운영 배포는 검증된 `main` 커밋을 강제 `dry_run`으로 반영하고 Toss 조회 전용 smoke test와 Reconciliation 후 별도로 실거래 여부를 판단한다.
+
+## D-011 — FINAL Telegram 점수 해석과 문서 인수인계 표준화
+
+- `/backtest` 타임라인은 종목당 최근 15건을 표시한다.
+- `/guide`는 전략 점수, 분할매수·익절, 보조지표 해석의 3개 카드로 나누어 전송한다.
+- `/score`는 CCI·RSI·EMA·볼린저·거래량·ATR·종가 위치의 원값과 한국어 해석을 함께 표시한다.
+- `/score`의 FINAL 핵심 조건은 55점, 반등 5점, RED 국면 차단을 빠른 참고용으로 보여주되 최종 판단은 전략 엔진의 포지션·가드·승인 결과를 따른다.
+- 문서 진입점은 `CURRENT_WORK.md`와 `docs/README.md`로 통일하고, Archive의 과거 수치를 현재 계약과 명확히 분리한다.

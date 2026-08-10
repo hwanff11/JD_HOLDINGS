@@ -4,6 +4,7 @@
 
 세부 절차는 `docs/infra/DEVELOPMENT_WORKFLOW.md`를 따른다.
 현재 작업 상태와 인수인계 정보는 `CURRENT_WORK.md`를 Source of Truth로 사용한다.
+문서의 현재/과거 구분과 읽기 순서는 `docs/README.md`를 따른다.
 
 ## 사용자 단축 명령
 

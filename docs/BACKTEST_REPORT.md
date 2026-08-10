@@ -2,6 +2,9 @@
 
 이 문서는 JDSS의 백테스트와 후보 연구 기록을 보존합니다. 현재 운영 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)의 **JDSS-2.1.0-FINAL**입니다.
 
+> [!IMPORTANT]
+> `Archive` 아래의 성과와 파라미터는 당시 코드·데이터 조건의 역사 기록이며 현재 전략 성과로 인용하지 않습니다. 현재 작업과 재현 경로는 [`README.md`](README.md)와 [`../CURRENT_WORK.md`](../CURRENT_WORK.md)를 먼저 확인하세요.
+
 ## 현재 FINAL 회귀검증 요약
 
 | 구간 | CAGR | MDD | 비고 |

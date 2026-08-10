@@ -2,6 +2,8 @@
 
 현재 배포 대상은 `main`의 **JDSS-2.1.0-FINAL**이다. 최초 반영은 반드시 `dry_run`으로 수행하며, 이 단계에서는 실주문 잠금을 해제하지 않는다.
 
+현재 운영 스냅샷은 Oracle 릴리스 `b9dd21c`이며 서비스는 active, 거래 모드는 `dry_run`이다. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문은 0건으로 확인됐다. 이 값은 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
+
 ## 1. 서버 준비
 
 Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요합니다. 기본
@@ -44,7 +46,7 @@ Git 작업트리가 깨끗한 `main`이어야 하며, 로컬 HEAD가 `origin/mai
 
 ```bash
 git remote -v
-./deploy.sh
+env -u GITHUB_TOKEN ./deploy.sh
 ```
 
 권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고, Ruff·pytest·설정 검증·FINAL 버전 검사를 다시 통과한 뒤 서버 `.env`를 아래처럼 강제 잠근다.
@@ -64,6 +66,13 @@ Telegram 백테스트의 yfinance 캐시도
 systemd 서비스는 `JDSS_CACHE_PATH`를 shared 캐시로, `JDSS_CONFIG_PATH`를
 `/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정해
 설치형 패키지에서도 현재 릴리스의 설정을 사용합니다.
+
+운영 데이터 경로는 다음과 같다.
+
+- DB: `/home/ubuntu/JD_HOLDINGS/shared/data/jdss.db`
+- 로그: `/home/ubuntu/JD_HOLDINGS/shared/logs/jdss.log`
+- 캐시: `/home/ubuntu/JD_HOLDINGS/shared/data/cache`
+- 비밀정보: `/home/ubuntu/JD_HOLDINGS/shared/.env`
 
 ## 3. 검증
 

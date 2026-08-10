@@ -12,6 +12,8 @@ main
 
 현재 운영 기준은 **JDSS-2.1.0-FINAL**이다. 실제 기능 개발·전략 연구는 최신 `main`에서 별도 작업 브랜치를 생성하여 진행하고, 검증 완료 후 PR로 `main`에 반영한다.
 
+문서를 처음 읽는 환경은 `CURRENT_WORK.md` → `docs/README.md` → 작업별 기준 문서 순서로 확인한다. `docs/archive/` 및 현행 문서의 `Archive` 구역은 과거 재현용이며 현재 구현의 입력으로 사용하지 않는다.
+
 ## 개발 환경별 역할
 
 ### 집: Codex + 로컬 PC
@@ -25,6 +27,13 @@ main
 - 최신 GitHub 소스를 먼저 읽고 전략 검토, 코드 수정, 테스트 추가, 연구 브랜치/PR 관리를 수행한다.
 - 가능한 검증은 GitHub Actions로 실행한다.
 - 외부 작업이 끝나면 원격 브랜치에 push하여 집의 Codex가 그대로 이어받을 수 있게 한다.
+
+### IDE: Antigravity
+
+- 저장소 루트의 `AGENTS.md`, `CURRENT_WORK.md`, `docs/README.md`를 먼저 읽는다.
+- IDE에 열려 있던 파일보다 GitHub 최신 `main`과 현재 작업 브랜치를 우선한다.
+- 코드 탐색으로 문서의 수치를 검증하고, 과거 Archive 내용을 현재 설정으로 되돌리지 않는다.
+- 작업 종료 전에 테스트 결과와 변경 이유를 `CURRENT_WORK.md`에 남기고 commit + push한다.
 
 ### GitHub: 공용 Source of Truth + 자동 검증 서버
 
@@ -84,10 +93,11 @@ Oracle Cloud와 역할을 구분한다. GitHub Actions는 일회성 테스트·�
 ### `작업 시작`
 
 1. `CURRENT_WORK.md`를 읽는다.
-2. 현재 저장소·브랜치와 미커밋 변경 여부를 확인한다.
-3. 로컬 변경이 없으면 `git fetch origin`과 `git pull --ff-only`로 현재 브랜치를 최신화한다.
-4. 로컬 변경이 있으면 임의로 덮어쓰거나 stash/reset하지 않고 사용자에게 상태를 알린다.
-5. 현재 브랜치와 최신 커밋을 간단히 보고한 뒤 작업한다.
+2. `docs/README.md`에서 현재 문서와 Archive의 경계를 확인한다.
+3. 현재 저장소·브랜치와 미커밋 변경 여부를 확인한다.
+4. 로컬 변경이 없으면 `git fetch origin`과 `git pull --ff-only`로 현재 브랜치를 최신화한다.
+5. 로컬 변경이 있으면 임의로 덮어쓰거나 stash/reset하지 않고 사용자에게 상태를 알린다.
+6. 현재 브랜치와 최신 커밋을 간단히 보고한 뒤 작업한다.
 
 ```bash
 git status
