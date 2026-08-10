@@ -7,11 +7,11 @@ from .engine import BacktestEngine
 
 
 class StrategyBacktestEngine(BacktestEngine):
-    """Backtest engine that applies all configured JDSS exit rules.
+    """Backtest engine that applies the production JDSS exit rules.
 
-    The base engine remains useful for legacy experiments. Production-facing
-    backtests should use this class so the configured TP1 remainder-exit rule
-    matches the live order-management behavior.
+    Production-facing backtests use the same configured post-TP1 due and price
+    functions as live order management. The base engine remains available for
+    legacy experiments that intentionally exclude the remainder-exit rule.
     """
 
     def __init__(self, config) -> None:
@@ -27,7 +27,7 @@ class StrategyBacktestEngine(BacktestEngine):
             trades,
             closed_cycles,
         )
-        if tp1_hits and cycle_id:
+        if tp1_hits and cycle_id and state.quantity > 0:
             self._tp1_holding_day[cycle_id] = state.cycle_holding_days
 
         rule = self.config.take_profit.remainder_exit
@@ -42,8 +42,8 @@ class StrategyBacktestEngine(BacktestEngine):
         tp1_day = self._tp1_holding_day.get(state.cycle_id)
         if tp1_day is None:
             return tp1_hits, tp2_hits, profitable_rebuy
-        elapsed = state.cycle_holding_days - tp1_day
-        if not remainder_exit_due(elapsed, rule):
+        elapsed_sessions = state.cycle_holding_days - tp1_day
+        if not remainder_exit_due(elapsed_sessions, rule):
             return tp1_hits, tp2_hits, profitable_rebuy
 
         exit_price = remainder_exit_price(state.average_price, rule)
