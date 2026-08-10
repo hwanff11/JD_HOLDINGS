@@ -5,6 +5,7 @@ on:
     paths:
       - "scripts/backtest_v2_focus.py"
       - "scripts/backtest_v2_audit.py"
+      - "scripts/backtest_v2_tp2_decay.py"
       - "src/jd_holdings/backtest/**"
       - "src/jd_holdings/core/**"
       - "strategy.yaml"
@@ -27,6 +28,7 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - run: python scripts/backtest_v2_focus.py --output reports/v2_focused_backtest.json
       - run: python scripts/backtest_v2_audit.py --output reports/v2_backtest_audit.json
+      - run: python scripts/backtest_v2_tp2_decay.py --output reports/v2_tp2_decay.json
       - uses: actions/upload-artifact@v4
         with:
           name: jdss-v2-focused-backtest
@@ -35,3 +37,5 @@ jobs:
             reports/v2_focused_backtest.md
             reports/v2_backtest_audit.json
             reports/v2_backtest_audit.md
+            reports/v2_tp2_decay.json
+            reports/v2_tp2_decay.md
