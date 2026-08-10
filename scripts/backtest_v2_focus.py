@@ -67,6 +67,8 @@ def build_candidates(base):
         "D_fast_tp36": _with_tp(base, "0.03", "0.06"),
         "E_wider_drop3610_fast_tp36": _with_tp(wider, "0.03", "0.06"),
         "F_profit_runner_tp510": _with_tp(base, "0.05", "0.10"),
+        "G_full_exit_tp44": _with_tp(base, "0.04", "0.04"),
+        "H_full_exit_tp33": _with_tp(base, "0.03", "0.03"),
     }
 
 
