@@ -142,6 +142,12 @@ class AnalysisService:
         signal_id = None
         created = False
         if decision.allowed:
+            self.repository.invalidate_active_signals(
+                symbol,
+                reason="SUPERSEDED_BY_LATEST_ANALYSIS",
+                keep_trade_date=completed,
+                keep_action=decision.action.value,
+            )
             signal_id, created = self.repository.create_signal(
                 symbol=symbol,
                 trade_date=completed,
@@ -161,6 +167,22 @@ class AnalysisService:
                     f"{decision.action.value} {score.total}점",
                     symbol=symbol,
                     context={"signal_id": signal_id, "trade_date": completed.isoformat()},
+                )
+        else:
+            invalidated = self.repository.invalidate_active_signals(
+                symbol, reason="CURRENT_ENTRY_GATES_FAILED"
+            )
+            if invalidated:
+                self.repository.log_event(
+                    "INFO",
+                    "SIGNALS_INVALIDATED",
+                    "최신 분석이 진입 조건을 통과하지 못해 이전 활성 신호를 무효화했습니다",
+                    symbol=symbol,
+                    context={
+                        "count": invalidated,
+                        "score": score.total,
+                        "trade_date": completed.isoformat(),
+                    },
                 )
         return AnalysisResult(
             symbol=symbol,

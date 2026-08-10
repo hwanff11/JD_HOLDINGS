@@ -86,6 +86,17 @@ class TradingService:
             timedelta(minutes=self.config.global_.review_token_ttl_minutes),
         )
 
+    def active_signals(self, symbol: str | None = None) -> list[dict]:
+        """Return only signals that are still executable under the active contract."""
+        self.repository.expire_stale_signals()
+        eligible: list[dict] = []
+        for signal in self.repository.active_signals(symbol):
+            try:
+                eligible.append(self._active_signal(int(signal["signal_id"])))
+            except ApprovalError:
+                continue
+        return eligible
+
     def consume_review(
         self,
         approval_id: int,
@@ -296,7 +307,51 @@ class TradingService:
                 signal_id, status="EXPIRED", processed=True, reason="SIGNAL_EXPIRED"
             )
             raise ApprovalError("신호 유효시간이 만료되었습니다")
+        invalid_reason = self._signal_gate_failure(signal)
+        if invalid_reason is not None:
+            self.repository.mark_signal(
+                signal_id, status="INVALID", processed=True, reason=invalid_reason
+            )
+            self.repository.log_event(
+                "WARNING",
+                "SIGNAL_INVALIDATED",
+                f"활성 신호를 무효화했습니다: {invalid_reason}",
+                symbol=str(signal["symbol"]),
+                context={"signal_id": signal_id, "score": int(signal["score"])},
+            )
+            raise ApprovalError(f"현재 전략 조건에 맞지 않는 신호입니다: {invalid_reason}")
         return signal
+
+    def _signal_gate_failure(self, signal: dict) -> str | None:
+        if (
+            signal["strategy_version"] != self.config.version
+            or signal["config_version"] != self.config.config_version
+        ):
+            return "SIGNAL_VERSION_MISMATCH"
+        action = str(signal["action"])
+        if action == DecisionType.FIRST_ENTRY_CANDIDATE.value:
+            required_score = self.config.global_.entry_score
+            required_reversal = self.config.global_.minimum_reversal_score
+        elif action == DecisionType.ADD_ENTRY_CANDIDATE.value:
+            target_stage = int(signal["target_stage"] or 0)
+            rule = self.config.additional_entry.stages.get(target_stage)
+            if rule is None:
+                return "SIGNAL_STAGE_INVALID"
+            required_score = rule.min_score
+            required_reversal = self.config.global_.minimum_reversal_score
+        elif action == DecisionType.REBUY_CANDIDATE.value:
+            required_score = self.config.rebuy.minimum_score
+            required_reversal = self.config.rebuy.minimum_reversal_score
+        else:
+            return "SIGNAL_ACTION_INVALID"
+        if int(signal["score"]) < required_score:
+            return "SIGNAL_SCORE_BELOW_MINIMUM"
+        detail = signal.get("score_detail") or {}
+        if int(detail.get("reversal_score", 0)) < required_reversal:
+            return "SIGNAL_REVERSAL_BELOW_MINIMUM"
+        if str(signal["regime"]) == "RED":
+            return "SIGNAL_RED_REGIME"
+        return None
 
     @staticmethod
     def _purpose(action: str, target_stage: int | None) -> str:

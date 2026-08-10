@@ -615,6 +615,40 @@ class SQLiteRepository:
         with self._connect() as connection:
             return [dict(row) for row in connection.execute(query, params).fetchall()]
 
+    def invalidate_active_signals(
+        self,
+        symbol: str,
+        *,
+        reason: str,
+        keep_trade_date: date | None = None,
+        keep_action: str | None = None,
+    ) -> int:
+        query = """
+            UPDATE signals
+            SET status = 'INVALID', processed = 1,
+                expired_reason = ?, updated_at = ?
+            WHERE symbol = ? AND status = 'ACTIVE' AND processed = 0
+        """
+        params: list[Any] = [reason, utc_now().isoformat(), symbol.upper()]
+        if keep_trade_date is not None and keep_action is not None:
+            query += """
+                AND NOT (
+                    trade_date = ? AND action = ?
+                    AND strategy_version = ? AND config_version = ?
+                )
+            """
+            params.extend(
+                [
+                    keep_trade_date.isoformat(),
+                    keep_action,
+                    self.config.version,
+                    self.config.config_version,
+                ]
+            )
+        with self.transaction() as connection:
+            cursor = connection.execute(query, params)
+            return cursor.rowcount
+
     def mark_signal(
         self, signal_id: int, *, status: str, processed: bool, reason: str | None = None
     ) -> None:

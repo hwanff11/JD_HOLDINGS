@@ -708,7 +708,7 @@ class TelegramBotApp:
         def signal(message):
             if not self._authorized_message(message):
                 return
-            signals = self.repository.active_signals()
+            signals = self.trading_service.active_signals()
             if not signals:
                 self._send(
                     "🤖 <b>현재 대기 중인 JDSS 매수 신호가 없습니다.</b>\n차분하게 다음 타점을 기다립니다. ☕"

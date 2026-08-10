@@ -7,7 +7,7 @@ import pytest
 from conftest import make_score, make_snapshot
 
 from jd_holdings.application.broker import DryRunBroker
-from jd_holdings.application.database import SQLiteRepository
+from jd_holdings.application.database import ApprovalError, SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.position_manager import PositionManager
@@ -117,6 +117,61 @@ def test_two_step_dry_run_order_flow(tmp_path, config):
     assert position.quantity == quote.quantity
     assert repository.active_tp_plan("TQQQ") is not None
     assert len(repository.open_orders("TQQQ")) == 2
+
+
+def test_signal_command_filters_and_invalidates_db_signal_below_minimum(tmp_path, config):
+    repository, _, trading, _ = build_services(tmp_path, config)
+    snapshot = make_snapshot(close=Decimal("100"))
+    score = make_score(84)
+    decision = evaluate_entry(snapshot, score, repository.get_position("TQQQ"), config)
+    signal_id, _ = repository.create_signal(
+        symbol="TQQQ",
+        trade_date=date(2026, 8, 4),
+        score=score,
+        atr_pct=Decimal("0.05"),
+        decision=decision,
+        signal_close=snapshot.close,
+        max_chase_price=max_chase_price(snapshot.close, config),
+        valid_until=datetime.now(UTC) + timedelta(days=1),
+        code_version="test",
+        cycle_id=None,
+    )
+    with repository.transaction() as connection:
+        connection.execute("UPDATE signals SET score = 50 WHERE signal_id = ?", (signal_id,))
+
+    assert trading.active_signals() == []
+    invalid = repository.get_signal(signal_id)
+    assert invalid["status"] == "INVALID"
+    assert invalid["processed"] == 1
+    assert invalid["expired_reason"] == "SIGNAL_SCORE_BELOW_MINIMUM"
+    with pytest.raises(ApprovalError, match="활성 상태가 아닌 신호"):
+        trading.create_review_approval(signal_id)
+
+
+def test_latest_failed_analysis_invalidates_previous_active_signal(tmp_path, config):
+    repository, _, _, _ = build_services(tmp_path, config)
+    snapshot = make_snapshot(close=Decimal("100"))
+    score = make_score(84)
+    decision = evaluate_entry(snapshot, score, repository.get_position("TQQQ"), config)
+    signal_id, _ = repository.create_signal(
+        symbol="TQQQ",
+        trade_date=date(2026, 8, 4),
+        score=score,
+        atr_pct=Decimal("0.05"),
+        decision=decision,
+        signal_close=snapshot.close,
+        max_chase_price=max_chase_price(snapshot.close, config),
+        valid_until=datetime.now(UTC) + timedelta(days=1),
+        code_version="test",
+        cycle_id=None,
+    )
+
+    assert repository.invalidate_active_signals(
+        "TQQQ", reason="CURRENT_ENTRY_GATES_FAILED"
+    ) == 1
+    invalid = repository.get_signal(signal_id)
+    assert invalid["status"] == "INVALID"
+    assert invalid["expired_reason"] == "CURRENT_ENTRY_GATES_FAILED"
 
 
 def test_partial_tp_is_applied_cumulatively_and_recovered(tmp_path, config):

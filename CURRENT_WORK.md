@@ -45,6 +45,7 @@
 - 2011-01-01~2026-08-04 장기 회귀: 포트폴리오 `+322.58%`, CAGR `+9.69%`, MDD `-24.68%`, SGOV 기여 `$10,810.54`.
 - 구현 커밋 `aaab561`을 PR #8로 검증해 `main`에 병합했고 Oracle에 `c86ca23`을 배포했다.
 - 운영은 JDSS 2.2.0이며 `dry_run` 잠금과 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
+- Telegram `/signal`이 DB의 `ACTIVE` 플래그만 신뢰하던 결함을 수정해, 표시·승인 전에 현재 버전과 점수·반등·RED 국면 게이트를 재검증하고 부적격 레코드를 `INVALID` 처리한다.
 
 ## 2.1 기준선 완료 상태
 
@@ -106,7 +107,7 @@
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
 - 문서 검증: Git 추적 Markdown 18개, 깨진 로컬 링크 0개, FINAL/Archive 경계 확인
 - 운영 방침: Telegram `/bt`, `/cash` 조회·검증 중심, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
-- 다음 우선순위: Telegram `/cash` 표시와 SGOV 원장·broker reconciliation을 관찰하고, 별도 승인 전까지 live 전환하지 않는다.
+- 다음 우선순위: `/signal` 부적격 DB 레코드 자동 정리와 Telegram `/cash`, SGOV 원장·broker reconciliation을 관찰하고, 별도 승인 전까지 live 전환하지 않는다.
 
 ## 갱신 규칙
 
