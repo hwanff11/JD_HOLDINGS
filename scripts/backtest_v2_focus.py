@@ -70,14 +70,33 @@ def build_candidates(base):
     }
 
 
-def _weighted_metric(results: dict[str, BacktestResult], key: str) -> float:
-    weighted = 0.0
-    count = 0
-    for result in results.values():
-        cycles = int(result.metrics["closed_cycles"])
-        weighted += float(result.metrics[key]) * cycles
-        count += cycles
-    return weighted / count if count else 0.0
+def _holding_days_including_open(result: BacktestResult) -> list[int]:
+    days = [int(cycle["holding_days"]) for cycle in result.closed_cycles]
+    if int(result.open_position["quantity"]) > 0:
+        days.append(int(result.open_position["holding_days"]))
+    return days
+
+
+def _average_holding_including_open(results: dict[str, BacktestResult]) -> float:
+    days = [day for result in results.values() for day in _holding_days_including_open(result)]
+    return sum(days) / len(days) if days else 0.0
+
+
+def _lockup_rate_including_open(result: BacktestResult, threshold: int) -> float:
+    days = _holding_days_including_open(result)
+    if not days:
+        return 0.0
+    return sum(day > threshold for day in days) / len(days) * 100
+
+
+def _open_price_drawdown(result: BacktestResult) -> float:
+    if int(result.open_position["quantity"]) <= 0:
+        return 0.0
+    average = float(result.open_position["average_price"])
+    market = float(result.open_position["market_price"])
+    if average <= 0:
+        return 0.0
+    return (market / average - 1.0) * 100
 
 
 def combined_metrics(results: dict[str, BacktestResult], annualization_days: int) -> dict[str, Any]:
@@ -102,13 +121,21 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
         "sortino": round(sortino, 3),
         "closed_cycles": closed,
         "signals": signals,
-        "avg_holding_days": round(_weighted_metric(results, "average_holding_days"), 2),
+        "avg_holding_days_including_open": round(_average_holding_including_open(results), 2),
+        "max_holding_days_worst_symbol_including_open": max(
+            max(_holding_days_including_open(result), default=0) for result in results.values()
+        ),
         "mae_p95_worst_symbol_pct": min(
             float(result.metrics["mae_p95_pct"]) for result in results.values()
         ),
         "worst_mae_pct": min(float(result.metrics["worst_mae_pct"]) for result in results.values()),
-        "lockup_over_40_days_worst_symbol_pct": max(
-            float(result.metrics["lockup_over_40_days_pct"]) for result in results.values()
+        "lockup_over_40_days_worst_symbol_pct": round(
+            max(_lockup_rate_including_open(result, 40) for result in results.values()),
+            2,
+        ),
+        "open_price_drawdown_worst_symbol_pct": round(
+            min(_open_price_drawdown(result) for result in results.values()),
+            2,
         ),
         "capital_utilization_avg_pct": round(
             sum(float(result.metrics["average_capital_utilization_pct"]) for result in results.values())
@@ -137,9 +164,13 @@ def markdown_summary(report: dict[str, Any]) -> str:
         "# JDSS 2.0 Focused Swing Backtest",
         "",
         "Primary decision window: **2021-2024 validation**. Recent years are reference only.",
+        "Open positions at the end of each segment are included in holding/lockup risk.",
         "",
-        "| Candidate | CAGR | MDD | P95 MAE* | >40d lockup* | Cycles | Avg hold |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        (
+            "| Candidate | CAGR | MDD | P95 MAE* | >40d lockup* | Max hold* | "
+            "Open DD* | Cycles | Avg hold* |"
+        ),
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     rows = []
     for name, candidate in report["candidates"].items():
@@ -150,19 +181,23 @@ def markdown_summary(report: dict[str, Any]) -> str:
             f"| {name} | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | "
             f"{m['mae_p95_worst_symbol_pct']:.2f}% | "
             f"{m['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
-            f"{m['closed_cycles']} | {m['avg_holding_days']:.1f}d |"
+            f"{m['max_holding_days_worst_symbol_including_open']}d | "
+            f"{m['open_price_drawdown_worst_symbol_pct']:.2f}% | "
+            f"{m['closed_cycles']} | {m['avg_holding_days_including_open']:.1f}d |"
         )
     lines.extend(
         [
             "",
-            "\* P95 MAE and >40d lockup use the worse of TQQQ/SOXL as a conservative guardrail.",
+            (
+                "\* P95 MAE uses closed cycles. Lockup/max hold/average hold include any open cycle. "
+                "Open DD is the worse end-of-window price drawdown versus average cost among TQQQ/SOXL."
+            ),
             "",
             "## Decision rule",
             "",
-            "Prefer higher validation CAGR when MDD, P95 MAE and long-lockup risk stay similar. "
+            "Prefer higher validation CAGR when MDD, tail risk and long-lockup risk stay similar. "
             "Reject a higher-return candidate if the improvement is mainly bought with materially "
-            "worse tail risk or much longer capital lockup. Do not tune further from the recent-only "
-            "segment.",
+            "worse drawdown or much longer capital lockup. Do not tune from the recent-only segment.",
         ]
     )
     return "\n".join(lines) + "\n"
