@@ -157,7 +157,11 @@ def markdown_summary(report):
     lines = [
         "# JDSS 2.0 Structural Lockup Search",
         "",
-        "TP 4/6 and TP 4/8 are evaluated independently. The new trend guard blocks only first entry when price is below EMA60 and EMA20 is also below EMA60.",
+        (
+            "TP 4/6 and TP 4/8 are evaluated independently. The new trend guard "
+            "blocks only first entry when price is below EMA60 and EMA20 is also "
+            "below EMA60."
+        ),
         "",
         "| Candidate | CAGR | MDD | P95 MAE | >40d lockup | Max hold | Open DD | Cycles | Avg hold |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
