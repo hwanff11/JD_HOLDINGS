@@ -12,6 +12,16 @@ def test_systemd_uses_shared_writable_runtime_paths():
     assert "JDSS_CACHE_PATH=__TARGET_DIR__/shared/data/cache" in service
     assert "JDSS_CONFIG_PATH=__TARGET_DIR__/current/strategy.yaml" in service
     assert "ReadWritePaths=__TARGET_DIR__/shared" in service
+    assert "UMask=0077" in service
+    assert "NoNewPrivileges=true" in service
+    assert "PrivateDevices=true" in service
+    assert "ProtectKernelTunables=true" in service
+    assert "ProtectKernelModules=true" in service
+    assert "ProtectControlGroups=true" in service
+    assert "RestrictSUIDSGID=true" in service
+    assert "LockPersonality=true" in service
+    assert "CapabilityBoundingSet=" in service
+    assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6" in service
 
 
 def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
