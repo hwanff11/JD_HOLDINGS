@@ -9,8 +9,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-import pandas as pd
-
 from backtest_v2_focus import (
     BENCHMARKS,
     SYMBOLS,
@@ -20,9 +18,9 @@ from backtest_v2_focus import (
     combined_metrics,
 )
 from jd_holdings.backtest.engine import BacktestEngine
+from jd_holdings.config import load_config
 from jd_holdings.core.enums import PositionState
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
-from jd_holdings.config import load_config
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -180,7 +178,11 @@ def main():
     lines = [
         "# JDSS 2.0 Post-TP1 Remainder Exit Search",
         "",
-        "Research-only: after TP1, wait N trading days and exit the remainder only if price recovers to average cost or average cost +2%. No stop-loss is used.",
+        (
+            "Research-only: after TP1, wait N trading days and exit the remainder "
+            "only if price recovers to average cost or average cost +2%. "
+            "No stop-loss is used."
+        ),
         "",
         "| Candidate | CAGR | MDD | P95 MAE | >40d | Max hold | Open DD | Cycles |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
