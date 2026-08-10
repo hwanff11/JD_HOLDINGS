@@ -7,10 +7,10 @@
 ## 현재 활성 개발 브랜치
 
 ```text
-codex/jdss-2.2.2-sgov-auto-resume
+main
 ```
 
-현재 개발 기준은 **JDSS-2.2.2-SGOV**이며, 운영 배포 기준은 **JDSS-2.2.1-SGOV**이다. 2.2.2는 PR·CI·`main` 병합 후 Oracle에 `dry_run`으로 배포한다.
+현재 개발·운영 배포 기준은 **JDSS-2.2.2-SGOV**이며 PR #13을 거쳐 `main`과 Oracle dry-run 서버에 반영됐다.
 
 문서를 처음 읽는 환경은 `CURRENT_WORK.md` → `docs/README.md` → 작업별 기준 문서 순서로 확인한다. `docs/archive/` 및 현행 문서의 `Archive` 구역은 과거 재현용이며 현재 구현의 입력으로 사용하지 않는다.
 

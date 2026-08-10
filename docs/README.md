@@ -29,7 +29,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 ## 현재 운영 기준
 
 - 개발 전략: `JDSS-2.2.2-SGOV`, 설정·패키지: `2.2.2`
-- 운영 배포: `JDSS-2.2.1-SGOV` Oracle `dry_run`; 2.2.2는 `main` 병합 후 동일한 `dry_run` 잠금으로 배포
+- 운영 배포: `JDSS-2.2.2-SGOV` / `a98b671`, Oracle `dry_run`
 - 유휴자금: SGOV 자동 예치·선현금화·체결 후 최종 승인 자동 재개·60초 재가격 구현
 - 운영 브랜치: `main`
 - Oracle: `dry_run`, Telegram 백테스트 중심 운영
