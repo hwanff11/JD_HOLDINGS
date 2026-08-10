@@ -15,6 +15,7 @@ from jd_holdings.infrastructure.telegram_bot import (
     IDLE_CASH_COMMANDS,
     BacktestCommandError,
     TelegramBotApp,
+    _format_idle_cash_event,
     _guide_cards,
     _profit_loss,
     _regime_label,
@@ -79,6 +80,23 @@ def test_profit_loss_uses_after_cost_values():
 
 def test_won_formats_with_thousands_separator():
     assert _won("1234567.4") == "₩1,234,567"
+
+
+def test_dry_run_sgov_fill_alert_is_explicitly_labeled():
+    event = "SGOV 유휴자금 예치 196주 (FILLED)"
+
+    assert _format_idle_cash_event(event, "dry_run") == (
+        "🧪 모의체결 — SGOV 유휴자금 예치 196주 (FILLED)"
+    )
+    assert _format_idle_cash_event(event, "live") == (
+        "💵 SGOV 유휴자금 예치 196주 (FILLED)"
+    )
+
+
+def test_dry_run_sgov_non_fill_event_is_labeled_as_simulation():
+    event = "SGOV SGOV_SWEEP_BUY 미체결 잔량 재가격 준비"
+
+    assert _format_idle_cash_event(event, "dry_run").startswith("🧪 모의처리 —")
 
 
 @pytest.mark.parametrize(
