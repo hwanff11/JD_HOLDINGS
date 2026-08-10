@@ -6,7 +6,7 @@
 
 - 운영 안정 기준선: `main`
 - 현재 활성 브랜치: `main`
-- 작업 기준 커밋: `main` / `a98b671`
+- 작업 기준: `origin/main` 최신 (운영 기능 릴리스 `a98b671`)
 - JDSS 2.2.2 PR #13: `main` 병합 및 Oracle `dry_run` 배포 완료 (`a98b671`)
 - JDSS 2.2.1 PR #11: `main` 병합 및 Oracle 배포 완료 (`3de66d1`)
 - JDSS 2.2 SGOV PR #8: `main` 병합 완료 (`c86ca23`)
@@ -115,6 +115,7 @@
 - 신호 DB 수정: PR #10, main `ac1e49b`
 - JDSS 2.2.1 릴리스: PR #11, main `3de66d1`
 - JDSS 2.2.2 릴리스: PR #13, main·Oracle `a98b671`
+- JDSS 2.2.2 배포 기록: PR #14, main `cdedd4b`
 - GitHub CI: PR #13의 CI run `31397181235` 및 JDSS 2.2 Dry Run `31397181217` 성공
 - Oracle dry-run 배포: `a98b6717f70d7adca0f118b93de452fccc342dc1` 배포 완료
 - 배포 후 검증: `jd_holdings_bot` active, 패키지 2.2.2, 전략 `JDSS-2.2.2-SGOV`, config 2.2.2, `dry_run`, 빈 live 확인값, Toss TQQQ·SOXL·SGOV 시세·미국장 캘린더 조회 성공
