@@ -1,0 +1,135 @@
+name: Deploy Oracle Dry Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "main commit SHA to deploy (blank = current main)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oracle-jdss-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: oracle-dry-run
+    steps:
+      - name: Resolve deployment ref
+        id: ref
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "$REQUESTED_REF" ]]; then
+            echo "ref=$REQUESTED_REF" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout requested main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Verify commit belongs to main
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main
+          echo "Deploying $(git rev-parse HEAD) from main history"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install and verify FINAL
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          python -m ruff check .
+          python -m pytest
+          jdss validate-config
+          grep -q 'JDSS-2.1.0-FINAL' strategy.yaml
+
+      - name: Prepare SSH
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$ORACLE_SSH_KEY"
+          test -n "$ORACLE_HOST"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
+          chmod 600 ~/.ssh/oracle_jdss
+
+      - name: Deploy FINAL in forced dry-run mode
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+          SYSTEMD_SERVICE: jd_holdings_bot
+          REMOTE_PYTHON_BIN: ${{ vars.ORACLE_PYTHON || 'python3.12' }}
+          LOCAL_PYTHON: /opt/hostedtoolcache/Python/3.12.*/x64/bin/python
+        run: |
+          set -Eeuo pipefail
+          LOCAL_PYTHON="$(command -v python)" ./deploy.sh
+
+      - name: Force server trading lock to dry_run
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i ~/.ssh/oracle_jdss "$SERVER_USER@$ORACLE_HOST" bash -s -- "$SERVER_TARGET_DIR" <<'REMOTE'
+          set -Eeuo pipefail
+          target="$1"
+          env_file="$target/shared/.env"
+          test -f "$env_file"
+          if grep -q '^JDSS_TRADING_MODE=' "$env_file"; then
+            sed -i 's/^JDSS_TRADING_MODE=.*/JDSS_TRADING_MODE=dry_run/' "$env_file"
+          else
+            printf '\nJDSS_TRADING_MODE=dry_run\n' >> "$env_file"
+          fi
+          if grep -q '^JDSS_LIVE_CONFIRMATION=' "$env_file"; then
+            sed -i 's/^JDSS_LIVE_CONFIRMATION=.*/JDSS_LIVE_CONFIRMATION=/' "$env_file"
+          else
+            printf 'JDSS_LIVE_CONFIRMATION=\n' >> "$env_file"
+          fi
+          chmod 600 "$env_file"
+          sudo systemctl restart jd_holdings_bot
+          sudo systemctl is-active --quiet jd_holdings_bot
+          REMOTE
+
+      - name: Toss read-only smoke test
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i ~/.ssh/oracle_jdss "$SERVER_USER@$ORACLE_HOST" bash -s -- "$SERVER_TARGET_DIR" <<'REMOTE'
+          set -Eeuo pipefail
+          target="$1"
+          set -a
+          source "$target/shared/.env"
+          set +a
+          test "${JDSS_TRADING_MODE:-}" = "dry_run"
+          test -z "${JDSS_LIVE_CONFIRMATION:-}"
+          "$target/venv/bin/jdss" --config "$target/current/strategy.yaml" validate-config
+          "$target/venv/bin/jdss" --config "$target/current/strategy.yaml" toss-smoke
+          sudo systemctl is-active --quiet jd_holdings_bot
+          echo "Oracle dry-run deployment and read-only Toss smoke test succeeded."
+          REMOTE
