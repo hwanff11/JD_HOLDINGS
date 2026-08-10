@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from jd_holdings.config import StrategyConfig
 from jd_holdings.core.enums import PositionState
+from jd_holdings.core.remainder_exit import remainder_exit_due
 from jd_holdings.infrastructure.market_clock import MarketClock
 
 from .broker import Broker
@@ -164,7 +165,7 @@ class OrderMonitor:
                 continue
             tp2_created = max(datetime.fromisoformat(order["created_at"]) for order in tp2_orders)
             elapsed_sessions = self.market_clock.completed_sessions_since(tp2_created, current)
-            if elapsed_sessions < rule.wait_trading_days:
+            if not remainder_exit_due(elapsed_sessions, rule):
                 continue
 
             settled = self.tp_manager.cancel_open_tp_orders(symbol)
@@ -177,9 +178,10 @@ class OrderMonitor:
                 and self.repository.active_tp_plan(symbol)
             ):
                 receipt = self.tp_manager.place_remainder_exit(symbol)
+                target_pct = rule.target_from_avg * Decimal("100")
                 events.append(
                     f"{symbol} TP1 후 {elapsed_sessions}거래일 경과: "
-                    f"잔량 +2% 회수주문 전환 ({receipt.status})"
+                    f"잔량 +{target_pct.normalize()}% 회수주문 전환 ({receipt.status})"
                 )
 
     def _restore_unfilled_buy(self, order: dict) -> None:
