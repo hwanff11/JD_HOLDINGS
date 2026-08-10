@@ -45,6 +45,9 @@
   - 모든 Markdown 로컬 링크를 검사하고 archive 문서의 깨진 링크와 최신 기준 안내를 수정했다.
 - 로컬 검증: pytest 80개 통과, Ruff 통과, `jdss validate-config` 통과, FINAL E2E Dry Run 및 배포 계약 테스트 통과, YAML 파싱·Markdown 링크·`bash -n deploy.sh` 통과.
 - GitHub CI 성공 후 확인된 Node 20 deprecation 경고를 제거하기 위해 공식 권장 `actions/checkout@v7`, `actions/setup-python@v7`로 모든 워크플로를 갱신했다.
+- Telegram `/score`에 CCI·RSI·EMA·볼린저·거래량·ATR·종가 위치의 한국어 해석과 FINAL 핵심 조건 충족 여부를 추가했다.
+- Telegram `/guide`에 보조지표 기준을 쉽게 설명하는 세 번째 카드를 추가하고 운영 가이드를 같은 내용으로 최신화했다.
+- 로컬 및 배포 전 검증: pytest 81개 통과, Ruff 통과, Telegram 카드·점수 메시지 4,096자 제한 검증 완료.
 
 ## 운영 배포 상태와 남은 게이트
 
@@ -61,13 +64,14 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.1 FINAL 전체 계약 감사와 Oracle dry-run 배포 완료. JDSS 내부 포지션·주문은 비어 있으며 당분간 Telegram 백테스트 전용으로 운용. live 승격 금지.
+- 상태: JDSS 2.1 FINAL 전체 계약 감사와 Oracle dry-run 배포 완료. `/score` 보조지표 해석과 `/guide` 설명 카드까지 운영 반영. JDSS 내부 포지션·주문은 비어 있으며 당분간 Telegram 백테스트 전용으로 운용. live 승격 금지.
 - 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
 - 액션 갱신 커밋: `0e685cf` (`ci: upgrade workflows to Node 24 actions`)
 - 백테스트 전용 운영 커밋: `f48b118` (`docs: set dry-run backtest-only operations`)
+- Telegram 지표 설명 커밋: `b9dd21c` (`feat: clarify Telegram score indicators`)
 - GitHub CI: run `31383081468` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
-- Oracle dry-run 배포: `a41e35ac551e06e265b605752eb0748ea27ff693` 배포 완료
+- Oracle dry-run 배포: `b9dd21ca9a76dce9bdbe4d5f42c6991d27d53857` 배포 완료
 - 배포 후 검증: 서비스 active/enabled, 패키지 2.1.0, FINAL 설정 검증, `dry_run` 잠금, Toss 인증·TQQQ/SOXL 시세 조회 성공
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
 - 운영 방침: Telegram `/bt` 백테스트 전용, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
