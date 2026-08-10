@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from jd_holdings.core.enums import PositionState
 from jd_holdings.core.models import OrderReceipt, OrderRequest
-from jd_holdings.core.take_profit import ceil_to_tick
+from jd_holdings.core.remainder_exit import remainder_exit_price
 
 from .broker import Broker
 from .database import SQLiteRepository
@@ -80,9 +80,7 @@ class TakeProfitManager:
             raise RuntimeError(f"{symbol}은 TP1 이후 잔여 보유 상태가 아닙니다")
 
         revision = self.repository.bump_tp_revision(int(plan["tp_plan_id"]))
-        price = ceil_to_tick(
-            position.average_price * (Decimal("1") + rule.target_from_avg)
-        )
+        price = remainder_exit_price(position.average_price, rule)
         client_order_id = build_client_order_id(
             symbol=symbol,
             purpose="REMAINDER_EXIT",
