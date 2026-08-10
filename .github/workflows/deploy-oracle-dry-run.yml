@@ -60,7 +60,7 @@ jobs:
           python -m ruff check .
           python -m pytest
           jdss validate-config
-          grep -q 'JDSS-2.2.1-SGOV' strategy.yaml
+          grep -q 'JDSS-2.2.2-SGOV' strategy.yaml
 
       - name: Prepare SSH
         env:

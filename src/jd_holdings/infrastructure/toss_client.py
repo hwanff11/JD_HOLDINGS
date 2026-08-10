@@ -225,6 +225,12 @@ class TossClient:
         payload = self._request("GET", "/api/v1/market-calendar/US", params=params)
         return dict(payload.get("result", {}))
 
+    def get_orderbook(self, symbol: str) -> dict[str, Any]:
+        payload = self._request(
+            "GET", "/api/v1/orderbook", params={"symbol": symbol.upper()}
+        )
+        return dict(payload.get("result", {}))
+
     def list_orders(
         self,
         *,

@@ -231,12 +231,25 @@ class SQLiteRepository:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS cash_release_intents (
+                    intent_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    signal_id INTEGER NOT NULL UNIQUE REFERENCES signals(signal_id),
+                    required_amount TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'WAITING_SGOV_FILL',
+                    execution_approval_id INTEGER REFERENCES approvals(approval_id),
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_signals_active
                     ON signals(status, symbol, trade_date);
                 CREATE INDEX IF NOT EXISTS idx_orders_status
                     ON orders(status, symbol);
                 CREATE INDEX IF NOT EXISTS idx_approvals_status
                     ON approvals(status, expires_at);
+                CREATE INDEX IF NOT EXISTS idx_cash_release_intents_status
+                    ON cash_release_intents(status, expires_at);
                 """
             )
             now = utc_now().isoformat()
@@ -736,6 +749,162 @@ class SQLiteRepository:
                 (now.isoformat(), approval_id),
             )
             return int(row["signal_id"]), json.loads(row["payload_json"])
+
+    def cancel_approval(self, approval_id: int) -> int:
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT signal_id, status FROM approvals WHERE approval_id = ?", (approval_id,)
+            ).fetchone()
+            if row is None:
+                raise ApprovalError("승인 요청을 찾을 수 없습니다")
+            if row["status"] == "ACTIVE":
+                connection.execute(
+                    "UPDATE approvals SET status = 'CANCELED' WHERE approval_id = ?",
+                    (approval_id,),
+                )
+            return int(row["signal_id"])
+
+    def upsert_cash_release_intent(
+        self, signal_id: int, required_amount: Decimal, expires_at: datetime
+    ) -> dict[str, Any]:
+        now = utc_now().isoformat()
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO cash_release_intents(
+                    signal_id, required_amount, expires_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(signal_id) DO UPDATE SET
+                    required_amount = excluded.required_amount,
+                    status = CASE
+                        WHEN cash_release_intents.status IN ('COMPLETED', 'CANCELED', 'EXPIRED')
+                        THEN 'WAITING_SGOV_FILL'
+                        ELSE cash_release_intents.status
+                    END,
+                    execution_approval_id = CASE
+                        WHEN cash_release_intents.status IN ('COMPLETED', 'CANCELED', 'EXPIRED')
+                        THEN NULL
+                        ELSE cash_release_intents.execution_approval_id
+                    END,
+                    expires_at = excluded.expires_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    signal_id,
+                    str(required_amount),
+                    expires_at.astimezone(UTC).isoformat(),
+                    now,
+                    now,
+                ),
+            )
+        return self.get_cash_release_intent(signal_id)
+
+    def get_cash_release_intent(self, signal_id: int) -> dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM cash_release_intents WHERE signal_id = ?", (signal_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(signal_id)
+        return dict(row)
+
+    def cash_release_intent_is_active(self, signal_id: int) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM cash_release_intents
+                WHERE signal_id = ?
+                  AND status IN ('WAITING_SGOV_FILL', 'AWAITING_EXECUTION')
+                  AND expires_at >= ?
+                """,
+                (signal_id, utc_now().isoformat()),
+            ).fetchone()
+        return row is not None
+
+    def pending_cash_release_intents(self, now: datetime | None = None) -> list[dict[str, Any]]:
+        current = (now or utc_now()).astimezone(UTC).isoformat()
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE approvals SET status = 'EXPIRED'
+                WHERE status = 'ACTIVE' AND expires_at < ?
+                """,
+                (current,),
+            )
+            connection.execute(
+                """
+                UPDATE cash_release_intents
+                SET status = 'CANCELED', updated_at = ?
+                WHERE status = 'AWAITING_EXECUTION'
+                  AND execution_approval_id IN (
+                      SELECT approval_id FROM approvals WHERE status != 'ACTIVE'
+                  )
+                """,
+                (current,),
+            )
+            connection.execute(
+                """
+                UPDATE cash_release_intents
+                SET status = 'EXPIRED', updated_at = ?
+                WHERE status IN ('WAITING_SGOV_FILL', 'AWAITING_EXECUTION')
+                  AND expires_at < ?
+                """,
+                (current, current),
+            )
+            rows = connection.execute(
+                """
+                SELECT * FROM cash_release_intents
+                WHERE status = 'WAITING_SGOV_FILL' AND expires_at >= ?
+                ORDER BY created_at
+                """,
+                (current,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def has_active_cash_release_intents(self, now: datetime | None = None) -> bool:
+        current = (now or utc_now()).astimezone(UTC).isoformat()
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM cash_release_intents
+                WHERE status IN ('WAITING_SGOV_FILL', 'AWAITING_EXECUTION')
+                  AND expires_at >= ? LIMIT 1
+                """,
+                (current,),
+            ).fetchone()
+        return row is not None
+
+    def reserved_cash_release_amount(self, exclude_signal_id: int | None = None) -> Decimal:
+        query = """
+            SELECT required_amount FROM cash_release_intents
+            WHERE status = 'AWAITING_EXECUTION' AND expires_at >= ?
+        """
+        params: list[Any] = [utc_now().isoformat()]
+        if exclude_signal_id is not None:
+            query += " AND signal_id != ?"
+            params.append(exclude_signal_id)
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return sum((_decimal(row["required_amount"]) for row in rows), Decimal("0"))
+
+    def update_cash_release_intent(
+        self,
+        signal_id: int,
+        *,
+        status: str,
+        execution_approval_id: int | None = None,
+    ) -> None:
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE cash_release_intents
+                SET status = ?, execution_approval_id = ?, updated_at = ?
+                WHERE signal_id = ?
+                """,
+                (status, execution_approval_id, utc_now().isoformat(), signal_id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(signal_id)
 
     def reserve_order(
         self,

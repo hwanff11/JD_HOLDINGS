@@ -16,7 +16,7 @@ from jd_holdings.infrastructure.market_clock import MarketClock, session_is_allo
 
 from .broker import Broker
 from .database import ApprovalError, SQLiteRepository
-from .idle_cash_manager import IdleCashManager
+from .idle_cash_manager import IdleCashManager, IdleCashReleasePending
 from .order_manager import OrderManager, build_client_order_id
 from .position_manager import PositionManager
 from .tp_manager import TakeProfitManager
@@ -80,6 +80,8 @@ class TradingService:
 
     def create_review_approval(self, signal_id: int) -> tuple[int, str]:
         signal = self._active_signal(signal_id)
+        if self.repository.cash_release_intent_is_active(signal_id):
+            raise ApprovalError("SGOV 현금화 또는 최종 매수 승인이 이미 진행 중입니다")
         return self.repository.create_approval(
             int(signal["signal_id"]),
             ApprovalStage.REVIEW,
@@ -91,6 +93,8 @@ class TradingService:
         self.repository.expire_stale_signals()
         eligible: list[dict] = []
         for signal in self.repository.active_signals(symbol):
+            if self.repository.cash_release_intent_is_active(int(signal["signal_id"])):
+                continue
             try:
                 eligible.append(self._active_signal(int(signal["signal_id"])))
             except ApprovalError:
@@ -105,7 +109,45 @@ class TradingService:
         now: datetime | None = None,
     ) -> ReviewQuote:
         signal_id, _ = self.repository.consume_approval(approval_id, token, ApprovalStage.REVIEW)
-        quote = self._build_quote(signal_id, now=now)
+        quote = self._build_quote(signal_id, now=now, allow_cash_release=True)
+        return self._issue_execution_approval(quote)
+
+    def resume_cash_releases(self, *, now: datetime | None = None) -> list[ReviewQuote]:
+        quotes: list[ReviewQuote] = []
+        for intent in self.repository.pending_cash_release_intents(now):
+            signal_id = int(intent["signal_id"])
+            try:
+                quote = self._build_quote(signal_id, now=now, allow_cash_release=True)
+            except IdleCashReleasePending:
+                continue
+            except ApprovalError as exc:
+                if "현재 주문 허용 세션" in str(exc):
+                    continue
+                self.repository.update_cash_release_intent(signal_id, status="CANCELED")
+                self.repository.log_event(
+                    "WARNING",
+                    "CASH_RELEASE_INTENT_CANCELED",
+                    str(exc),
+                    context={"signal_id": signal_id},
+                )
+                continue
+            quotes.append(self._issue_execution_approval(quote))
+        return quotes
+
+    def cancel_approval(self, approval_id: int) -> None:
+        signal_id = self.repository.cancel_approval(approval_id)
+        try:
+            self.repository.update_cash_release_intent(signal_id, status="CANCELED")
+        except KeyError:
+            pass
+
+    def cancel_cash_release(self, signal_id: int) -> None:
+        if self.idle_cash_manager is not None:
+            self.idle_cash_manager.cancel_entry_release_orders(signal_id)
+        self.repository.update_cash_release_intent(signal_id, status="CANCELED")
+
+    def _issue_execution_approval(self, quote: ReviewQuote) -> ReviewQuote:
+        signal_id = quote.signal_id
         payload = {
             "current_price": str(quote.current_price),
             "execution_ceiling": str(quote.execution_ceiling),
@@ -119,6 +161,14 @@ class TradingService:
             timedelta(seconds=self.config.global_.execution_token_ttl_seconds),
             payload,
         )
+        try:
+            self.repository.update_cash_release_intent(
+                signal_id,
+                status="AWAITING_EXECUTION",
+                execution_approval_id=execution_id,
+            )
+        except KeyError:
+            pass
         return ReviewQuote(
             **{
                 **quote.__dict__,
@@ -137,7 +187,11 @@ class TradingService:
         signal_id, approved = self.repository.consume_approval(
             approval_id, token, ApprovalStage.EXECUTION
         )
-        quote = self._build_quote(signal_id, now=now)
+        try:
+            quote = self._build_quote(signal_id, now=now, allow_cash_release=False)
+        except Exception:
+            self._set_cash_intent_status(signal_id, "CANCELED")
+            raise
         comparison = {
             "execution_ceiling": str(quote.execution_ceiling),
             "limit_price": str(quote.limit_price),
@@ -149,6 +203,7 @@ class TradingService:
             for key in ("execution_ceiling", "limit_price", "quantity", "session")
         }
         if comparison != approved_comparison:
+            self._set_cash_intent_status(signal_id, "CANCELED")
             raise QuoteChangedError("가격 또는 수량이 바뀌어 새로운 최종 확인이 필요합니다")
         signal = self._active_signal(signal_id)
         action = str(signal["action"])
@@ -156,12 +211,14 @@ class TradingService:
         position = self.repository.get_position(signal["symbol"])
         expected = BASE_STATE_BY_ACTION_STAGE[(action, target_stage)]
         if position.state != expected:
+            self._set_cash_intent_status(signal_id, "CANCELED")
             raise RuntimeError("승인 후 포지션 상태가 변경되었습니다")
         settled_tp_orders = self.tp_manager.cancel_open_tp_orders(signal["symbol"])
         for client_order_id in settled_tp_orders:
             self.position_manager.apply_sell_fill(client_order_id)
         position = self.repository.get_position(signal["symbol"])
         if position.state != expected:
+            self._set_cash_intent_status(signal_id, "CANCELED")
             raise QuoteChangedError("익절 체결로 포지션이 바뀌어 매수 승인을 취소했습니다")
         waiting = WAITING_FILL_BY_ACTION_STAGE[(action, target_stage)]
         purpose = self._purpose(action, target_stage)
@@ -219,6 +276,7 @@ class TradingService:
                     symbol=signal["symbol"],
                     context={"client_order_id": client_order_id},
                 )
+            self._set_cash_intent_status(signal_id, "CANCELED")
             raise
         if receipt.status in {"REJECTED", "CANCELED"} and receipt.filled_quantity == 0:
             current_position = self.repository.get_position(signal["symbol"])
@@ -235,6 +293,7 @@ class TradingService:
             )
             if expected != PositionState.EMPTY and self.repository.active_tp_plan(signal["symbol"]):
                 self.tp_manager.place_orders(signal["symbol"])
+            self._set_cash_intent_status(signal_id, "CANCELED")
             return receipt
         if receipt.status == "FILLED" and receipt.filled_quantity > 0:
             self.position_manager.apply_buy_fill(
@@ -243,9 +302,22 @@ class TradingService:
             )
             self.tp_manager.place_orders(signal["symbol"])
         self.repository.mark_signal(signal_id, status="PROCESSED", processed=True)
+        self._set_cash_intent_status(signal_id, "COMPLETED")
         return receipt
 
-    def _build_quote(self, signal_id: int, *, now: datetime | None) -> ReviewQuote:
+    def _set_cash_intent_status(self, signal_id: int, status: str) -> None:
+        try:
+            self.repository.update_cash_release_intent(signal_id, status=status)
+        except KeyError:
+            pass
+
+    def _build_quote(
+        self,
+        signal_id: int,
+        *,
+        now: datetime | None,
+        allow_cash_release: bool,
+    ) -> ReviewQuote:
         signal = self._active_signal(signal_id)
         current = now or datetime.now(UTC)
         session = self.market_clock.classify_session(current)
@@ -279,12 +351,24 @@ class TradingService:
         )
         if quantity < 1:
             raise ApprovalError("계산된 매수수량이 0주입니다")
-        buying_power = self.broker.get_buying_power("USD")
         total = Decimal(quantity) * limit * (Decimal("1") + self.config.global_.buy_fee)
-        if self.idle_cash_manager is not None:
-            self.idle_cash_manager.ensure_buying_power(total)
-            buying_power = self.broker.get_buying_power("USD")
-        if total > buying_power:
+        reserved = self.repository.reserved_cash_release_amount(signal_id)
+        buying_power = max(
+            Decimal("0"), self.broker.get_buying_power("USD") - reserved
+        )
+        if self.idle_cash_manager is not None and allow_cash_release:
+            self.idle_cash_manager.ensure_buying_power(
+                total,
+                signal_id=signal_id,
+                expires_at=datetime.fromisoformat(str(signal["valid_until"])),
+            )
+            buying_power = max(
+                Decimal("0"), self.broker.get_buying_power("USD") - reserved
+            )
+        required_buying_power = total
+        if self.config.idle_cash.enabled:
+            required_buying_power += self.config.idle_cash.cash_buffer
+        if required_buying_power > buying_power:
             raise ApprovalError("실제 달러 매수가능금액이 부족합니다")
         return ReviewQuote(
             signal_id=signal_id,

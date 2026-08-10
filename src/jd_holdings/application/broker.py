@@ -14,6 +14,8 @@ class Broker(Protocol):
 
     def get_buying_power(self, currency: str = "USD") -> Decimal: ...
 
+    def get_orderbook(self, symbol: str) -> dict[str, Any]: ...
+
     def place_order(self, request: OrderRequest) -> OrderReceipt: ...
 
     def get_order(self, order_id: str) -> dict[str, Any]: ...
@@ -69,6 +71,13 @@ class DryRunBroker:
 
     def get_buying_power(self, currency: str = "USD") -> Decimal:
         return self.buying_power
+
+    def get_orderbook(self, symbol: str) -> dict[str, Any]:
+        price = self.get_price(symbol)
+        return {
+            "asks": [{"price": str(price), "volume": "1000000"}],
+            "bids": [{"price": str(price), "volume": "1000000"}],
+        }
 
     def place_order(self, request: OrderRequest) -> OrderReceipt:
         existing = next(

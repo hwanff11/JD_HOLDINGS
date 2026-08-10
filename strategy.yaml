@@ -1,5 +1,5 @@
-version: JDSS-2.2.1-SGOV
-config_version: "2.2.1"
+version: JDSS-2.2.2-SGOV
+config_version: "2.2.2"
 
 global:
   capital_per_symbol: 10000
@@ -154,6 +154,8 @@ idle_cash:
   minimum_order_amount: 100
   buy_limit_buffer: 0.001
   sell_limit_buffer: 0.001
+  orderbook_limit_offset: 0.01
+  reprice_after_seconds: 60
   sweep_interval_seconds: 300
   require_sale_fill_before_entry: true
 
