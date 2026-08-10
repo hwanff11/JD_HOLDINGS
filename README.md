@@ -2,7 +2,7 @@
 
 JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반등을 이용하고 유휴 전략자금을 SGOV로 운용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 개발 기준은 **JDSS-2.2.2-SGOV**이다.
 
-> 현재 Oracle 운영본은 **JDSS-2.2.2-SGOV**이며 `dry_run`으로 잠겨 있다. SGOV 현금화 자동 재개·호가 기반 지정가가 적용됐고 서비스·버전·Toss 조회 전용 smoke test를 통과했다. 실거래 승격은 별도 승인 전까지 금지한다. 실제 배포 SHA는 서버 `current` 링크와 배포 출력을 기준으로 한다.
+> 현재 브랜치·Oracle 배포·검증 상태는 [`CURRENT_WORK.md`](CURRENT_WORK.md)에서만 관리한다. 실거래 승격은 별도 승인 전까지 금지한다.
 
 ## JDSS 2.2 전략 요약
 
@@ -18,7 +18,7 @@ JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반�
 - SGOV는 매수 최우선 매도호가 `+$0.01`, 매도 최우선 매수호가 `-$0.01`의 시장가성 지정가를 사용하고 60초 미체결 시 취소·재가격
 - 기존 개인 SGOV는 JDSS 관리분으로 자동 편입하거나 매도하지 않음
 
-처음 저장소를 인수하는 환경은 [문서 안내](docs/README.md)와 [현재 작업 상태](CURRENT_WORK.md)를 먼저 읽으세요. 정식 계약은 [JDSS 2.2 사양](docs/JDSS_FINAL_SPEC.md), 운영 이력은 [전략 가이드](docs/STRATEGY_GUIDE.md), 검증 기록은 [백테스트 보고서](docs/BACKTEST_REPORT.md), 협업 절차는 [개발 워크플로](docs/infra/DEVELOPMENT_WORKFLOW.md)를 참고합니다.
+처음 저장소를 인수하는 환경은 [문서 안내](docs/README.md)와 [현재 작업 상태](CURRENT_WORK.md)를 먼저 읽으세요. 정식 계약은 [JDSS 2.2 사양](docs/JDSS_FINAL_SPEC.md), 운영 이력은 [전략 가이드](docs/STRATEGY_GUIDE.md), 검증 기록은 [백테스트 보고서](docs/BACKTEST_REPORT.md), 협업 절차는 [개발 워크플로](docs/infra/DEVELOPMENT_WORKFLOW.md), 보안 기준은 [보안 기준](docs/infra/SECURITY.md)을 참고합니다.
 
 ## 구현 범위
 

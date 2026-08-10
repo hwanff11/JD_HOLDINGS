@@ -1,6 +1,13 @@
 .env
 .env.*
 !.env.example
+
+# 로컬 배포·접속 키는 저장소에 포함하지 않는다.
+*.pem
+*.key
+*.ppk
+id_rsa*
+id_ed25519*
 .venv/
 venv/
 __pycache__/

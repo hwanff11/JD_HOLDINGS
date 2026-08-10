@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import tomllib
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from conftest import make_score, make_snapshot
@@ -17,6 +18,7 @@ from jd_holdings.infrastructure.telegram_bot import (
     TelegramBotApp,
     _format_idle_cash_event,
     _guide_cards,
+    _is_toss_order_maintenance_window,
     _profit_loss,
     _regime_label,
     _won,
@@ -25,6 +27,20 @@ from jd_holdings.infrastructure.telegram_bot import (
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
+SEOUL_TZ = ZoneInfo("Asia/Seoul")
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (datetime(2026, 8, 11, 8, 49, tzinfo=SEOUL_TZ), False),
+        (datetime(2026, 8, 11, 8, 50, tzinfo=SEOUL_TZ), True),
+        (datetime(2026, 8, 11, 8, 59, tzinfo=SEOUL_TZ), True),
+        (datetime(2026, 8, 11, 9, 0, tzinfo=SEOUL_TZ), False),
+    ],
+)
+def test_toss_order_maintenance_window(now, expected):
+    assert _is_toss_order_maintenance_window(now) is expected
 
 
 def test_backtest_command_defaults_to_soxl_and_300_trading_days():

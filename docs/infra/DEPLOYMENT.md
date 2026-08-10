@@ -86,6 +86,10 @@ systemd 서비스는 `JDSS_CACHE_PATH`를 shared 캐시로, `JDSS_CONFIG_PATH`�
 `/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정해
 설치형 패키지에서도 현재 릴리스의 설정을 사용합니다.
 
+서비스는 `UMask=0077`로 새 DB·로그 파일을 운영 사용자 전용으로 만들고, capability 제거,
+private devices/tmp, 커널·control group 보호, SUID/SGID 제한과 `AF_UNIX/AF_INET/AF_INET6`
+주소 패밀리 제한을 적용한다. 보안 기준과 점검표는 [`SECURITY.md`](SECURITY.md)를 따른다.
+
 운영 데이터 경로는 다음과 같다.
 
 - DB: `/home/ubuntu/JD_HOLDINGS/shared/data/jdss.db`

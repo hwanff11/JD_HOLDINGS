@@ -17,10 +17,20 @@ Environment=JDSS_CONFIG_PATH=__TARGET_DIR__/current/strategy.yaml
 ExecStart=__TARGET_DIR__/venv/bin/jdss-bot
 Restart=on-failure
 RestartSec=10
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=__TARGET_DIR__/shared
 
 [Install]

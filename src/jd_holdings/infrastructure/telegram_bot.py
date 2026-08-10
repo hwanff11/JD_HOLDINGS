@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import telebot
@@ -33,6 +34,7 @@ from jd_holdings.settings import RuntimeSettings
 
 LOGGER = logging.getLogger(__name__)
 IDLE_CASH_COMMANDS = ("sgov",)
+SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 class BacktestCommandError(ValueError):
@@ -97,6 +99,10 @@ def parse_backtest_request(
             f"종료일은 최신 완결 거래일 {latest_completed.isoformat()} 이하여야 합니다."
         )
     return TelegramBacktestRequest(symbols=selected, start=start, end=end)
+
+
+def _is_toss_order_maintenance_window(now_kst: datetime) -> bool:
+    return now_kst.hour == 8 and 50 <= now_kst.minute <= 59
 
 
 def _looks_like_iso_date(value: str) -> bool:
@@ -595,7 +601,8 @@ class TelegramBotApp:
             if not holdings:
                 lines.append("현재 보유 중인 미국주식 종목이 없습니다.")
             return lines
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("대시보드 계좌 요약 조회 실패: %s", type(exc).__name__)
             return ["💰 <b>[토스 실시간 계좌 잔고]</b>", "💡 <i>실시간 계좌 정보 조회 중...</i>"]
 
     def _register_handlers(self) -> None:
@@ -937,20 +944,24 @@ class TelegramBotApp:
 
         @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel|"))
         def cancel_callback(call):
-            if self._authorized_callback(call):
-                try:
-                    _, kind, raw_id = call.data.split("|", 2)
-                    if kind == "approval":
-                        self.trading_service.cancel_approval(int(raw_id))
-                    elif kind == "cash":
-                        self.trading_service.cancel_cash_release(int(raw_id))
-                except Exception as exc:
-                    bot.answer_callback_query(call.id, str(exc), show_alert=True)
-                    return
-                self._send(
-                    "❌ <b>매수 승인 요청을 취소했습니다.</b>\n다음 좋은 타점을 기다릴게요. ☕"
-                )
-                bot.answer_callback_query(call.id, "취소했습니다.")
+            if not self._authorized_callback(call):
+                bot.answer_callback_query(call.id, "권한이 없습니다.", show_alert=True)
+                return
+            try:
+                _, kind, raw_id = call.data.split("|", 2)
+                if kind == "approval":
+                    self.trading_service.cancel_approval(int(raw_id))
+                elif kind == "cash":
+                    self.trading_service.cancel_cash_release(int(raw_id))
+                else:
+                    raise ValueError("지원하지 않는 취소 유형입니다.")
+            except Exception as exc:
+                bot.answer_callback_query(call.id, str(exc), show_alert=True)
+                return
+            self._send(
+                "❌ <b>매수 승인 요청을 취소했습니다.</b>\n다음 좋은 타점을 기다릴게요. ☕"
+            )
+            bot.answer_callback_query(call.id, "취소했습니다.")
 
     def notify_new_signals(self, results: list[AnalysisResult]) -> None:
         for result in results:
@@ -1204,16 +1215,10 @@ class TelegramBotApp:
                     time.monotonic() - self._last_monitor
                     >= self.config.scheduler.order_monitor_interval_seconds
                 )
-                
-                # 토스증권 08:50~09:00 KST 주간거래 전 주문 취소 및 리셋 시간대 예외 처리
-                try:
-                    import pytz
-                    seoul_tz = pytz.timezone("Asia/Seoul")
-                    now_kst = datetime.now(seoul_tz)
-                    if now_kst.hour == 8 and 50 <= now_kst.minute <= 59:
-                        monitor_due = False
-                except ImportError:
-                    pass
+
+                # 토스증권 주간거래 전 주문 취소·리셋 시간에는 주문 상태 갱신을 건너뜁니다.
+                if _is_toss_order_maintenance_window(datetime.now(SEOUL_TZ)):
+                    monitor_due = False
 
                 if monitor_due:
                     for event in self.order_monitor.run_once():
