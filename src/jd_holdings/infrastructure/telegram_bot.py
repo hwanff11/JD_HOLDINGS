@@ -601,7 +601,8 @@ class TelegramBotApp:
             if not holdings:
                 lines.append("현재 보유 중인 미국주식 종목이 없습니다.")
             return lines
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("대시보드 계좌 요약 조회 실패: %s", type(exc).__name__)
             return ["💰 <b>[토스 실시간 계좌 잔고]</b>", "💡 <i>실시간 계좌 정보 조회 중...</i>"]
 
     def _register_handlers(self) -> None:
@@ -943,20 +944,24 @@ class TelegramBotApp:
 
         @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel|"))
         def cancel_callback(call):
-            if self._authorized_callback(call):
-                try:
-                    _, kind, raw_id = call.data.split("|", 2)
-                    if kind == "approval":
-                        self.trading_service.cancel_approval(int(raw_id))
-                    elif kind == "cash":
-                        self.trading_service.cancel_cash_release(int(raw_id))
-                except Exception as exc:
-                    bot.answer_callback_query(call.id, str(exc), show_alert=True)
-                    return
-                self._send(
-                    "❌ <b>매수 승인 요청을 취소했습니다.</b>\n다음 좋은 타점을 기다릴게요. ☕"
-                )
-                bot.answer_callback_query(call.id, "취소했습니다.")
+            if not self._authorized_callback(call):
+                bot.answer_callback_query(call.id, "권한이 없습니다.", show_alert=True)
+                return
+            try:
+                _, kind, raw_id = call.data.split("|", 2)
+                if kind == "approval":
+                    self.trading_service.cancel_approval(int(raw_id))
+                elif kind == "cash":
+                    self.trading_service.cancel_cash_release(int(raw_id))
+                else:
+                    raise ValueError("지원하지 않는 취소 유형입니다.")
+            except Exception as exc:
+                bot.answer_callback_query(call.id, str(exc), show_alert=True)
+                return
+            self._send(
+                "❌ <b>매수 승인 요청을 취소했습니다.</b>\n다음 좋은 타점을 기다릴게요. ☕"
+            )
+            bot.answer_callback_query(call.id, "취소했습니다.")
 
     def notify_new_signals(self, results: list[AnalysisResult]) -> None:
         for result in results:
