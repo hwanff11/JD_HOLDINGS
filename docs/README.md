@@ -21,23 +21,15 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 | [`TELEGRAM_BOT_GUIDE.md`](TELEGRAM_BOT_GUIDE.md) | Telegram 명령과 출력 해석 | 현재 UI 기준 |
 | [`infra/DEPLOYMENT.md`](infra/DEPLOYMENT.md) | Oracle dry-run 배포·검증·롤백 | 현재 배포 기준 |
 | [`infra/DEVELOPMENT_WORKFLOW.md`](infra/DEVELOPMENT_WORKFLOW.md) | Codex·ChatGPT·Antigravity 협업 절차 | 현재 개발 기준 |
+| [`infra/SECURITY.md`](infra/SECURITY.md) | 비밀정보·인증·주문·DB·배포 보안 기준 | 현재 보안 기준 |
 | [`infra/DECISIONS.md`](infra/DECISIONS.md) | 구현 결정과 변경 이유 | 누적 기록, 최신 결정 우선 |
 | [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md) | 현재 전략 요약과 과거 전략 발전사 | 첫 부분만 현재, Archive는 과거 |
 | [`BACKTEST_REPORT.md`](BACKTEST_REPORT.md) | 현재 회귀 요약과 과거 백테스트 기록 | 첫 부분만 현재, Archive는 과거 |
 | [`archive/spec_v1/`](archive/spec_v1/) | v1 계열 명세 보존 | 현재 구현에 사용 금지 |
 
-## 현재 운영 기준
+## 변동 상태 기록 원칙
 
-- 개발 전략: `JDSS-2.2.2-SGOV`, 설정·패키지: `2.2.2`
-- 운영 배포: `JDSS-2.2.2-SGOV`, Oracle `dry_run`; 실제 SHA는 서버 `current` 링크가 기준
-- 유휴자금: SGOV 자동 예치·선현금화·체결 후 최종 승인 자동 재개·60초 재가격 구현
-- 운영 브랜치: `main`
-- Oracle: `dry_run`, Telegram 백테스트 중심 운영
-- JDSS 내부 TQQQ/SOXL 포지션: `qty=0`, `EMPTY`
-- JDSS 미체결 주문: 0건
-- 실거래 승격: 별도 사용자 승인과 Reconciliation 전까지 금지
-
-정확한 배포 커밋과 최근 검증 결과는 변경될 수 있으므로 항상 [`../CURRENT_WORK.md`](../CURRENT_WORK.md)를 확인한다.
+현재 브랜치, 최신 커밋, Oracle 배포 SHA, 테스트 개수, 미완료 작업은 자주 바뀌므로 이 문서에 복제하지 않는다. 해당 정보는 [`../CURRENT_WORK.md`](../CURRENT_WORK.md)만 기준으로 확인한다. 이 문서는 문서의 역할과 탐색 경로만 유지한다.
 
 ## 과거 문서 사용 규칙
 
