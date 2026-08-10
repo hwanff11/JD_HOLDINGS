@@ -27,13 +27,15 @@ class StrategyBacktestEngine(BacktestEngine):
             trades,
             closed_cycles,
         )
-        if tp1_hits and cycle_id and state.quantity > 0:
+        if cycle_id and state.quantity <= 0:
+            self._tp1_holding_day.pop(cycle_id, None)
+            return tp1_hits, tp2_hits, profitable_rebuy
+        if tp1_hits and cycle_id:
             self._tp1_holding_day[cycle_id] = state.cycle_holding_days
 
         rule = self.config.take_profit.remainder_exit
         if (
-            state.quantity <= 0
-            or state.state != PositionState.PARTIAL_TP_1
+            state.state != PositionState.PARTIAL_TP_1
             or not state.tp1_done
             or not state.cycle_id
         ):
