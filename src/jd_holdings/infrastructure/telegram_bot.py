@@ -115,6 +115,14 @@ def _won(value: object) -> str:
     return f"₩{Decimal(str(value)):,.0f}"
 
 
+def _format_idle_cash_event(event: str, trading_mode: str) -> str:
+    escaped = html.escape(event)
+    if trading_mode == "dry_run":
+        label = "모의체결" if "FILLED" in event or "체결 반영" in event else "모의처리"
+        return f"🧪 {label} — {escaped}"
+    return f"💵 {escaped}"
+
+
 def _quantity(value: object) -> str:
     return f"{Decimal(str(value)):,.2f}".rstrip("0").rstrip(".")
 
@@ -1212,7 +1220,7 @@ class TelegramBotApp:
                         self._send(f"ℹ️ {html.escape(event)}")
                     if self.idle_cash_manager is not None:
                         for event in self.idle_cash_manager.refresh_orders():
-                            self._send(f"💵 {html.escape(event)}")
+                            self._send(_format_idle_cash_event(event, self.settings.trading_mode))
                         for quote in self.trading_service.resume_cash_releases():
                             self._send(
                                 f"💵 <b>[{quote.symbol} SGOV 현금화 완료]</b>\n"
