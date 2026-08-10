@@ -2,7 +2,7 @@
 
 JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반등을 이용하고 유휴 전략자금을 SGOV로 운용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 개발 기준은 **JDSS-2.2.2-SGOV**이다.
 
-> 현재 상태: Oracle에는 **JDSS-2.2.2-SGOV `a98b671`**이 `dry_run`으로 배포되어 있다. SGOV 현금화 의도 영속화·체결 후 최종 승인 자동 재개·호가 기반 지정가가 적용됐고, 서비스·버전·Toss 조회 전용 smoke test를 통과했다. 실거래 승격은 별도 승인 전까지 금지한다. 변동 가능한 최신 상태는 [`CURRENT_WORK.md`](CURRENT_WORK.md)를 확인한다.
+> 현재 Oracle 운영본은 **JDSS-2.2.2-SGOV**이며 `dry_run`으로 잠겨 있다. SGOV 현금화 자동 재개·호가 기반 지정가가 적용됐고 서비스·버전·Toss 조회 전용 smoke test를 통과했다. 실거래 승격은 별도 승인 전까지 금지한다. 실제 배포 SHA는 서버 `current` 링크와 배포 출력을 기준으로 한다.
 
 ## JDSS 2.2 전략 요약
 
