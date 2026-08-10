@@ -43,7 +43,8 @@
   - GitHub SHA checkout을 local `main`에 연결하고 `deploy.sh`가 `origin/main`과 정확히 일치할 때만 배포하도록 수정했다.
   - systemd의 DB·로그·캐시를 shared 경로에 두고 FINAL 설정 경로를 명시했다.
   - 모든 Markdown 로컬 링크를 검사하고 archive 문서의 깨진 링크와 최신 기준 안내를 수정했다.
-- 로컬 검증: pytest 79개 통과, Ruff 통과, `jdss validate-config` 통과, FINAL E2E Dry Run 및 배포 계약 테스트 통과, YAML 파싱·Markdown 링크·`bash -n deploy.sh` 통과.
+- 로컬 검증: pytest 80개 통과, Ruff 통과, `jdss validate-config` 통과, FINAL E2E Dry Run 및 배포 계약 테스트 통과, YAML 파싱·Markdown 링크·`bash -n deploy.sh` 통과.
+- GitHub CI 성공 후 확인된 Node 20 deprecation 경고를 제거하기 위해 공식 권장 `actions/checkout@v7`, `actions/setup-python@v7`로 모든 워크플로를 갱신했다.
 
 ## 배포 전 남은 게이트
 
@@ -62,7 +63,7 @@
 - 상태: JDSS 2.1 FINAL 전체 계약 감사를 완료하고 발견된 코드·Telegram·백테스트·패키지 버전·배포 경로·문서 링크 불일치를 수정 및 검증. 실제 Oracle 배포는 미실행.
 - 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
-- 다음 우선순위: 최신 `main` GitHub CI 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
+- 다음 우선순위: 액션 v7 갱신 CI 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
 
 ## 갱신 규칙
 

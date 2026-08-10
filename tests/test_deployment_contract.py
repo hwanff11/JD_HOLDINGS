@@ -30,3 +30,12 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     assert "git checkout -B main HEAD" in workflow
     assert "JDSS_TRADING_MODE=dry_run" in workflow
     assert "JDSS_LIVE_CONFIRMATION=" in workflow
+
+
+def test_workflows_use_node24_actions():
+    for name in ("ci.yml", "final-dry-run.yml", "deploy-oracle-dry-run.yml"):
+        workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "actions/checkout@v7" in workflow
+        assert "actions/setup-python@v7" in workflow
+        assert "actions/checkout@v4" not in workflow
+        assert "actions/setup-python@v5" not in workflow
