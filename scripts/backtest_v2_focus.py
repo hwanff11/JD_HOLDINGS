@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Focused JDSS 2.0 swing-strategy comparison.
+"""Focused JDSS 2.0 phase-2 swing-strategy comparison.
 
-The goal is not a broad grid search. We change one or two dimensions at a time
-from the live strategy so the effect of each change remains explainable.
+Phase 2 keeps the baseline entry/add rules fixed and tests only two structural
+changes: a shorter TP2 and one conservative rebuy after TP1.
 """
 
 from __future__ import annotations
@@ -19,32 +19,12 @@ import pandas as pd
 
 from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
 from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
-from jd_holdings.config import AdditionalEntryConfig, StageRule, load_config
+from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 ROOT = Path(__file__).resolve().parent.parent
-
 SYMBOLS = ("TQQQ", "SOXL")
 BENCHMARKS = ("SPY", "QQQ", "SOXX", "SMH")
-
-
-def _with_entry(base, entry_score: int):
-    return replace(base, global_=replace(base.global_, entry_score=entry_score))
-
-
-def _with_drops(base, drops: tuple[str, str, str]):
-    stages = {
-        stage: StageRule(Decimal(drop), base.additional_entry.stages[stage].min_score)
-        for stage, drop in zip((2, 3, 4), drops, strict=True)
-    }
-    return replace(
-        base,
-        additional_entry=AdditionalEntryConfig(
-            anchor=base.additional_entry.anchor,
-            max_stage_per_day=base.additional_entry.max_stage_per_day,
-            stages=stages,
-        ),
-    )
 
 
 def _with_tp(base, tp1: str, tp2: str):
@@ -58,19 +38,26 @@ def _with_tp(base, tp1: str, tp2: str):
     )
 
 
+def _with_rebuy(base, minimum_score: int):
+    return replace(
+        base,
+        rebuy=replace(
+            base.rebuy,
+            enabled=True,
+            minimum_score=minimum_score,
+        ),
+    )
+
+
 def build_candidates(base):
-    wider = _with_drops(base, ("0.03", "0.06", "0.10"))
+    tp46 = _with_tp(base, "0.04", "0.06")
     return {
-        "A_baseline_50_drop247_tp48": base,
-        "B_entry55_only": _with_entry(base, 55),
-        "C_wider_drop3610": wider,
-        "D_fast_tp36": _with_tp(base, "0.03", "0.06"),
-        "E_wider_drop3610_fast_tp36": _with_tp(wider, "0.03", "0.06"),
-        "F_profit_runner_tp510": _with_tp(base, "0.05", "0.10"),
-        "G_full_exit_tp44": _with_tp(base, "0.04", "0.04"),
-        "H_full_exit_tp33": _with_tp(base, "0.03", "0.03"),
-        "I_same_tp1_shorter_tp2_46": _with_tp(base, "0.04", "0.06"),
-        "J_same_tp1_shorter_tp2_45": _with_tp(base, "0.04", "0.05"),
+        "A_baseline_tp48_rebuy_off": base,
+        "I_tp46_rebuy_off": tp46,
+        "K_tp48_rebuy55": _with_rebuy(base, 55),
+        "L_tp48_rebuy60": _with_rebuy(base, 60),
+        "M_tp46_rebuy55": _with_rebuy(tp46, 55),
+        "N_tp46_rebuy60": _with_rebuy(tp46, 60),
     }
 
 
@@ -117,6 +104,7 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
     sharpe, sortino = risk_adjusted_metrics(equity, annualization_days)
     closed = sum(int(result.metrics["closed_cycles"]) for result in results.values())
     signals = sum(int(result.metrics["signals"]) for result in results.values())
+    rebuys = sum(int(result.metrics["rebuy_cycles"]) for result in results.values())
     return {
         "total_return_pct": round(total_return * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
@@ -125,6 +113,7 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
         "sortino": round(sortino, 3),
         "closed_cycles": closed,
         "signals": signals,
+        "rebuy_cycles": rebuys,
         "avg_holding_days_including_open": round(_average_holding_including_open(results), 2),
         "max_holding_days_worst_symbol_including_open": max(
             max(_holding_days_including_open(result), default=0) for result in results.values()
@@ -152,29 +141,29 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
 def settings(config) -> dict[str, Any]:
     return {
         "entry_score": config.global_.entry_score,
-        "minimum_reversal_score": config.global_.minimum_reversal_score,
         "stage_weights": [float(value) for value in config.position.stage_weights],
         "stage_drops": [
             float(config.additional_entry.stages[stage].min_drop_from_anchor)
             for stage in (2, 3, 4)
         ],
-        "additional_scores": [config.additional_entry.stages[stage].min_score for stage in (2, 3, 4)],
         "tp": [float(config.take_profit.tp1_base), float(config.take_profit.tp2_base)],
+        "rebuy_enabled": config.rebuy.enabled,
+        "rebuy_minimum_score": config.rebuy.minimum_score,
     }
 
 
 def markdown_summary(report: dict[str, Any]) -> str:
     lines = [
-        "# JDSS 2.0 Focused Swing Backtest",
+        "# JDSS 2.0 Phase-2 Swing Backtest",
         "",
         "Primary decision window: **2021-2024 validation**. Recent years are reference only.",
         "Open positions at the end of each segment are included in holding/lockup risk.",
         "",
         (
             "| Candidate | CAGR | MDD | P95 MAE* | >40d lockup* | Max hold* | "
-            "Open DD* | Cycles | Avg hold* |"
+            "Open DD* | Cycles | Rebuys | Avg hold* |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     rows = []
     for name, candidate in report["candidates"].items():
@@ -187,7 +176,8 @@ def markdown_summary(report: dict[str, Any]) -> str:
             f"{m['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
             f"{m['max_holding_days_worst_symbol_including_open']}d | "
             f"{m['open_price_drawdown_worst_symbol_pct']:.2f}% | "
-            f"{m['closed_cycles']} | {m['avg_holding_days_including_open']:.1f}d |"
+            f"{m['closed_cycles']} | {m['rebuy_cycles']} | "
+            f"{m['avg_holding_days_including_open']:.1f}d |"
         )
     lines.extend(
         [
@@ -199,9 +189,9 @@ def markdown_summary(report: dict[str, Any]) -> str:
             "",
             "## Decision rule",
             "",
-            "Prefer higher validation CAGR when MDD, tail risk and long-lockup risk stay similar. "
-            "Reject a higher-return candidate if the improvement is mainly bought with materially "
-            "worse drawdown or much longer capital lockup. Do not tune from the recent-only segment.",
+            "A rebuy candidate is useful only if it reduces stale-position risk without paying for that "
+            "improvement with materially worse MDD/MAE. Validation stability takes priority over recent-only "
+            "returns.",
         ]
     )
     return "\n".join(lines) + "\n"
