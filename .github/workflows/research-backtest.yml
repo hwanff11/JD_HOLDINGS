@@ -3,12 +3,15 @@ name: Research Backtest
 on:
   pull_request:
     paths:
+      - "scripts/backtest_v2_final_d257_report.py"
       - "scripts/backtest_v2_cash_overlay.py"
       - "scripts/backtest_v2_gap_grid.py"
       - "scripts/backtest_v2_remainder_exit.py"
       - "scripts/backtest_v2_focus.py"
       - "src/jd_holdings/backtest/**"
       - "src/jd_holdings/core/**"
+      - "src/jd_holdings/application/**"
+      - "src/jd_holdings/infrastructure/market_clock.py"
       - "strategy.yaml"
       - ".github/workflows/research-backtest.yml"
 
@@ -16,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  cash-overlay:
+  final-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -27,10 +30,13 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
+      - run: python scripts/backtest_v2_final_d257_report.py --output reports/v2_final_d257_report.json
       - run: python scripts/backtest_v2_cash_overlay.py --output reports/v2_cash_overlay.json
       - uses: actions/upload-artifact@v4
         with:
-          name: jdss-v2-cash-overlay
+          name: jdss-v2-final-regression
           path: |
+            reports/v2_final_d257_report.json
+            reports/v2_final_d257_report.md
             reports/v2_cash_overlay.json
             reports/v2_cash_overlay.md
