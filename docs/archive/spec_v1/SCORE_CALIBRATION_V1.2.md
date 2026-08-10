@@ -1,7 +1,7 @@
 # JDSS v1.2.0 점수 재보정 보고서
 
 > **문서 상태: v1.3에 승계된 보정 연구.** 현재 점수표와 매매 규칙은
-> [`STRATEGY_V1.3.md`](STRATEGY_V1.3.md)와 루트의 [`strategy.yaml`](../strategy.yaml)이 최종
+> [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md)와 루트의 [`strategy.yaml`](../../../strategy.yaml)이 최종
 > 기준이다.
 
 ## 결론
@@ -26,7 +26,7 @@ JDSS v1.1.2의 등급 경계와 항목별 최대점수는 유지하고, 항목 �
 ```
 
 현재 설정은 원점수와 보정점수를 모두 분석 결과에 남겨, 점수 상승 원인을 감사할 수
-있다. 기존 공식 설정은 [`configs/strategy_v1.1.2.yaml`](../configs/strategy_v1.1.2.yaml)에
+있다. 기존 공식 설정은 [`configs/strategy_v1.1.2.yaml`](../../../configs/strategy_v1.1.2.yaml)에
 보존했다.
 
 ## 점수 곡선
@@ -56,7 +56,7 @@ JDSS v1.1.2의 등급 경계와 항목별 최대점수는 유지하고, 항목 �
 
 OOS를 열기 전 총 573개 격자 조합을 학습·검증 구간에서만 평가했다. 두 구간 모두
 양의 수익이고 각각 체결 4회 이상인 조합만 후보로 인정했다. 연구 실행기와 전체 후보
-CSV 생성 방법은 [`scripts/calibrate_scores.py`](../scripts/calibrate_scores.py)에 있다.
+CSV 생성 방법은 [`scripts/calibrate_scores.py`](../../../scripts/calibrate_scores.py)에 있다.
 
 견고성 목적함수 1위는 `0.100 / 0.100 / 0.075 / 1.000`이었지만, 사용자가 요청한 수익
 극대화를 우선해 학습과 검증 수익이 모두 더 높은

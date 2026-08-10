@@ -1,8 +1,8 @@
 # JDSS 개발자 가이드(Developer Guide)
 
-> **레거시 v1.1.2 기준선 문서.** 현재 v1.3 운영·배포 절차는
-> [`../DEPLOYMENT.md`](../DEPLOYMENT.md), 전략과 설정은
-> [`../STRATEGY_V1.3.md`](../STRATEGY_V1.3.md)와 [`../../strategy.yaml`](../../strategy.yaml)을
+> **레거시 v1.1.2 기준선 문서.** 현재 FINAL 운영·배포 절차는
+> [`../../infra/DEPLOYMENT.md`](../../infra/DEPLOYMENT.md), 전략과 설정은
+> [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md)와 [`../../../strategy.yaml`](../../../strategy.yaml)을
 > 따른다.
 
 **v1.1.2 — 공식 기준선(Official Baseline)**

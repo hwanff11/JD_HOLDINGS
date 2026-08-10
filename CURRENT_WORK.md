@@ -34,7 +34,16 @@
 - GitHub Actions FINAL Dry Run 게이트가 추가됐고 병합 전 CI를 통과했다.
 - Oracle 배포용 수동 워크플로는 `main` 계보 확인, Ruff·pytest·설정 검증, 강제 `dry_run`, 실주문 확인값 제거, Toss 조회 전용 smoke를 수행한다.
 - README, 전략·백테스트·Telegram·배포·개발 워크플로 문서를 FINAL 기준으로 정합화했다.
-- 로컬 검증: pytest 72개 통과, Ruff 통과, `jdss validate-config` 통과, FINAL E2E Dry Run 통과.
+- 전체 Markdown·소스·설정·테스트 교차 감사에서 발견된 FINAL 누락을 수정했다.
+  - 패키지·Telegram 표시용 코드 버전을 `2.1.0`으로 통일했다.
+  - CLI와 Telegram `/bt`가 모두 `StrategyBacktestEngine`을 사용하도록 통일했다.
+  - Telegram `/guide`의 50점, 3차 -4%, TP2 +8% 레거시 문구를 FINAL 수치로 교체했다.
+  - SOXX/SMH 중 사용 가능한 벤치마크 하나로도 섹터 가드를 적용하도록 백테스트를 실거래 계약과 일치시켰다.
+  - Telegram 타임라인을 문서대로 최근 15건으로 맞추고 `REMAINDER_EXIT`를 잔여청산으로 표시한다.
+  - GitHub SHA checkout을 local `main`에 연결하고 `deploy.sh`가 `origin/main`과 정확히 일치할 때만 배포하도록 수정했다.
+  - systemd의 DB·로그·캐시를 shared 경로에 두고 FINAL 설정 경로를 명시했다.
+  - 모든 Markdown 로컬 링크를 검사하고 archive 문서의 깨진 링크와 최신 기준 안내를 수정했다.
+- 로컬 검증: pytest 79개 통과, Ruff 통과, `jdss validate-config` 통과, FINAL E2E Dry Run 및 배포 계약 테스트 통과, YAML 파싱·Markdown 링크·`bash -n deploy.sh` 통과.
 
 ## 배포 전 남은 게이트
 
@@ -50,9 +59,8 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.1 FINAL 코드, 최신 문서, Oracle 강제 dry-run 배포 워크플로를 `main`에 반영하고 전체 로컬 검증 완료. 실제 Oracle 배포는 미실행.
-- 마지막 관련 커밋: `b1cb850` (`docs: align FINAL deployment readiness`)
-- 다음 우선순위: GitHub Environment 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
+- 상태: JDSS 2.1 FINAL 전체 계약 감사를 완료하고 발견된 코드·Telegram·백테스트·패키지 버전·배포 경로·문서 링크 불일치를 수정 및 검증. 실제 Oracle 배포는 미실행.
+- 다음 우선순위: 감사 브랜치 commit/push 및 `main` 반영 → GitHub CI 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
 
 ## 갱신 규칙
 

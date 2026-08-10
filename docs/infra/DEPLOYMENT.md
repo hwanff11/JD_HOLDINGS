@@ -7,7 +7,7 @@
 Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요합니다. 기본
 배포 경로는 `/home/ubuntu/JD_HOLDINGS`이고 기존 CCI 프로젝트와 별도입니다.
 
-현재 확인된 기존 서버 기본 Python은 3.8.10이므로 그대로는 배포할 수 없습니다.
+과거 확인된 기존 서버 기본 Python은 3.8.10이므로 그대로는 배포할 수 없습니다.
 Python 3.12와 해당 버전의 `venv` 모듈을 먼저 설치하고, 로컬 배포 설정에 실제 실행파일을
 지정합니다.
 
@@ -40,7 +40,7 @@ SYSTEMD_SERVICE=jd_holdings_bot
 REMOTE_PYTHON_BIN=/home/ubuntu/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12
 ```
 
-Git 작업트리가 깨끗한 `main`이어야 하며 remote URL에는 토큰을 포함하지 않습니다.
+Git 작업트리가 깨끗한 `main`이어야 하며, 로컬 HEAD가 `origin/main`과 정확히 일치해야 합니다. remote URL에는 토큰을 포함하지 않습니다.
 
 ```bash
 git remote -v
@@ -56,12 +56,13 @@ JDSS_LIVE_CONFIRMATION=
 
 워크플로 파일: `.github/workflows/deploy-oracle-dry-run.yml`
 
-배포는 테스트와 린트 → GitHub push → commit별 릴리스 업로드 → 의존성 설치 → 설정
+배포는 원격 `main` 일치 확인 → 테스트와 린트 → commit별 릴리스 업로드 → 의존성 설치 → 설정
 검증 → `current` 심볼릭 링크 교체 → 전용 systemd 서비스 재시작 순서로 수행됩니다.
 DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
 Telegram 백테스트의 yfinance 캐시도
 `/home/ubuntu/JD_HOLDINGS/shared/data/cache`에 저장되어 읽기 전용 릴리스와 분리됩니다.
-`JDSS_CONFIG_PATH`는 `/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정해
+systemd 서비스는 `JDSS_CACHE_PATH`를 shared 캐시로, `JDSS_CONFIG_PATH`를
+`/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정해
 설치형 패키지에서도 현재 릴리스의 설정을 사용합니다.
 
 ## 3. 검증

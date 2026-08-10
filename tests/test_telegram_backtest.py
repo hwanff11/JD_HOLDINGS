@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import tomllib
 from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from jd_holdings import __version__
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
+    _guide_cards,
     _profit_loss,
     _regime_label,
     _won,
@@ -118,6 +122,13 @@ def test_backtest_timeline_includes_signal_buy_and_take_profit_sales():
                 "quantity": 5,
                 "price": 55.555,
             },
+            {
+                "date": "2026-07-16",
+                "side": "SELL",
+                "purpose": "REMAINDER_EXIT",
+                "quantity": 1,
+                "price": 52.0,
+            },
         ),
         skipped_signals=(
             {
@@ -131,6 +142,47 @@ def test_backtest_timeline_includes_signal_buy_and_take_profit_sales():
     assert "매수미체결" in timeline[1]
     assert "1차익절" in timeline[2]
     assert "2차완청" in timeline[3]
+    assert "잔여청산" in timeline[4]
+
+
+def test_final_code_version_matches_strategy_release(config):
+    project = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
+    assert __version__ == "2.1.0"
+    assert project["version"] == __version__
+    assert config.config_version == __version__
+
+
+def test_telegram_guide_matches_final_contract():
+    guide = "\n".join(_guide_cards())
+    for expected in ("2.1 FINAL", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%"):
+        assert expected in guide
+    assert "50점" not in guide
+    assert "-4% 하락" not in guide
+    assert "+8.0%" not in guide
+
+
+def test_backtest_timeline_defaults_to_latest_15_events():
+    result = SimpleNamespace(
+        signals=(),
+        skipped_signals=(),
+        trades=tuple(
+            {
+                "date": f"2026-07-{day:02d}",
+                "side": "BUY",
+                "purpose": "FIRST_ENTRY_CANDIDATE",
+                "quantity": 1,
+                "price": 10,
+                "score": 55,
+                "cycle_id": str(day),
+            }
+            for day in range(1, 17)
+        ),
+    )
+    timeline = TelegramBotApp._format_trade_timeline(result)
+    assert len(timeline) == 16
+    assert "전체 16건 중 최근 15건" in timeline[0]
 
 
 def test_backtest_command_accepts_arbitrary_ticker():

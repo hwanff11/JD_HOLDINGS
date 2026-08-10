@@ -199,10 +199,9 @@ class BacktestEngine:
                     frame if indicators_precomputed else calculate_indicators(frame, self.config)
                 )
         
-        # 섹터 가드용 데이터가 모두 준비되었는지 확인
-        sector_guard_applied = guard_requested and all(
-            benchmark in sector_frames for benchmark in guard_candidates
-        )
+        # FINAL의 warn_and_allow 계약에 따라 사용 가능한 벤치마크가 하나라도
+        # 있으면 그 데이터로 가드를 적용한다. 모두 누락된 경우에만 허용한다.
+        sector_guard_applied = guard_requested and bool(sector_frames)
 
         # 3. 데이터 공통 인덱스 추출 (대상 종목 + SPY + QQQ + [섹터 가드 종목])
         common_index = target.index.intersection(spy.index).intersection(qqq.index)
@@ -416,6 +415,7 @@ class BacktestEngine:
         )
         metrics["sector_guard_requested"] = int(guard_requested)
         metrics["sector_guard_applied"] = int(sector_guard_applied)
+        metrics["sector_guard_available_benchmarks"] = len(sector_frames)
         metrics["sector_guard_blocks"] = sector_guard_blocks
 
         open_position = {

@@ -65,9 +65,14 @@ if [[ "$(git branch --show-current)" != "main" ]]; then
   exit 1
 fi
 
+git fetch origin main --no-tags
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+  echo "로컬 main이 origin/main과 정확히 일치해야 합니다." >&2
+  exit 1
+fi
+
 "$LOCAL_PYTHON" -m pytest
 "$LOCAL_PYTHON" -m ruff check .
-git push origin main || true
 
 COMMIT_SHA="$(git rev-parse HEAD)"
 ARCHIVE_PATH="$(mktemp "/tmp/jd_holdings_${COMMIT_SHA}.XXXXXX.tar.gz")"
@@ -108,7 +113,10 @@ if ! "$remote_python" -c 'import sys; raise SystemExit(sys.version_info < (3, 11
   exit 1
 fi
 
-mkdir -p "$target_dir/releases" "$target_dir/shared/data" "$target_dir/shared/logs"
+mkdir -p \
+  "$target_dir/releases" \
+  "$target_dir/shared/data/cache" \
+  "$target_dir/shared/logs"
 if [[ ! -f "$target_dir/shared/.env" ]]; then
   echo "서버의 $target_dir/shared/.env를 먼저 생성해야 합니다." >&2
   exit 1

@@ -182,8 +182,8 @@ v1.3.0 SOXL의 완료 사이클 통계에는 구간 종료 시점까지 749거�
 # JDSS v1.1.2 기준선 백테스트
 
 > **문서 상태: 역사적 기준선.** 현재 운영 전략은
-> [`STRATEGY_V1.3.md`](STRATEGY_V1.3.md), 현재 백테스트 UI는
-> [`TELEGRAM_BOT_V1.3.md`](TELEGRAM_BOT_V1.3.md)를 따른다.
+> 현재 운영 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md), 현재 백테스트 UI는
+> [`TELEGRAM_BOT_GUIDE.md`](TELEGRAM_BOT_GUIDE.md)를 따른다.
 
 | 항목 | 값 |
 |---|---|

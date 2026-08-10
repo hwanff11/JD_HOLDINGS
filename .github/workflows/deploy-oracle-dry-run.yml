@@ -43,6 +43,7 @@ jobs:
           set -Eeuo pipefail
           git fetch origin main --no-tags
           git merge-base --is-ancestor HEAD origin/main
+          git checkout -B main HEAD
           echo "Deploying $(git rev-parse HEAD) from main history"
 
       - name: Set up Python

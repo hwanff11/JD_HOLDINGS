@@ -100,9 +100,16 @@ def main(argv: list[str] | None = None) -> int:
         if "SOXL" in symbols and guard.get("enabled", False):
             for benchmark in guard.get("benchmark_candidates", ("SOXX", "SMH")):
                 name = str(benchmark).upper()
-                sector_data[name] = data_source.daily(
-                    name, warmup_start, end, refresh=args.refresh
-                )
+                try:
+                    sector_data[name] = data_source.daily(
+                        name, warmup_start, end, refresh=args.refresh
+                    )
+                except Exception as exc:
+                    print(
+                        f"warning: {name} sector data unavailable; continuing with "
+                        f"available benchmarks ({exc})",
+                        file=sys.stderr,
+                    )
 
         output: dict[str, object] = {
             "generated_at": datetime.now(UTC).isoformat(),

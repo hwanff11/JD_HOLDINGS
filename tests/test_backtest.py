@@ -86,3 +86,22 @@ def test_soxl_backtest_marks_missing_sector_data(config):
     )
     assert result.metrics["sector_guard_requested"] == 1
     assert result.metrics["sector_guard_applied"] == 0
+    assert result.metrics["sector_guard_available_benchmarks"] == 0
+
+
+def test_soxl_backtest_uses_any_available_sector_benchmark(config):
+    length = 220
+    benchmark = np.linspace(100, 150, length)
+    target = np.linspace(80, 110, length)
+    sector = np.linspace(90, 130, length)
+    result = BacktestEngine(config).run(
+        "SOXL",
+        make_market_frame(target, bullish_candles=True),
+        make_market_frame(benchmark),
+        make_market_frame(benchmark * 1.1),
+        slippage=0,
+        sector_data={"SOXX": make_market_frame(sector)},
+    )
+    assert result.metrics["sector_guard_requested"] == 1
+    assert result.metrics["sector_guard_applied"] == 1
+    assert result.metrics["sector_guard_available_benchmarks"] == 1

@@ -21,8 +21,9 @@ from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.trading_service import QuoteChangedError, TradingService
-from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
+from jd_holdings.backtest.engine import BacktestResult
 from jd_holdings.backtest.performance import maximum_drawdown
+from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
 from jd_holdings.config import StrategyConfig
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
@@ -191,6 +192,44 @@ def _action_label(value: str) -> str:
         "REBUY": "재매수 검토",
         "HOLD": "보유 유지",
     }.get(value, value.replace("_", " "))
+
+
+def _guide_cards() -> tuple[str, str]:
+    """Return the user-visible guide derived from the FINAL strategy contract."""
+    card1 = (
+        "📖 <b>[JDSS 2.1 FINAL 지표 및 점수 체계 가이드]</b>\n\n"
+        "🎯 <b>1. JDSS 종합 점수 체계 (100점 만점)</b>\n"
+        "💡 <i>(단일 지표가 아닌 아래 모든 지표들의 총 합산 점수입니다.)</i>\n"
+        "• <b>55점 이상</b> : 모든 매수 단계의 최소 점수\n"
+        "• <b>반등 5점 이상</b> : 추락 중 진입을 막는 필수 조건\n"
+        "• <b>82점 이상</b> : A등급 구간\n"
+        "• <b>90점 이상</b> : S등급 구간\n\n"
+        "🟢 <b>2. 시장 국면 지표 (25점 만점)</b>\n"
+        "• <b>20일 / 60일 이동평균선(EMA)</b> 교차 상태 분석\n"
+        "• <b>🟢 강세장 (25점)</b> : 20일 EMA &gt; 60일 EMA\n"
+        "• <b>🟡 중립장 (15점)</b> : 중립 추세\n"
+        "• <b>🔴 약세장 (0점)</b> : 모든 신규·추가매수 차단\n\n"
+        "📉 <b>3. 과매도·반등 지표</b>\n"
+        "• <b>CCI (5 / 10), RSI (5 / 14), 볼린저 밴드</b>로 과매도 측정\n"
+        "• 양봉, 전일 종가, EMA5, 캔들 종가 위치로 반등 점수 산출"
+    )
+    card2 = (
+        "🛒 <b>[JDSS FINAL 분할매수 및 익절 메커니즘]</b>\n\n"
+        "🛒 <b>4단계 분할 매수</b>\n"
+        "• <b>1차 (40%)</b> : JDSS 55점·반등 5점 이상 🟢\n"
+        "• <b>2차 (30%)</b> : 최초 체결가 대비 <b>-2%</b> 🟡\n"
+        "• <b>3차 (20%)</b> : 최초 체결가 대비 <b>-5%</b> 🟠\n"
+        "• <b>4차 (10%)</b> : 최초 체결가 대비 <b>-7%</b> 🔴\n"
+        "• 모든 단계는 RED 국면 차단 및 사용자 2단계 승인 필수\n\n"
+        "💰 <b>목표 익절과 잔여청산</b>\n"
+        "• <b>TP1</b> : 평단 대비 <b>+4%</b>, 약 50% 매도\n"
+        "• <b>TP2</b> : 평단 대비 <b>+6%</b>, 잔량 매도\n"
+        "• TP1 완전체결 후 20개 완결 거래일 동안 TP2 미체결 시 "
+        "평단 <b>+2%</b> 잔여청산으로 전환\n"
+        "• 자동손절·재매수 없음\n\n"
+        "💡 <i>/score [종목] 명령어로 최신 지표를 확인할 수 있습니다.</i>"
+    )
+    return card1, card2
 
 
 def _is_us_holding(item: dict) -> bool:
@@ -523,40 +562,7 @@ class TelegramBotApp:
             if not self._authorized_message(message):
                 return
             try:
-                card1 = (
-                    "📖 <b>[JDSS v2.0 지표 및 점수 체계 가이드]</b>\n\n"
-                    "🎯 <b>1. JDSS 종합 점수 체계 (100점 만점)</b>\n"
-                    "💡 <i>(단일 지표가 아닌 아래 모든 지표들의 총 합산 점수입니다!)</i>\n"
-                    "• <b>50점 이상</b> : 여러 하락/반등 지표를 복합 통과한 1차 매수 타점 🟢\n"
-                    "• <b>82점 이상</b> : 강력 매수 구간 (상승 파동 고승률)\n"
-                    "• <b>90점 이상</b> : 극상의 최적 매수 조건 (S등급)\n\n"
-                    "🟢 <b>2. 시장 국면 지표 (25점 만점)</b>\n"
-                    "• <b>20일 / 60일 이동평균선(EMA)</b> 교차 상태 분석\n"
-                    "• <b>🟢 강세장 (25점)</b> : 20일 EMA &gt; 60일 EMA (상승 추세)\n"
-                    "• <b>🟡 중립장 (15점)</b> : 20일/60일 EMA 횡보 구간\n"
-                    "• <b>🔴 약세장 ( 0점)</b> : 20일 EMA &lt; 60일 EMA (하락 추세)\n\n"
-                    "📉 <b>3. 과매도 지표 (40점 만점)</b>\n"
-                    "• <b>CCI (5 / 10)</b> : -200 이하 시 기술적 바닥권 진입\n"
-                    "• <b>RSI (5 / 14)</b> : 20~30 이하 시 과도한 투매 상태\n"
-                    "• <b>볼린저 밴드</b> : 하단선(0.98배) 이탈 시 깊은 저점\n\n"
-                    "🔄 <b>4. 반등 확정 지표 (20점 만점)</b>\n"
-                    "• 추락하는 칼날을 방지하기 위해 당일 캔들 양봉 전환 및 종가 위치(0.5 이상) 확인 시 안전 반등 점수 부여"
-                )
-                card2 = (
-                    "🛒 <b>[JDSS 4단계 분할 매수 및 익절 메커니즘]</b>\n\n"
-                    "📊 <b>5. 거래량 및 변동성 (15점 만점)</b>\n"
-                    "• <b>거래량 비율</b> : 20일 평균 대비 1.5~2.0배 수급 분출\n"
-                    "• <b>ATR 변동성</b> : 적정 변동성 폭 유지 확인\n\n"
-                    "🛒 <b>6. 4단계 분할 매수 시스템</b>\n"
-                    "• <b>1차 매수 (40%)</b> : JDSS 50점 및 반등 5점 충족 🟢\n"
-                    "• <b>2차 매수 (30%)</b> : 1차 진입가 대비 <b>-2% 하락</b> 🟡\n"
-                    "• <b>3차 매수 (20%)</b> : 1차 진입가 대비 <b>-4% 하락</b> 🟠\n"
-                    "• <b>4차 매수 (10%)</b> : 1차 진입가 대비 <b>-7% 하락</b> 🔴\n\n"
-                    "💰 <b>7. 목표 익절 메커니즘 (Take Profit)</b>\n"
-                    "• <b>1차 익절 (TP1)</b> : 평단 대비 <b>+4.0%</b> 도달 시 수량 50% 분할 매도\n"
-                    "• <b>2차 익절 (TP2)</b> : 평단 대비 <b>+8.0%</b> 도달 시 전량 매도 및 사이클 종료\n\n"
-                    "💡 <i>/score [종목] 명령어로 세부 지표를 실시간 확인하실 수 있습니다.</i>"
-                )
+                card1, card2 = _guide_cards()
                 self._send(card1, chat_id=message.chat.id)
                 self._send(card2, chat_id=message.chat.id)
             except Exception as exc:
@@ -800,9 +806,12 @@ class TelegramBotApp:
             if guard_config.get("enabled", False):
                 benchmarks = guard_config.get("benchmark_candidates", ["SOXX", "SMH"])
                 for bench in benchmarks:
-                    sector_data[bench] = self.data_source.daily(bench, warmup_start, end)
+                    try:
+                        sector_data[bench] = self.data_source.daily(bench, warmup_start, end)
+                    except Exception as exc:
+                        LOGGER.warning("%s 섹터 데이터 없이 백테스트 계속: %s", bench, exc)
             
-            engine = BacktestEngine(self.config)
+            engine = StrategyBacktestEngine(self.config)
             results = {}
             for symbol in request.symbols:
                 target = self.data_source.daily(symbol, warmup_start, end)
@@ -832,7 +841,7 @@ class TelegramBotApp:
             self._backtest_lock.release()
 
     @staticmethod
-    def _format_trade_timeline(result: BacktestResult, limit: int = 20) -> list[str]:
+    def _format_trade_timeline(result: BacktestResult, limit: int = 15) -> list[str]:
         events: list[tuple[str, int, str]] = []
         skipped_labels = {
             "SKIPPED_BY_CHASE_RULE": "추격상한초과",
@@ -887,6 +896,10 @@ class TelegramBotApp:
                     suffix = "🎉"
                 elif purpose == "TP2":
                     label = "2차완청"
+                    icon = "⚫"
+                    suffix = "🎉"
+                elif purpose == "REMAINDER_EXIT":
+                    label = "잔여청산"
                     icon = "⚫"
                     suffix = "🎉"
                 else:
