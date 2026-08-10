@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import tomllib
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +16,7 @@ from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
     _format_idle_cash_event,
+    _is_toss_order_maintenance_window,
     _guide_cards,
     _profit_loss,
     _regime_label,
@@ -25,6 +26,19 @@ from jd_holdings.infrastructure.telegram_bot import (
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (datetime(2026, 8, 11, 8, 49, tzinfo=UTC), False),
+        (datetime(2026, 8, 11, 8, 50, tzinfo=UTC), True),
+        (datetime(2026, 8, 11, 8, 59, tzinfo=UTC), True),
+        (datetime(2026, 8, 11, 9, 0, tzinfo=UTC), False),
+    ],
+)
+def test_toss_order_maintenance_window(now, expected):
+    assert _is_toss_order_maintenance_window(now) is expected
 
 
 def test_backtest_command_defaults_to_soxl_and_300_trading_days():
