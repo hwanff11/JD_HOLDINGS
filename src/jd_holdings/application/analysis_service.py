@@ -101,13 +101,26 @@ class AnalysisService:
         position = self.repository.get_position(symbol)
 
         sector_benchmarks: dict[str, IndicatorSnapshot] = {}
-        if symbol.upper() == "SOXL" and sector_frames:
-            for name, frame in sector_frames.items():
-                if timestamp in frame.index:
+        guard = self.config.market_regime.get("soxl_sector_guard", {})
+        if symbol.upper() == "SOXL" and guard.get("enabled", False):
+            frames = sector_frames or {}
+            for benchmark in guard.get("benchmark_candidates", ("SOXX", "SMH")):
+                name = str(benchmark).upper()
+                frame = frames.get(name)
+                if frame is not None and timestamp in frame.index:
                     sector_benchmarks[name] = snapshot_from_row(name, timestamp, frame.loc[timestamp])
+                elif frame is not None:
+                    self.repository.log_event(
+                        "WARNING",
+                        "SOXL_SECTOR_DATA_INCOMPLETE",
+                        f"{name} 섹터 기준 데이터에 완결 거래일이 없습니다",
+                        symbol=symbol,
+                        context={"benchmark": name, "trade_date": completed.isoformat()},
+                    )
 
         if (
-            position.state.value == "PARTIAL_TP_1"
+            self.config.rebuy.enabled
+            and position.state.value == "PARTIAL_TP_1"
             and not position.rebuy_recovery_armed
             and evaluate_rebuy_recovery(snapshot, self.config)
         ):

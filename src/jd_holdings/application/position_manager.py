@@ -28,6 +28,10 @@ HOLDING_BY_ACTION_STAGE = {
 }
 
 
+def tp1_completed_at_key(symbol: str, cycle_id: str) -> str:
+    return f"tp1_completed_at:{symbol.upper()}:{cycle_id}"
+
+
 class PositionManager:
     def __init__(
         self,
@@ -147,8 +151,9 @@ class PositionManager:
             "REJECTED",
             "REPLACED",
         }
+        tp_leg = "TP2" if purpose == "REMAINDER_EXIT" else purpose
         self.repository.update_tp_fills(
-            int(plan["tp_plan_id"]), leg=purpose, filled_qty=int(order["filled_qty"])
+            int(plan["tp_plan_id"]), leg=tp_leg, filled_qty=int(order["filled_qty"])
         )
         holdings = self.broker.get_holdings(symbol)
         holding = next((item for item in holdings if item.get("symbol") == symbol), None)
@@ -217,6 +222,15 @@ class PositionManager:
             updates=updates,
             expected_version=position.version,
         )
+        if (
+            purpose == "TP1"
+            and new_state == PositionState.PARTIAL_TP_1
+            and position.cycle_id
+        ):
+            self.repository.set_system_value(
+                tp1_completed_at_key(symbol, position.cycle_id),
+                str(order["updated_at"]),
+            )
         if quantity == 0:
             self.repository.deactivate_tp_plan(int(plan["tp_plan_id"]))
         if terminal:

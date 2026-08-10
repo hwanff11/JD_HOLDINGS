@@ -31,6 +31,18 @@ class MarketClock:
                 return pd.Timestamp(session).date()
         raise RuntimeError("최근 완결된 미국 정규장 거래일을 찾을 수 없습니다")
 
+    def completed_sessions_since(
+        self,
+        start: date | datetime,
+        now: datetime | None = None,
+    ) -> int:
+        start_date = start.date() if isinstance(start, datetime) else start
+        latest = self.latest_completed_session(now, delay_minutes=0)
+        if latest <= start_date:
+            return 0
+        sessions = self.calendar.sessions_in_range(start_date, latest)
+        return sum(pd.Timestamp(session).date() > start_date for session in sessions)
+
     def next_session_close(self, session_date: date) -> datetime:
         session = self.calendar.date_to_session(pd.Timestamp(session_date), direction="none")
         next_session = self.calendar.next_session(session)

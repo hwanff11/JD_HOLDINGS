@@ -9,12 +9,13 @@ from jd_holdings.config import ConfigError, PositionConfig, validate_config
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-2.0.0-SWING"
-    assert config.config_version == "2.0.0"
+    assert config.version == "JDSS-2.1.0-FINAL"
+    assert config.config_version == "2.1.0"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert sum(config.position.stage_weights) == Decimal("1")
     assert config.global_.stop_loss_enabled is False
-    assert config.global_.entry_score == 50
+    assert config.global_.approval_required is True
+    assert config.global_.entry_score == 55
     assert config.global_.minimum_reversal_score == 5
     assert config.scoring["grades"] == {"S": 90, "A": 82, "B": 72, "WATCH": 50}
     assert config.scoring["calibration"]["exponents"] == {
@@ -25,8 +26,14 @@ def test_default_config_is_valid_and_complete(config):
         "atr": 0.9,
     }
     assert config.market_regime["soxl_sector_guard"]["enabled"] is True
+    assert config.market_regime["soxl_sector_guard"]["blocked_stages"] == [1, 3, 4]
     assert config.rebuy.enabled is False
     assert config.take_profit.use_atr is False
+    assert config.take_profit.tp1_base == Decimal("0.04")
+    assert config.take_profit.tp2_base == Decimal("0.06")
+    assert config.take_profit.remainder_exit.enabled is True
+    assert config.take_profit.remainder_exit.wait_trading_days == 20
+    assert config.take_profit.remainder_exit.target_from_avg == Decimal("0.02")
 
 
 def test_invalid_stage_weights_are_rejected(config):
