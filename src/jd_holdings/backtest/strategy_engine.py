@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal
-
 from jd_holdings.core.enums import PositionState
+from jd_holdings.core.remainder_exit import remainder_exit_due, remainder_exit_price
 
 from .engine import BacktestEngine
 
@@ -33,8 +32,7 @@ class StrategyBacktestEngine(BacktestEngine):
 
         rule = self.config.take_profit.remainder_exit
         if (
-            not rule.enabled
-            or state.quantity <= 0
+            state.quantity <= 0
             or state.state != PositionState.PARTIAL_TP_1
             or not state.tp1_done
             or not state.cycle_id
@@ -44,10 +42,11 @@ class StrategyBacktestEngine(BacktestEngine):
         tp1_day = self._tp1_holding_day.get(state.cycle_id)
         if tp1_day is None:
             return tp1_hits, tp2_hits, profitable_rebuy
-        if state.cycle_holding_days - tp1_day < rule.wait_trading_days:
+        elapsed = state.cycle_holding_days - tp1_day
+        if not remainder_exit_due(elapsed, rule):
             return tp1_hits, tp2_hits, profitable_rebuy
 
-        exit_price = state.average_price * (Decimal("1") + rule.target_from_avg)
+        exit_price = remainder_exit_price(state.average_price, rule)
         if high < exit_price:
             return tp1_hits, tp2_hits, profitable_rebuy
 
