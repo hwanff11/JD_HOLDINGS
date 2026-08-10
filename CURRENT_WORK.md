@@ -46,12 +46,12 @@
 - 로컬 검증: pytest 80개 통과, Ruff 통과, `jdss validate-config` 통과, FINAL E2E Dry Run 및 배포 계약 테스트 통과, YAML 파싱·Markdown 링크·`bash -n deploy.sh` 통과.
 - GitHub CI 성공 후 확인된 Node 20 deprecation 경고를 제거하기 위해 공식 권장 `actions/checkout@v7`, `actions/setup-python@v7`로 모든 워크플로를 갱신했다.
 
-## 배포 전 남은 게이트
+## 운영 배포 상태와 남은 게이트
 
-1. GitHub `oracle-dry-run` Environment의 SSH secret과 서버 variable을 확인한다.
-2. 사용자의 배포 지시에 따라 `Deploy Oracle Dry Run`을 실행한다.
-3. 서버에서 `toss-smoke`, 서비스 상태, 브로커 잔고·미체결 주문·SQLite 상태를 Reconciliation한다.
-4. 이상이 있으면 신규매수를 중지하고 `dry_run`을 유지한다.
+1. Oracle dry-run 배포와 조회 전용 smoke는 완료했다.
+2. 운영 계좌와 JDSS SQLite의 불일치 항목을 비공개 환경에서 확인한다.
+3. 기존 운영 자산과 JDSS 상태의 관계를 결정한 뒤 Reconciliation을 재실행한다.
+4. Reconciliation이 완전히 통과하기 전까지 신규 실주문을 금지하고 `dry_run`을 유지한다.
 
 ## 실거래 잠금
 
@@ -60,12 +60,15 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.1 FINAL 전체 계약 감사를 완료하고 발견된 코드·Telegram·백테스트·패키지 버전·배포 경로·문서 링크 불일치를 수정 및 검증. 실제 Oracle 배포는 미실행.
+- 상태: JDSS 2.1 FINAL 전체 계약 감사와 Oracle dry-run 배포 완료. 서비스와 Toss smoke는 정상이나 운영 Reconciliation 추가 확인 전까지 live 승격 금지.
 - 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
 - 액션 갱신 커밋: `0e685cf` (`ci: upgrade workflows to Node 24 actions`)
 - GitHub CI: run `31383081468` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
-- 다음 우선순위: GitHub `oracle-dry-run` Environment 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
+- Oracle dry-run 배포: `a41e35ac551e06e265b605752eb0748ea27ff693` 배포 완료
+- 배포 후 검증: 서비스 active/enabled, 패키지 2.1.0, FINAL 설정 검증, `dry_run` 잠금, Toss 인증·TQQQ/SOXL 시세 조회 성공
+- 읽기 전용 Reconciliation: 운영자 추가 확인 필요. 세부 계좌 정보는 공개 저장소에 기록하지 않으며 자동 인수·DB 수정·주문 취소를 수행하지 않음.
+- 다음 우선순위: 비공개 환경에서 운영 상태 확인 → Reconciliation 재검증. 그 전까지 `dry_run` 유지 및 live 승격 금지.
 
 ## 갱신 규칙
 

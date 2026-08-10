@@ -2,7 +2,7 @@
 
 JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반등을 이용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 운영 기준은 **JDSS-2.1.0-FINAL**이며 기존 `cci_nvdl`과 코드, DB, 서비스, 배포 경로를 공유하지 않습니다.
 
-> 현재 상태: FINAL 코드와 운영 Dry Run 게이트가 `main`에 병합되었습니다. Oracle 배포는 아직 실행하지 않았으며, 최초 배포는 강제 `dry_run`과 조회 전용 Toss smoke test로 진행합니다.
+> 현재 상태: **JDSS-2.1.0-FINAL `a41e35a`가 Oracle에 dry-run 배포되었습니다.** 서비스·설정·Toss 조회 smoke는 정상입니다. 운영 Reconciliation의 추가 확인이 필요해 실거래 승격은 금지된 상태입니다.
 
 ## FINAL 전략 요약
 
