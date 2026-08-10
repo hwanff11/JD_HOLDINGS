@@ -13,6 +13,9 @@ from jd_holdings.core.models import OrderReceipt, OrderRequest
 
 LOGGER = logging.getLogger(__name__)
 CLIENT_ORDER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,36}$")
+SYMBOL_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
+ORDER_SIDES = {"BUY", "SELL"}
+ORDER_TYPES = {"LIMIT", "MARKET"}
 
 
 class TossApiError(RuntimeError):
@@ -78,7 +81,8 @@ class TossClient:
                 raise TossApiError("토스 인증 요청 네트워크 오류", retryable=True) from exc
             if not response.ok:
                 raise self._api_error(response)
-            token = response.json().get("access_token")
+            payload = self._json_object(response, "토스 인증")
+            token = payload.get("access_token")
             if not token:
                 raise TossApiError("토스 인증 응답에 access_token이 없습니다")
             self._access_token = str(token)
@@ -126,9 +130,22 @@ class TossClient:
             )
         if not response.ok:
             raise self._api_error(response)
-        payload = response.json()
+        return self._json_object(response, "토스 API")
+
+    @staticmethod
+    def _json_object(response: requests.Response, context: str) -> dict[str, Any]:
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise TossApiError(
+                f"{context} 응답이 JSON 형식이 아닙니다",
+                status_code=response.status_code,
+            ) from exc
         if not isinstance(payload, dict):
-            raise TossApiError("토스 API 응답 형식이 올바르지 않습니다")
+            raise TossApiError(
+                f"{context} 응답 형식이 올바르지 않습니다",
+                status_code=response.status_code,
+            )
         return payload
 
     @staticmethod
@@ -251,17 +268,30 @@ class TossClient:
     def place_order(self, request: OrderRequest) -> OrderReceipt:
         if not CLIENT_ORDER_ID_PATTERN.fullmatch(request.client_order_id):
             raise ValueError("client_order_id는 36자 이하 영숫자, -, _만 사용할 수 있습니다")
+        symbol = request.symbol.upper()
+        side = request.side.upper()
+        order_type = request.order_type.upper()
+        if not SYMBOL_PATTERN.fullmatch(symbol):
+            raise ValueError("지원하지 않는 종목 코드 형식입니다")
+        if side not in ORDER_SIDES:
+            raise ValueError("주문 방향은 BUY 또는 SELL이어야 합니다")
+        if order_type not in ORDER_TYPES:
+            raise ValueError("주문 유형은 LIMIT 또는 MARKET이어야 합니다")
+        if request.quantity <= 0:
+            raise ValueError("주문 수량은 양수여야 합니다")
+        if order_type == "LIMIT" and (
+            request.price is None or not request.price.is_finite() or request.price <= 0
+        ):
+            raise ValueError("지정가 주문에는 0보다 큰 유한 price가 필요합니다")
         payload: dict[str, Any] = {
             "clientOrderId": request.client_order_id,
-            "symbol": request.symbol.upper(),
-            "side": request.side.upper(),
-            "orderType": request.order_type.upper(),
+            "symbol": symbol,
+            "side": side,
+            "orderType": order_type,
             "timeInForce": "DAY",
             "quantity": str(request.quantity),
         }
-        if request.order_type.upper() == "LIMIT":
-            if request.price is None:
-                raise ValueError("지정가 주문에는 price가 필요합니다")
+        if order_type == "LIMIT":
             payload["price"] = format(request.price, "f")
         response = self._request("POST", "/api/v1/orders", require_account=True, json=payload)
         result = response.get("result", {})
