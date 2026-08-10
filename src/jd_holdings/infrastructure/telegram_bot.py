@@ -1241,7 +1241,7 @@ class TelegramBotApp:
                 )
                 if cash_due:
                     for event in self.idle_cash_manager.run_once():
-                        self._send(f"💵 {html.escape(event)}")
+                        self._send(_format_idle_cash_event(event, self.settings.trading_mode))
                     self._last_idle_cash_sweep = time.monotonic()
                 self.repository.expire_stale_signals()
             except Exception as exc:
