@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+from decimal import Decimal
+
+from jd_holdings.core.enums import PositionState
+
+from .engine import BacktestEngine
+
+
+class StrategyBacktestEngine(BacktestEngine):
+    """Backtest engine that applies all configured JDSS exit rules.
+
+    The base engine remains useful for legacy experiments. Production-facing
+    backtests should use this class so the configured TP1 remainder-exit rule
+    matches the live order-management behavior.
+    """
+
+    def __init__(self, config) -> None:
+        super().__init__(config)
+        self._tp1_holding_day: dict[str, int] = {}
+
+    def _process_take_profit(self, state, timestamp, high, trades, closed_cycles):
+        cycle_id = state.cycle_id
+        tp1_hits, tp2_hits, profitable_rebuy = super()._process_take_profit(
+            state,
+            timestamp,
+            high,
+            trades,
+            closed_cycles,
+        )
+        if tp1_hits and cycle_id:
+            self._tp1_holding_day[cycle_id] = state.cycle_holding_days
+
+        rule = self.config.take_profit.remainder_exit
+        if (
+            not rule.enabled
+            or state.quantity <= 0
+            or state.state != PositionState.PARTIAL_TP_1
+            or not state.tp1_done
+            or not state.cycle_id
+        ):
+            return tp1_hits, tp2_hits, profitable_rebuy
+
+        tp1_day = self._tp1_holding_day.get(state.cycle_id)
+        if tp1_day is None:
+            return tp1_hits, tp2_hits, profitable_rebuy
+        if state.cycle_holding_days - tp1_day < rule.wait_trading_days:
+            return tp1_hits, tp2_hits, profitable_rebuy
+
+        exit_price = state.average_price * (Decimal("1") + rule.target_from_avg)
+        if high < exit_price:
+            return tp1_hits, tp2_hits, profitable_rebuy
+
+        used_rebuy = state.cycle_used_rebuy
+        cycle_id = state.cycle_id
+        self._sell(
+            state,
+            timestamp,
+            exit_price,
+            state.quantity,
+            "REMAINDER_EXIT",
+            trades,
+        )
+        closed_cycles.append(
+            {
+                "cycle_id": cycle_id,
+                "start_date": (
+                    state.cycle_start_date.isoformat() if state.cycle_start_date else None
+                ),
+                "end_date": timestamp.date().isoformat(),
+                "holding_days": state.cycle_holding_days,
+                "pnl": round(float(state.cycle_cashflows), 2),
+                "mae": state.cycle_mae,
+                "mfe": state.cycle_mfe,
+                "entry_count": state.entry_count,
+                "used_rebuy": used_rebuy,
+            }
+        )
+        if used_rebuy and state.cycle_cashflows > 0:
+            profitable_rebuy += 1
+        self._tp1_holding_day.pop(cycle_id, None)
+        self._reset_cycle(state)
+        return tp1_hits, tp2_hits, profitable_rebuy
