@@ -6,8 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import make_score, make_snapshot
 
 from jd_holdings import __version__
+from jd_holdings.core.enums import DecisionType
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
@@ -155,12 +157,43 @@ def test_final_code_version_matches_strategy_release(config):
 
 
 def test_telegram_guide_matches_final_contract():
-    guide = "\n".join(_guide_cards())
+    cards = _guide_cards()
+    guide = "\n".join(cards)
     for expected in ("2.1 FINAL", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%"):
         assert expected in guide
+    for expected in ("CCI 5 / 10", "RSI 5 / 14", "EMA 5 / 20 / 60", "볼린저 하단", "ATR 비율", "종가 위치"):
+        assert expected in guide
+    assert len(cards) == 3
+    assert all(len(card) < 4096 for card in cards)
     assert "50점" not in guide
     assert "-4% 하락" not in guide
     assert "+8.0%" not in guide
+
+
+def test_score_message_explains_indicators_and_final_gates():
+    result = SimpleNamespace(
+        symbol="TQQQ",
+        snapshot=make_snapshot(),
+        score=make_score(55, reversal=5),
+        decision=SimpleNamespace(action=DecisionType.NO_ACTION),
+    )
+
+    message = TelegramBotApp._format_score_message(result)
+
+    for expected in (
+        "강한 과매도",
+        "단기 반등 미확인",
+        "하단 접촉·이탈",
+        "거래 활발",
+        "전략 적정 변동성",
+        "당일 고가권 마감",
+        "총점 55점 이상 : ✅ 충족",
+        "반등 5점 이상 : ✅ 충족",
+        "RED 국면 아님 : ✅ 충족",
+        "현재 매수 조건 미충족",
+    ):
+        assert expected in message
+    assert len(message) < 4096
 
 
 def test_backtest_timeline_defaults_to_latest_15_events():

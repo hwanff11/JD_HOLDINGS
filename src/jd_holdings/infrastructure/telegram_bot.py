@@ -140,6 +140,11 @@ def _regime_label(value: str) -> str:
 
 def _grade_label(value: str) -> str:
     return {
+        "S": "S등급·최우수",
+        "A": "A등급·우수",
+        "B": "B등급·관심",
+        "WATCH": "관찰",
+        "NO_TRADE": "매수 보류",
         "EXCELLENT": "강력 매수",
         "GOOD": "매수 관심",
         "FAIR": "중립",
@@ -191,10 +196,94 @@ def _action_label(value: str) -> str:
         "STAGE_BUY": "분할매수 검토",
         "REBUY": "재매수 검토",
         "HOLD": "보유 유지",
+        "FIRST_ENTRY_CANDIDATE": "1차 매수 검토 가능",
+        "ADD_ENTRY_CANDIDATE": "추가매수 검토 가능",
+        "REBUY_CANDIDATE": "재매수 검토 가능",
+        "NO_ACTION": "현재 매수 조건 미충족",
     }.get(value, value.replace("_", " "))
 
 
-def _guide_cards() -> tuple[str, str]:
+def _cci_label(value: float) -> str:
+    if value <= -200:
+        return "극심한 과매도"
+    if value <= -150:
+        return "강한 과매도"
+    if value <= -100:
+        return "과매도"
+    if value >= 100:
+        return "과열"
+    return "중립"
+
+
+def _rsi_label(value: float) -> str:
+    if value <= 20:
+        return "극심한 과매도"
+    if value <= 30:
+        return "과매도"
+    if value <= 40:
+        return "약세"
+    if value >= 70:
+        return "과매수"
+    if value >= 60:
+        return "강세"
+    return "중립"
+
+
+def _atr_label(value: float) -> str:
+    if value < 0.01:
+        return "변동성 낮음"
+    if value < 0.02:
+        return "변동성 보통 이하"
+    if value <= 0.10:
+        return "전략 적정 변동성"
+    return "변동성 매우 큼"
+
+
+def _volume_label(value: float) -> str:
+    if value < 1.0:
+        return "평균 이하"
+    if value < 1.2:
+        return "평균 수준"
+    if value < 1.5:
+        return "거래 증가"
+    if value < 2.0:
+        return "거래 활발"
+    return "거래량 급증"
+
+
+def _close_position_label(value: float) -> str:
+    if value < 0.3:
+        return "당일 저가권 마감"
+    if value < 0.5:
+        return "당일 하단 마감"
+    if value < 0.7:
+        return "당일 상단 마감"
+    return "당일 고가권 마감"
+
+
+def _ema_label(snapshot) -> str:
+    if snapshot.close > snapshot.ema20 > snapshot.ema60:
+        return "중장기 상승 추세"
+    if snapshot.close > snapshot.ema5:
+        return "단기 반등 확인"
+    return "단기 반등 미확인"
+
+
+def _bollinger_label(snapshot) -> str:
+    if snapshot.close <= snapshot.bb_lower * 0.98:
+        return "하단 2% 이상 이탈 (강한 과매도)"
+    if snapshot.close <= snapshot.bb_lower:
+        return "하단 접촉·이탈 (과매도)"
+    if snapshot.close <= snapshot.bb_lower * 1.02:
+        return "하단 근처"
+    return "하단 위"
+
+
+def _condition_mark(condition: bool) -> str:
+    return "✅ 충족" if condition else "⬜ 미충족"
+
+
+def _guide_cards() -> tuple[str, ...]:
     """Return the user-visible guide derived from the FINAL strategy contract."""
     card1 = (
         "📖 <b>[JDSS 2.1 FINAL 지표 및 점수 체계 가이드]</b>\n\n"
@@ -229,7 +318,27 @@ def _guide_cards() -> tuple[str, str]:
         "• 자동손절·재매수 없음\n\n"
         "💡 <i>/score [종목] 명령어로 최신 지표를 확인할 수 있습니다.</i>"
     )
-    return card1, card2
+    card3 = (
+        "🔎 <b>[보조지표를 쉽게 읽는 법]</b>\n\n"
+        "• <b>CCI 5 / 10</b> : 단기 과매도 강도입니다. "
+        "<code>-100</code> 이하 과매도, <code>-150</code> 이하 강한 과매도, "
+        "<code>-200</code> 이하는 극심한 과매도로 봅니다.\n"
+        "• <b>RSI 5 / 14</b> : 0~100 사이의 매수·매도 압력입니다. "
+        "<code>30</code> 이하는 과매도, <code>20</code> 이하는 극심한 과매도입니다.\n"
+        "• <b>EMA 5 / 20 / 60</b> : 단기·중기·장기 추세선입니다. "
+        "종가가 EMA5 위로 올라오면 단기 반등 확인에 유리합니다.\n"
+        "• <b>볼린저 하단</b> : 종가가 하단에 닿거나 밑으로 내려가면 "
+        "가격이 평소 범위보다 눌린 과매도 구간으로 봅니다.\n"
+        "• <b>거래량 비율</b> : 최근 평균 대비 오늘 거래량입니다. "
+        "<code>1.0배</code>는 평균, <code>1.5배</code>는 활발, <code>2.0배</code> 이상은 급증입니다.\n"
+        "• <b>ATR 비율</b> : 하루 가격 변동 폭입니다. FINAL 전략은 "
+        "<code>2~10%</code>를 적정 구간으로 평가하고, 10% 초과는 위험을 낮춰 평가합니다.\n"
+        "• <b>종가 위치</b> : 당일 저가=0, 고가=1입니다. "
+        "<code>0.50</code> 이상이면 장 후반 반등 조건 하나를 충족합니다.\n\n"
+        "⚠️ <i>보조지표 하나만으로 매수하지 않습니다. 총점 55점, 반등 5점, "
+        "시장 국면과 2단계 승인을 함께 확인합니다.</i>"
+    )
+    return card1, card2, card3
 
 
 def _is_us_holding(item: dict) -> bool:
@@ -318,22 +427,33 @@ class TelegramBotApp:
     def _format_score_message(result: AnalysisResult) -> str:
         snapshot = result.snapshot
         score = result.score
+        regime_value = score.regime.value
         return (
             f"🎯 <b>[{result.symbol} 지표 상세 분석]</b>\n\n"
             f"📊 <b>총점</b> : <code>{score.total}점</code> / 100점 ({_grade_label(score.grade.value)})\n"
-            f"🌐 <b>시장 국면</b> : {_regime_label(score.regime.value)}\n\n"
+            f"🌐 <b>시장 국면</b> : {_regime_label(regime_value)}\n\n"
             "✨ <b>점수 구성</b>\n"
             f"• 시장 국면 : <code>{score.regime_score:2d} / 25점</code>\n"
             f"• 과매도 점수 : <code>{score.oversold_score:2d} / 40점</code>\n"
             f"• 반등 점수 : <code>{score.reversal_score:2d} / 20점</code>\n"
             f"• 거래량 점수 : <code>{score.volume_score:2d} / 10점</code>\n"
             f"• ATR 변동성 : <code>{score.atr_score:2d} / 5점</code>\n\n"
-            "🌞 <b>보조 지표 현황</b>\n"
-            f"• CCI (5 / 10) : <code>{snapshot.cci5:.1f} / {snapshot.cci10:.1f}</code>\n"
-            f"• RSI (5 / 14) : <code>{snapshot.rsi5:.1f} / {snapshot.rsi14:.1f}</code>\n"
-            f"• ATR 비율 : <code>{snapshot.atr_pct * 100:.2f}%</code>\n"
-            f"• 거래량 비율 : <code>{snapshot.volume_ratio:.2f}배</code>\n"
-            f"• 종가 위치 : <code>{snapshot.close_position:.2f}</code>\n\n"
+            "🔎 <b>보조 지표 해석</b>\n"
+            f"• CCI 5 / 10 : <code>{snapshot.cci5:.1f} / {snapshot.cci10:.1f}</code> "
+            f"→ {_cci_label(snapshot.cci5)} / {_cci_label(snapshot.cci10)}\n"
+            f"• RSI 5 / 14 : <code>{snapshot.rsi5:.1f} / {snapshot.rsi14:.1f}</code> "
+            f"→ {_rsi_label(snapshot.rsi5)} / {_rsi_label(snapshot.rsi14)}\n"
+            f"• EMA 추세 : <b>{_ema_label(snapshot)}</b> "
+            f"(종가 <code>{snapshot.close:.2f}</code> / EMA5 <code>{snapshot.ema5:.2f}</code>)\n"
+            f"• 볼린저 하단 : <b>{_bollinger_label(snapshot)}</b> "
+            f"(하단 <code>{snapshot.bb_lower:.2f}</code>)\n"
+            f"• 거래량 : <code>{snapshot.volume_ratio:.2f}배</code> → {_volume_label(snapshot.volume_ratio)}\n"
+            f"• ATR : <code>{snapshot.atr_pct * 100:.2f}%</code> → {_atr_label(snapshot.atr_pct)}\n"
+            f"• 종가 위치 : <code>{snapshot.close_position:.2f}</code> → {_close_position_label(snapshot.close_position)}\n\n"
+            "🚦 <b>FINAL 핵심 조건</b>\n"
+            f"• 총점 55점 이상 : {_condition_mark(score.total >= 55)}\n"
+            f"• 반등 5점 이상 : {_condition_mark(score.reversal_score >= 5)}\n"
+            f"• RED 국면 아님 : {_condition_mark(regime_value not in {'RED', 'BEARISH'})}\n\n"
             f"💡 <b>최종 전략 판단</b> : <b>{_action_label(result.decision.action.value)}</b>"
         )
 
@@ -562,9 +682,8 @@ class TelegramBotApp:
             if not self._authorized_message(message):
                 return
             try:
-                card1, card2 = _guide_cards()
-                self._send(card1, chat_id=message.chat.id)
-                self._send(card2, chat_id=message.chat.id)
+                for card in _guide_cards():
+                    self._send(card, chat_id=message.chat.id)
             except Exception as exc:
                 LOGGER.exception("guide 실패")
                 self._send(
