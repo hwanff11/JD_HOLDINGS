@@ -111,11 +111,13 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           DEPLOY_REF: ${{ steps.ref.outputs.ref }}
           JOB_STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == "success" ]]; then
-            message="✅ Oracle dry-run 배포 성공: \`$DEPLOY_REF\`\n\nmain 계보·CI·설정·dry-run 잠금·Toss smoke test를 통과했습니다."
+            message="✅ Oracle dry-run 배포 성공: \`$DEPLOY_REF\`\n\nmain 계보·CI·설정·dry-run 잠금·Toss smoke test를 통과했습니다.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
           else
-            message="❌ Oracle dry-run 배포 실패: \`${DEPLOY_REF:-ref 확인 실패}\`\n\nActions 로그를 확인해 주세요."
+            message="❌ Oracle dry-run 배포 실패: \`${DEPLOY_REF:-ref 확인 실패}\`\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
           fi
           gh issue comment "$ISSUE_NUMBER" --body "$(printf '%b' "$message")"
