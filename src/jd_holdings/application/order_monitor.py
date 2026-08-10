@@ -11,7 +11,7 @@ from jd_holdings.infrastructure.market_clock import MarketClock
 from .broker import Broker
 from .database import SQLiteRepository
 from .order_manager import OrderManager
-from .position_manager import PositionManager
+from .position_manager import PositionManager, tp1_completed_at_key
 from .tp_manager import TP_PURPOSES, TakeProfitManager
 
 TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
@@ -99,7 +99,7 @@ class OrderMonitor:
                         tp_recovery_symbols.add(symbol)
 
         for symbol in tp1_completed_symbols:
-            self._reset_tp2_clock_after_tp1(symbol, events)
+            self._refresh_tp2_after_tp1(symbol, events)
 
         for symbol in tp_recovery_symbols - tp1_completed_symbols:
             self._recover_standard_tp(symbol, events)
@@ -110,7 +110,7 @@ class OrderMonitor:
         self._switch_due_remainder_exits(current, events)
         return events
 
-    def _reset_tp2_clock_after_tp1(self, symbol: str, events: list[str]) -> None:
+    def _refresh_tp2_after_tp1(self, symbol: str, events: list[str]) -> None:
         settled = self.tp_manager.cancel_open_tp_orders(symbol)
         for client_order_id in settled:
             self.position_manager.apply_sell_fill(client_order_id)
@@ -121,7 +121,7 @@ class OrderMonitor:
             and self.repository.active_tp_plan(symbol)
         ):
             self.tp_manager.place_orders(symbol)
-            events.append(f"{symbol} TP1 완료 후 TP2 기준시점 재설정")
+            events.append(f"{symbol} TP1 완료 후 TP2 주문 재확인")
 
     def _recover_standard_tp(self, symbol: str, events: list[str]) -> None:
         settled = self.tp_manager.cancel_open_tp_orders(symbol)
@@ -163,8 +163,18 @@ class OrderMonitor:
             tp2_orders = [order for order in open_orders if order["purpose"] == "TP2"]
             if not tp2_orders:
                 continue
-            tp2_created = max(datetime.fromisoformat(order["created_at"]) for order in tp2_orders)
-            elapsed_sessions = self.market_clock.completed_sessions_since(tp2_created, current)
+
+            anchor = None
+            if position.cycle_id:
+                stored = self.repository.get_system_value(
+                    tp1_completed_at_key(symbol, position.cycle_id)
+                )
+                if stored:
+                    anchor = datetime.fromisoformat(stored)
+            if anchor is None:
+                anchor = min(datetime.fromisoformat(order["created_at"]) for order in tp2_orders)
+
+            elapsed_sessions = self.market_clock.completed_sessions_since(anchor, current)
             if not remainder_exit_due(elapsed_sessions, rule):
                 continue
 
