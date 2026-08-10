@@ -42,6 +42,8 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     assert "[deploy-oracle-dry-run]" in workflow
     assert "[0-9a-fA-F]{40}" in workflow
     assert "gh issue comment" in workflow
+    assert "github.run_id" in workflow
+    assert "actions/runs/" in workflow
 
 
 def test_workflows_use_node24_actions():
