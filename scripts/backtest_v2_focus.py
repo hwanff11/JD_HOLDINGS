@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Focused JDSS 2.0 phase-2 swing-strategy comparison.
+"""Focused JDSS 2.0 phase-3 swing-strategy comparison.
 
-Phase 2 keeps the baseline entry/add rules fixed and tests only two structural
-changes: a shorter TP2 and one conservative rebuy after TP1.
+Phase 3 follows the audit finding that several catastrophic long-lock cycles
+started at the minimum 50-point entry threshold. It tests only a small set of
+slightly stricter entry gates, with TP 4/8 and the promising TP 4/6 variant.
 """
 
 from __future__ import annotations
@@ -27,6 +28,10 @@ SYMBOLS = ("TQQQ", "SOXL")
 BENCHMARKS = ("SPY", "QQQ", "SOXX", "SMH")
 
 
+def _with_entry(base, entry_score: int):
+    return replace(base, global_=replace(base.global_, entry_score=entry_score))
+
+
 def _with_tp(base, tp1: str, tp2: str):
     return replace(
         base,
@@ -38,26 +43,15 @@ def _with_tp(base, tp1: str, tp2: str):
     )
 
 
-def _with_rebuy(base, minimum_score: int):
-    return replace(
-        base,
-        rebuy=replace(
-            base.rebuy,
-            enabled=True,
-            minimum_score=minimum_score,
-        ),
-    )
-
-
 def build_candidates(base):
     tp46 = _with_tp(base, "0.04", "0.06")
     return {
-        "A_baseline_tp48_rebuy_off": base,
-        "I_tp46_rebuy_off": tp46,
-        "K_tp48_rebuy55": _with_rebuy(base, 55),
-        "L_tp48_rebuy60": _with_rebuy(base, 60),
-        "M_tp46_rebuy55": _with_rebuy(tp46, 55),
-        "N_tp46_rebuy60": _with_rebuy(tp46, 60),
+        "A_entry50_tp48": base,
+        "O_entry52_tp48": _with_entry(base, 52),
+        "P_entry53_tp48": _with_entry(base, 53),
+        "B_entry55_tp48": _with_entry(base, 55),
+        "Q_entry52_tp46": _with_entry(tp46, 52),
+        "R_entry53_tp46": _with_entry(tp46, 53),
     }
 
 
@@ -104,7 +98,6 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
     sharpe, sortino = risk_adjusted_metrics(equity, annualization_days)
     closed = sum(int(result.metrics["closed_cycles"]) for result in results.values())
     signals = sum(int(result.metrics["signals"]) for result in results.values())
-    rebuys = sum(int(result.metrics["rebuy_cycles"]) for result in results.values())
     return {
         "total_return_pct": round(total_return * 100, 2),
         "cagr_pct": round(cagr * 100, 2),
@@ -113,7 +106,6 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
         "sortino": round(sortino, 3),
         "closed_cycles": closed,
         "signals": signals,
-        "rebuy_cycles": rebuys,
         "avg_holding_days_including_open": round(_average_holding_including_open(results), 2),
         "max_holding_days_worst_symbol_including_open": max(
             max(_holding_days_including_open(result), default=0) for result in results.values()
@@ -148,22 +140,21 @@ def settings(config) -> dict[str, Any]:
         ],
         "tp": [float(config.take_profit.tp1_base), float(config.take_profit.tp2_base)],
         "rebuy_enabled": config.rebuy.enabled,
-        "rebuy_minimum_score": config.rebuy.minimum_score,
     }
 
 
 def markdown_summary(report: dict[str, Any]) -> str:
     lines = [
-        "# JDSS 2.0 Phase-2 Swing Backtest",
+        "# JDSS 2.0 Phase-3 Entry Filter Backtest",
         "",
         "Primary decision window: **2021-2024 validation**. Recent years are reference only.",
         "Open positions at the end of each segment are included in holding/lockup risk.",
         "",
         (
             "| Candidate | CAGR | MDD | P95 MAE* | >40d lockup* | Max hold* | "
-            "Open DD* | Cycles | Rebuys | Avg hold* |"
+            "Open DD* | Cycles | Avg hold* |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     rows = []
     for name, candidate in report["candidates"].items():
@@ -176,8 +167,7 @@ def markdown_summary(report: dict[str, Any]) -> str:
             f"{m['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
             f"{m['max_holding_days_worst_symbol_including_open']}d | "
             f"{m['open_price_drawdown_worst_symbol_pct']:.2f}% | "
-            f"{m['closed_cycles']} | {m['rebuy_cycles']} | "
-            f"{m['avg_holding_days_including_open']:.1f}d |"
+            f"{m['closed_cycles']} | {m['avg_holding_days_including_open']:.1f}d |"
         )
     lines.extend(
         [
@@ -189,9 +179,9 @@ def markdown_summary(report: dict[str, Any]) -> str:
             "",
             "## Decision rule",
             "",
-            "A rebuy candidate is useful only if it reduces stale-position risk without paying for that "
-            "improvement with materially worse MDD/MAE. Validation stability takes priority over recent-only "
-            "returns.",
+            "A higher entry gate is useful only if it filters the 50-point failure mode while retaining "
+            "reasonable cycle count and avoiding the large drawdowns seen at entry 55. Prefer stability "
+            "across development, validation and recent windows over a single-period winner.",
         ]
     )
     return "\n".join(lines) + "\n"
