@@ -58,12 +58,20 @@ class AdditionalEntryConfig:
 
 
 @dataclass(frozen=True)
+class RemainderExitConfig:
+    enabled: bool
+    wait_trading_days: int
+    target_from_avg: Decimal
+
+
+@dataclass(frozen=True)
 class TakeProfitConfig:
     tp1_base: Decimal
     tp2_base: Decimal
     use_atr: bool
     tp1_atr_multiplier: Decimal
     tp2_atr_multiplier: Decimal
+    remainder_exit: RemainderExitConfig
 
 
 @dataclass(frozen=True)
@@ -149,6 +157,10 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
     exposure_raw = _require(raw, "exposure")
     add_raw = _require(raw, "additional_entry")
     tp_raw = _require(raw, "take_profit")
+    remainder_raw = tp_raw.get(
+        "remainder_exit",
+        {"enabled": False, "wait_trading_days": 20, "target_from_avg": 0.02},
+    )
     rebuy_raw = _require(raw, "rebuy")
     risk_raw = _require(raw, "risk_review")
     scheduler_raw = _require(raw, "scheduler")
@@ -204,6 +216,11 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             use_atr=bool(tp_raw["use_atr"]),
             tp1_atr_multiplier=_decimal(tp_raw["tp1_atr_multiplier"]),
             tp2_atr_multiplier=_decimal(tp_raw["tp2_atr_multiplier"]),
+            remainder_exit=RemainderExitConfig(
+                enabled=bool(remainder_raw["enabled"]),
+                wait_trading_days=int(remainder_raw["wait_trading_days"]),
+                target_from_avg=_decimal(remainder_raw["target_from_avg"]),
+            ),
         ),
         rebuy=RebuyConfig(
             enabled=bool(rebuy_raw["enabled"]),
@@ -257,7 +274,9 @@ def validate_config(config: StrategyConfig) -> None:
         expected_cumulative.append(total)
     if tuple(expected_cumulative) != config.position.cumulative_weights:
         errors.append("cumulative_weights가 stage_weights의 누적합과 다릅니다")
-    drops = [config.additional_entry.stages[stage].min_drop_from_anchor for stage in (2, 3, 4)]
+    drops = [
+        config.additional_entry.stages[stage].min_drop_from_anchor for stage in (2, 3, 4)
+    ]
     scores = [config.additional_entry.stages[stage].min_score for stage in (2, 3, 4)]
     if not drops[0] < drops[1] < drops[2]:
         errors.append("추가매수 하락폭은 2차 < 3차 < 4차여야 합니다")
@@ -265,6 +284,13 @@ def validate_config(config: StrategyConfig) -> None:
         errors.append("추가매수 점수는 2차 <= 3차 <= 4차여야 합니다")
     if config.take_profit.tp1_base >= config.take_profit.tp2_base:
         errors.append("TP1은 TP2보다 작아야 합니다")
+    if config.take_profit.remainder_exit.enabled:
+        if config.take_profit.remainder_exit.wait_trading_days <= 0:
+            errors.append("잔여청산 대기 거래일은 양수여야 합니다")
+        if config.take_profit.remainder_exit.target_from_avg <= 0:
+            errors.append("잔여청산 목표수익률은 양수여야 합니다")
+        if config.take_profit.remainder_exit.target_from_avg >= config.take_profit.tp2_base:
+            errors.append("잔여청산 목표는 TP2보다 낮아야 합니다")
     if config.global_.buy_fee < 0 or config.global_.sell_fee < 0:
         errors.append("수수료는 0 이상이어야 합니다")
     if config.global_.capital_per_symbol <= 0:

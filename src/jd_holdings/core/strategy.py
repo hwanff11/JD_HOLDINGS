@@ -50,12 +50,7 @@ def soxl_sector_guard_blocks(
     sector_benchmarks: dict[str, IndicatorSnapshot] | None,
     config: StrategyConfig,
 ) -> bool:
-    """Block deep SOXL averaging when semiconductor benchmarks are below EMA60.
-
-    The guard is deliberately narrow: it applies only to SOXL and only to configured
-    additional-entry stages. Missing benchmark data follows the configured
-    ``warn_and_allow`` policy so existing analysis cannot fail closed accidentally.
-    """
+    """Block configured SOXL entry stages when semiconductor benchmarks are weak."""
     guard = config.market_regime.get("soxl_sector_guard", {})
     if symbol.upper() != "SOXL" or not guard.get("enabled", False):
         return False
@@ -65,7 +60,10 @@ def soxl_sector_guard_blocks(
     if not sector_benchmarks:
         return False
 
-    candidates = [str(value).upper() for value in guard.get("benchmark_candidates", ("SOXX", "SMH"))]
+    candidates = [
+        str(value).upper()
+        for value in guard.get("benchmark_candidates", ("SOXX", "SMH"))
+    ]
     available = [sector_benchmarks[name] for name in candidates if name in sector_benchmarks]
     if not available:
         return False
@@ -77,6 +75,31 @@ def soxl_sector_guard_blocks(
     return any(below)
 
 
+def first_entry_trend_guard_blocks(
+    snapshot: IndicatorSnapshot,
+    config: StrategyConfig,
+) -> bool:
+    """Block only the first entry during a confirmed bearish trend.
+
+    This guard intentionally does not affect averaging stages.  The default
+    research rule requires both price below EMA60 and EMA20 below EMA60, which
+    is stricter than merely buying below a long moving average and therefore
+    preserves more ordinary oversold-rebound opportunities.
+    """
+    guard = config.market_regime.get("first_entry_trend_guard", {})
+    if not guard.get("enabled", False):
+        return False
+    symbols = {str(value).upper() for value in guard.get("symbols", ("TQQQ", "SOXL"))}
+    if snapshot.symbol.upper() not in symbols:
+        return False
+    rule = str(guard.get("rule", "price_below_ema60_and_ema20_below_ema60"))
+    price_below = float(snapshot.close) < snapshot.ema60
+    ema_bearish = snapshot.ema20 < snapshot.ema60
+    if rule == "ema20_below_ema60":
+        return ema_bearish
+    return price_below and ema_bearish
+
+
 def evaluate_entry(
     snapshot: IndicatorSnapshot,
     score: ScoreResult,
@@ -85,6 +108,7 @@ def evaluate_entry(
     *,
     data_ok: bool = True,
     system_ok: bool = True,
+    sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
     cycle_cap = score_to_exposure(score.total, config)
     target, budget = calculate_stage_budget(cycle_cap, 1, Decimal("0"), config)
@@ -100,13 +124,17 @@ def evaluate_entry(
         available_capital=budget,
         config=config,
     )
+    reasons = list(eligibility.reason_codes)
+    if soxl_sector_guard_blocks(snapshot.symbol, 1, sector_benchmarks, config):
+        reasons.append("SOXL_SECTOR_GUARD")
+    if first_entry_trend_guard_blocks(snapshot, config):
+        reasons.append("FIRST_ENTRY_TREND_GUARD")
+    allowed = not reasons
     return TradeDecision(
-        action=(
-            DecisionType.FIRST_ENTRY_CANDIDATE if eligibility.allowed else DecisionType.NO_ACTION
-        ),
-        allowed=eligibility.allowed,
-        reason_codes=eligibility.reason_codes or ("ENTRY_SCORE_PASS",),
-        target_stage=1 if eligibility.allowed else None,
+        action=DecisionType.FIRST_ENTRY_CANDIDATE if allowed else DecisionType.NO_ACTION,
+        allowed=allowed,
+        reason_codes=tuple(reasons) or ("ENTRY_SCORE_PASS",),
+        target_stage=1 if allowed else None,
         cycle_exposure_cap=cycle_cap,
         target_cumulative_capital=target,
         planned_budget=budget,
@@ -203,7 +231,9 @@ def evaluate_rebuy(
     data_ok: bool = True,
     system_ok: bool = True,
 ) -> TradeDecision:
-    available_capital = max(Decimal("0"), position.cycle_exposure_cap - position.current_cost_basis)
+    available_capital = max(
+        Decimal("0"), position.cycle_exposure_cap - position.current_cost_basis
+    )
     eligibility = evaluate_eligibility(
         data_ok=data_ok,
         system_ok=system_ok,
@@ -228,8 +258,8 @@ def evaluate_rebuy(
     trigger = position.average_price * (Decimal("1") - config.rebuy.min_drop_from_avg)
     if snapshot.close > trigger:
         reasons.append("REBUY_PRICE_NOT_MET")
-    requested = (
-        Decimal(position.tp1_filled_qty) * snapshot.close * (Decimal("1") + config.global_.buy_fee)
+    requested = Decimal(position.tp1_filled_qty) * snapshot.close * (
+        Decimal("1") + config.global_.buy_fee
     )
     budget = min(available_capital, requested).quantize(Decimal("0.01"))
     if budget <= 0:
@@ -256,44 +286,39 @@ def evaluate_strategy(
     system_ok: bool = True,
     sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
-    """
-    현재 계좌 상태(position)에 따라 1차 매수, 추가 매수, 혹은 재매수 로직 중 어떤 것을
-    적용할지 판단하여 그 결과를 반환하는 전략 엔진의 핵심 진입점입니다.
-    """
-    # 1. 보유 종목이 없는 상태 (EMPTY): 신규 1차 진입 평가
     if position.state == PositionState.EMPTY:
         return evaluate_entry(
-            snapshot, score, position, config, data_ok=data_ok, system_ok=system_ok
-        )
-        
-    # 2. 1차~3차 매수를 이미 진행하여 보유 중인 상태: 추가 진입(물타기 혹은 불타기) 평가
-    if position.state in {
-        PositionState.HOLDING_1ST,
-        PositionState.HOLDING_2ND,
-        PositionState.HOLDING_3RD,
-    }:
-        return evaluate_additional_entry(
             snapshot,
             score,
             position,
-            position.entry_count + 1,
             config,
             data_ok=data_ok,
             system_ok=system_ok,
             sector_benchmarks=sector_benchmarks,
         )
-        
-    # 3. 1차 익절을 완료하여 비중이 줄어든 상태: 재진입(리밸런싱 매수) 평가
+    for stage in (2, 3, 4):
+        if position.state == expected_holding_state(stage - 1):
+            return evaluate_additional_entry(
+                snapshot,
+                score,
+                position,
+                stage,
+                config,
+                data_ok=data_ok,
+                system_ok=system_ok,
+                sector_benchmarks=sector_benchmarks,
+            )
     if position.state == PositionState.PARTIAL_TP_1:
         return evaluate_rebuy(
-            snapshot, score, position, config, data_ok=data_ok, system_ok=system_ok
+            snapshot,
+            score,
+            position,
+            config,
+            data_ok=data_ok,
+            system_ok=system_ok,
         )
-        
-    # 4. 그 외 상태(예: 풀매수 상태 등)에서는 추가 매수를 허용하지 않음
     return TradeDecision(
         action=DecisionType.NO_ACTION,
         allowed=False,
         reason_codes=("STATE_NOT_ELIGIBLE",),
-        cycle_exposure_cap=position.cycle_exposure_cap,
     )
-

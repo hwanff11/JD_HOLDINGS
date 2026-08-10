@@ -3,13 +3,16 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
+from jd_holdings.core.enums import PositionState
 from jd_holdings.core.models import OrderReceipt, OrderRequest
+from jd_holdings.core.remainder_exit import remainder_exit_price
 
 from .broker import Broker
 from .database import SQLiteRepository
 from .order_manager import OrderManager, build_client_order_id
 
 LOGGER = logging.getLogger(__name__)
+TP_PURPOSES = {"TP1", "TP2", "REMAINDER_EXIT"}
 
 
 class TakeProfitManager:
@@ -64,10 +67,41 @@ class TakeProfitManager:
             receipts.append(self.order_manager.submit(request, cycle_id=position.cycle_id))
         return receipts
 
+    def place_remainder_exit(self, symbol: str) -> OrderReceipt:
+        symbol = symbol.upper()
+        position = self.repository.get_position(symbol)
+        plan = self.repository.active_tp_plan(symbol)
+        rule = self.repository.config.take_profit.remainder_exit
+        if not rule.enabled:
+            raise RuntimeError("잔여청산 규칙이 비활성화되어 있습니다")
+        if not plan:
+            raise RuntimeError(f"{symbol} 활성 TP 계획이 없습니다")
+        if position.state != PositionState.PARTIAL_TP_1 or position.quantity <= 0:
+            raise RuntimeError(f"{symbol}은 TP1 이후 잔여 보유 상태가 아닙니다")
+
+        revision = self.repository.bump_tp_revision(int(plan["tp_plan_id"]))
+        price = remainder_exit_price(position.average_price, rule)
+        client_order_id = build_client_order_id(
+            symbol=symbol,
+            purpose="REMAINDER_EXIT",
+            signal_id=None,
+            unique_context=f"tp{plan['tp_plan_id']}-r{revision}-remainder",
+        )
+        request = OrderRequest(
+            client_order_id=client_order_id,
+            symbol=symbol,
+            side="SELL",
+            order_type="LIMIT",
+            quantity=position.quantity,
+            price=price,
+            purpose="REMAINDER_EXIT",
+        )
+        return self.order_manager.submit(request, cycle_id=position.cycle_id)
+
     def cancel_open_tp_orders(self, symbol: str) -> list[str]:
         filled_client_ids: list[str] = []
         for order in self.repository.open_orders(symbol):
-            if order["purpose"] not in {"TP1", "TP2"}:
+            if order["purpose"] not in TP_PURPOSES:
                 continue
             broker_id = order.get("broker_order_id")
             if not broker_id:
@@ -82,6 +116,5 @@ class TakeProfitManager:
             if receipt.filled_quantity > 0:
                 filled_client_ids.append(str(order["client_order_id"]))
             elif not self.repository.mark_order_applied(str(order["client_order_id"])):
-                # 이미 반영된 종료 주문은 정상적인 멱등 재호출입니다.
                 continue
         return filled_client_ids
