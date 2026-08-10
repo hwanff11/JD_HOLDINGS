@@ -1,8 +1,8 @@
 # Oracle 배포 가이드
 
-현재 Oracle 운영본은 **JDSS-2.2.1-SGOV**이다. **JDSS-2.2.2-SGOV**는 `main` 병합 후 이 절차로 `dry_run` 배포하며 SGOV를 포함한 실주문 잠금은 해제하지 않는다.
+현재 Oracle 운영본은 **JDSS-2.2.2-SGOV**이다. `dry_run`으로 배포됐으며 SGOV를 포함한 실주문 잠금은 해제하지 않는다.
 
-배포 전 운영 스냅샷은 Oracle 릴리스 `3de66d1`, 서비스 active, 거래 모드 `dry_run`이다. JDSS SQLite와 브로커 상태는 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
+현재 운영 스냅샷은 Oracle 릴리스 `a98b671`, 서비스 active, 패키지·설정 `2.2.2`, 거래 모드 `dry_run`, 빈 `JDSS_LIVE_CONFIRMATION`이다. TQQQ·SOXL·SGOV 시세와 미국장 캘린더 조회 smoke test를 통과했다. JDSS SQLite와 브로커 상태는 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
 
 ## 1. 서버 준비
 

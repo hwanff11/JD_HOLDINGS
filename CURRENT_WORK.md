@@ -5,8 +5,9 @@
 ## 현재 작업 구조
 
 - 운영 안정 기준선: `main`
-- 현재 활성 브랜치: `codex/jdss-2.2.2-sgov-auto-resume`
-- 작업 기준 커밋: `main` / `bf989f7`
+- 현재 활성 브랜치: `main`
+- 작업 기준 커밋: `main` / `a98b671`
+- JDSS 2.2.2 PR #13: `main` 병합 및 Oracle `dry_run` 배포 완료 (`a98b671`)
 - JDSS 2.2.1 PR #11: `main` 병합 및 Oracle 배포 완료 (`3de66d1`)
 - JDSS 2.2 SGOV PR #8: `main` 병합 완료 (`c86ca23`)
 - FINAL 기능 PR #4: `main` 병합 완료 (`b871413`)
@@ -53,7 +54,8 @@
 - SGOV 관리 테스트를 추가했고 전체 pytest 89개가 통과했다.
 - 2011-01-01~2026-08-04 장기 회귀: 포트폴리오 `+322.58%`, CAGR `+9.69%`, MDD `-24.68%`, SGOV 기여 `$10,810.54`.
 - 구현 커밋 `aaab561`을 PR #8로 검증해 `main`에 병합했고 Oracle에 `c86ca23`을 배포했다.
-- Oracle 운영은 JDSS 2.2.1이며 `dry_run` 잠금과 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
+- Oracle 운영은 JDSS 2.2.2 릴리스 `a98b671`이며 서비스 active, `dry_run` 잠금, 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
+- 배포 후 TQQQ·SOXL·SGOV 시세와 미국장 캘린더 조회 전용 Toss smoke test를 통과했다.
 - Telegram `/signal`이 DB의 `ACTIVE` 플래그만 신뢰하던 결함을 수정해, 표시·승인 전에 현재 버전과 점수·반등·RED 국면 게이트를 재검증하고 부적격 레코드를 `INVALID` 처리한다.
 
 ## 2.1 기준선 완료 상태
@@ -87,7 +89,7 @@
 
 ## 운영 배포 상태와 남은 게이트
 
-1. JDSS 2.2.1 Oracle dry-run 릴리스 `3de66d1` 배포를 완료했다.
+1. JDSS 2.2.2 Oracle dry-run 릴리스 `a98b671` 배포를 완료했다.
 2. 당분간 Telegram `/bt`, `/sgov` 등 조회·검증 중심으로 운용한다.
 3. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문 0건을 유지한다.
 4. 향후 live 검토 시 기존 운영 자산과 JDSS 상태의 관계를 먼저 결정하고 Reconciliation을 재실행한다.
@@ -102,7 +104,7 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.2 SGOV 자금관리 구현·장기 회귀·PR 검증·`main` 병합·Oracle dry-run 배포 완료. live 승격 금지.
+- 상태: JDSS 2.2.2 SGOV 현금화 자동 재개·호가 집행 구현, PR #13 `main` 병합, Oracle dry-run 배포·smoke test 완료. live 승격 금지.
 - JDSS 2.2 구현 커밋: `aaab561` (`Add JDSS 2.2 SGOV cash management`)
 - JDSS 2.2 main 병합 커밋: `c86ca23` (PR #8)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
@@ -112,13 +114,14 @@
 - 문서 인수인계 정리 커밋: `20e3315` (`docs: finalize cross-environment handoff`)
 - 신호 DB 수정: PR #10, main `ac1e49b`
 - JDSS 2.2.1 릴리스: PR #11, main `3de66d1`
-- GitHub CI: PR #11의 CI run `31393309673` 및 JDSS 2.2 Dry Run `31393309624` 성공
-- Oracle dry-run 배포: `3de66d1a0decee79c78de74498b117f218ebc521` 배포 완료
-- 배포 후 검증: `jd_holdings_bot` 배포 완료, 패키지 2.2.1, 전략 `JDSS-2.2.1-SGOV`, config 2.2.1, `dry_run` 잠금 유지
+- JDSS 2.2.2 릴리스: PR #13, main·Oracle `a98b671`
+- GitHub CI: PR #13의 CI run `31397181235` 및 JDSS 2.2 Dry Run `31397181217` 성공
+- Oracle dry-run 배포: `a98b6717f70d7adca0f118b93de452fccc342dc1` 배포 완료
+- 배포 후 검증: `jd_holdings_bot` active, 패키지 2.2.2, 전략 `JDSS-2.2.2-SGOV`, config 2.2.2, `dry_run`, 빈 live 확인값, Toss TQQQ·SOXL·SGOV 시세·미국장 캘린더 조회 성공
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
 - 문서 검증: Git 추적 Markdown 18개, 깨진 로컬 링크 0개, FINAL/Archive 경계 확인
 - 운영 방침: Telegram `/bt`, `/sgov` 조회·검증 중심, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
-- 다음 우선순위: `/signal` 부적격 DB 레코드 자동 정리와 Telegram `/sgov`, SGOV 원장·broker reconciliation을 관찰하고, 별도 승인 전까지 live 전환하지 않는다.
+- 다음 우선순위: Telegram에서 SGOV 현금화 의도·자동 재개·취소·재가격 이벤트와 SGOV 원장·broker reconciliation을 관찰하고, 별도 승인 전까지 live 전환하지 않는다.
 
 ## 갱신 규칙
 
