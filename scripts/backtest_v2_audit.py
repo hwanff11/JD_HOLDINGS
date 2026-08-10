@@ -34,6 +34,52 @@ def _counter(items) -> dict[str, int]:
     return dict(sorted(Counter(items).items()))
 
 
+def _lockup_rate(holding_days: list[int], threshold: int) -> float:
+    if not holding_days:
+        return 0.0
+    return round(sum(day > threshold for day in holding_days) / len(holding_days) * 100, 2)
+
+
+def _open_cycle_details(result: BacktestResult) -> dict[str, Any] | None:
+    if int(result.open_position["quantity"]) <= 0:
+        return None
+
+    closed_ids = {str(cycle["cycle_id"]) for cycle in result.closed_cycles}
+    first_buys = [
+        trade
+        for trade in result.trades
+        if trade["side"] == "BUY"
+        and trade["purpose"] == DecisionType.FIRST_ENTRY_CANDIDATE.value
+        and str(trade["cycle_id"]) not in closed_ids
+    ]
+    if not first_buys:
+        return None
+
+    first = first_buys[-1]
+    cycle_id = str(first["cycle_id"])
+    cycle_trades = [trade for trade in result.trades if str(trade["cycle_id"]) == cycle_id]
+    return {
+        "cycle_id": cycle_id,
+        "start_date": first["date"],
+        "holding_days": int(result.open_position["holding_days"]),
+        "state": result.open_position["state"],
+        "quantity": int(result.open_position["quantity"]),
+        "average_price": float(result.open_position["average_price"]),
+        "market_price": float(result.open_position["market_price"]),
+        "account_mae_pct": float(result.open_position["mae_pct"]),
+        "price_vs_average_pct": round(
+            (float(result.open_position["market_price"]) / float(result.open_position["average_price"]) - 1)
+            * 100,
+            2,
+        )
+        if float(result.open_position["average_price"]) > 0
+        else 0.0,
+        "buy_count": sum(trade["side"] == "BUY" for trade in cycle_trades),
+        "sell_count": sum(trade["side"] == "SELL" for trade in cycle_trades),
+        "purposes": _counter(str(trade["purpose"]) for trade in cycle_trades),
+    }
+
+
 def _audit_result(result: BacktestResult) -> dict[str, Any]:
     signal_actions = _counter(signal["action"] for signal in result.signals)
     buy_purposes = _counter(
@@ -54,6 +100,11 @@ def _audit_result(result: BacktestResult) -> dict[str, Any]:
         key=lambda cycle: int(cycle["holding_days"]),
         reverse=True,
     )[:5]
+    open_cycle = _open_cycle_details(result)
+    closed_holding_days = [int(cycle["holding_days"]) for cycle in result.closed_cycles]
+    holding_days_including_open = list(closed_holding_days)
+    if open_cycle:
+        holding_days_including_open.append(int(open_cycle["holding_days"]))
 
     checks = {
         "metric_signal_count_matches_details": int(result.metrics["signals"]) == len(result.signals),
@@ -79,35 +130,54 @@ def _audit_result(result: BacktestResult) -> dict[str, Any]:
         "additional_entry_signals": add_signal_count,
         "additional_entry_buys": add_buy_count,
         "longest_closed_cycles": longest_cycles,
-        "open_position": result.open_position,
+        "open_cycle": open_cycle,
+        "holding_risk_including_open": {
+            "maximum_holding_days": max(holding_days_including_open, default=0),
+            "lockup_over_20_days_pct": _lockup_rate(holding_days_including_open, 20),
+            "lockup_over_40_days_pct": _lockup_rate(holding_days_including_open, 40),
+            "lockup_over_60_days_pct": _lockup_rate(holding_days_including_open, 60),
+            "cycle_count_including_open": len(holding_days_including_open),
+        },
         "checks": checks,
     }
 
 
 def _markdown(report: dict[str, Any]) -> str:
-    table_header = (
-        "| Candidate | Symbol | Total signals | First signals | First buys | "
-        "Add signals | Add buys | Closed | Max hold |"
-    )
     lines = [
         "# JDSS 2.0 Backtest Audit",
         "",
         "Validation window: **2021-01-01 ~ 2024-12-31**",
         "",
-        "This report separates first-entry signals from additional-entry signals. "
-        "The existing `signals` metric counts every allowed strategy decision, not only new entries.",
+        "The existing `signals` metric counts every allowed strategy decision, not only new entries. "
+        "This audit also recalculates lockup statistics including an open position at period end.",
         "",
-        table_header,
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        (
+            "| Candidate | Symbol | Total signals | First signals | First buys | Add signals | "
+            "Add buys | Closed | Max hold closed | Max hold incl. open |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for candidate_name, symbols in report["candidates"].items():
         for symbol, audit in symbols.items():
             metrics = audit["metrics"]
+            open_risk = audit["holding_risk_including_open"]
             lines.append(
                 f"| {candidate_name} | {symbol} | {metrics['signals']} | "
                 f"{audit['first_entry_signals']} | {audit['first_entry_buys']} | "
                 f"{audit['additional_entry_signals']} | {audit['additional_entry_buys']} | "
-                f"{metrics['closed_cycles']} | {metrics['maximum_holding_days']} |"
+                f"{metrics['closed_cycles']} | {metrics['maximum_holding_days']} | "
+                f"{open_risk['maximum_holding_days']} |"
+            )
+
+    lines.extend(["", "## Lockup risk including open positions", ""])
+    for candidate_name, symbols in report["candidates"].items():
+        for symbol, audit in symbols.items():
+            closed = audit["metrics"]
+            adjusted = audit["holding_risk_including_open"]
+            lines.append(
+                f"- {candidate_name} / {symbol}: >40d closed-only "
+                f"{closed['lockup_over_40_days_pct']:.2f}% → including-open "
+                f"{adjusted['lockup_over_40_days_pct']:.2f}%"
             )
 
     lines.extend(["", "## Longest cycles", ""])
@@ -123,16 +193,32 @@ def _markdown(report: dict[str, Any]) -> str:
                     f"{cycle['holding_days']} trading days, PnL ${cycle['pnl']}, "
                     f"entries={cycle['entry_count']}, MAE={cycle['mae'] * 100:.2f}%"
                 )
-            open_position = audit["open_position"]
-            if int(open_position["quantity"]) > 0:
+            open_cycle = audit["open_cycle"]
+            if open_cycle:
                 lines.append(
-                    f"- OPEN at period end: state={open_position['state']}, "
-                    f"holding_days={open_position['holding_days']}, "
-                    f"MAE={open_position['mae_pct']:.2f}%"
+                    f"- OPEN {open_cycle['cycle_id']}: start={open_cycle['start_date']}, "
+                    f"state={open_cycle['state']}, holding={open_cycle['holding_days']}d, "
+                    f"price-vs-avg={open_cycle['price_vs_average_pct']:.2f}%, "
+                    f"account-MAE={open_cycle['account_mae_pct']:.2f}%, "
+                    f"buys={open_cycle['buy_count']}, sells={open_cycle['sell_count']}"
                 )
             lines.append("")
 
-    lines.extend(["## Invariant checks", ""])
+    lines.extend(
+        [
+            "## Stateful threshold finding",
+            "",
+            (
+                "A stricter entry score does not guarantee fewer later first-entry signals because the strategy "
+                "is stateful. An earlier low-threshold entry can remain open for years and block all later "
+                "first entries, while a stricter candidate can skip that cycle and become EMPTY sooner for "
+                "future signals. Compare the open/long cycles above before interpreting signal totals."
+            ),
+            "",
+            "## Invariant checks",
+            "",
+        ]
+    )
     for candidate_name, symbols in report["candidates"].items():
         for symbol, audit in symbols.items():
             failed = [name for name, passed in audit["checks"].items() if not passed]
