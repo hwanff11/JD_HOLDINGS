@@ -9,8 +9,8 @@ from jd_holdings.config import ConfigError, PositionConfig, validate_config
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-2.1.0-FINAL"
-    assert config.config_version == "2.1.0"
+    assert config.version == "JDSS-2.2.0-SGOV"
+    assert config.config_version == "2.2.0"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert sum(config.position.stage_weights) == Decimal("1")
     assert config.global_.stop_loss_enabled is False
@@ -34,6 +34,10 @@ def test_default_config_is_valid_and_complete(config):
     assert config.take_profit.remainder_exit.enabled is True
     assert config.take_profit.remainder_exit.wait_trading_days == 20
     assert config.take_profit.remainder_exit.target_from_avg == Decimal("0.02")
+    assert config.idle_cash.enabled is True
+    assert config.idle_cash.symbol == "SGOV"
+    assert config.idle_cash.cash_buffer == Decimal("250")
+    assert config.idle_cash.require_sale_fill_before_entry is True
 
 
 def test_invalid_stage_weights_are_rejected(config):

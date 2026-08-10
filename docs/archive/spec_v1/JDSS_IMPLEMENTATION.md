@@ -1,6 +1,6 @@
 # JDSS 구현 명세서(Implementation Specification)
 
-> **레거시 v1.1.2 기준선 문서.** 현재 FINAL 실행 규칙은
+> **레거시 v1.1.2 기준선 문서.** 현재 JDSS 2.2 실행·SGOV 규칙은
 > [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md), Telegram 동작은
 > [`../../TELEGRAM_BOT_GUIDE.md`](../../TELEGRAM_BOT_GUIDE.md)를 우선한다.
 

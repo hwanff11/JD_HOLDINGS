@@ -105,3 +105,29 @@ def test_soxl_backtest_uses_any_available_sector_benchmark(config):
     assert result.metrics["sector_guard_requested"] == 1
     assert result.metrics["sector_guard_applied"] == 1
     assert result.metrics["sector_guard_available_benchmarks"] == 1
+
+
+def test_backtest_applies_sgov_return_only_to_idle_cash(config):
+    length = 220
+    benchmark = np.linspace(100, 150, length)
+    target = np.full(length, 100.0)
+    sgov = np.linspace(100, 105, length)
+    plain = BacktestEngine(config).run(
+        "TQQQ",
+        make_market_frame(target),
+        make_market_frame(benchmark),
+        make_market_frame(benchmark * 1.1),
+        slippage=0,
+    )
+    with_sgov = BacktestEngine(config).run(
+        "TQQQ",
+        make_market_frame(target),
+        make_market_frame(benchmark),
+        make_market_frame(benchmark * 1.1),
+        slippage=0,
+        idle_cash_data=make_market_frame(sgov),
+    )
+    assert plain.metrics["idle_cash_applied"] == 0
+    assert with_sgov.metrics["idle_cash_applied"] == 1
+    assert with_sgov.metrics["idle_cash_income"] > 0
+    assert with_sgov.equity_curve.iloc[-1] > plain.equity_curve.iloc[-1]

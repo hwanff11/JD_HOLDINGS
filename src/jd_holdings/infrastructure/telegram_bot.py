@@ -18,6 +18,7 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from jd_holdings import __version__
 from jd_holdings.application.analysis_service import AnalysisResult, AnalysisService
 from jd_holdings.application.database import SQLiteRepository
+from jd_holdings.application.idle_cash_manager import IdleCashManager
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.trading_service import QuoteChangedError, TradingService
@@ -284,9 +285,9 @@ def _condition_mark(condition: bool) -> str:
 
 
 def _guide_cards() -> tuple[str, ...]:
-    """Return the user-visible guide derived from the FINAL strategy contract."""
+    """Return the user-visible guide derived from the JDSS 2.2 contract."""
     card1 = (
-        "📖 <b>[JDSS 2.1 FINAL 지표 및 점수 체계 가이드]</b>\n\n"
+        "📖 <b>[JDSS 2.2 지표 및 점수 체계 가이드]</b>\n\n"
         "🎯 <b>1. JDSS 종합 점수 체계 (100점 만점)</b>\n"
         "💡 <i>(단일 지표가 아닌 아래 모든 지표들의 총 합산 점수입니다.)</i>\n"
         "• <b>55점 이상</b> : 모든 매수 단계의 최소 점수\n"
@@ -303,7 +304,7 @@ def _guide_cards() -> tuple[str, ...]:
         "• 양봉, 전일 종가, EMA5, 캔들 종가 위치로 반등 점수 산출"
     )
     card2 = (
-        "🛒 <b>[JDSS FINAL 분할매수 및 익절 메커니즘]</b>\n\n"
+        "🛒 <b>[JDSS 2.2 분할매수 및 익절 메커니즘]</b>\n\n"
         "🛒 <b>4단계 분할 매수</b>\n"
         "• <b>1차 (40%)</b> : JDSS 55점·반등 5점 이상 🟢\n"
         "• <b>2차 (30%)</b> : 최초 체결가 대비 <b>-2%</b> 🟡\n"
@@ -331,14 +332,24 @@ def _guide_cards() -> tuple[str, ...]:
         "가격이 평소 범위보다 눌린 과매도 구간으로 봅니다.\n"
         "• <b>거래량 비율</b> : 최근 평균 대비 오늘 거래량입니다. "
         "<code>1.0배</code>는 평균, <code>1.5배</code>는 활발, <code>2.0배</code> 이상은 급증입니다.\n"
-        "• <b>ATR 비율</b> : 하루 가격 변동 폭입니다. FINAL 전략은 "
+        "• <b>ATR 비율</b> : 하루 가격 변동 폭입니다. JDSS 2.2 전략은 "
         "<code>2~10%</code>를 적정 구간으로 평가하고, 10% 초과는 위험을 낮춰 평가합니다.\n"
         "• <b>종가 위치</b> : 당일 저가=0, 고가=1입니다. "
         "<code>0.50</code> 이상이면 장 후반 반등 조건 하나를 충족합니다.\n\n"
         "⚠️ <i>보조지표 하나만으로 매수하지 않습니다. 총점 55점, 반등 5점, "
         "시장 국면과 2단계 승인을 함께 확인합니다.</i>"
     )
-    return card1, card2, card3
+    card4 = (
+        "💵 <b>[SGOV 유휴자금 운용]</b>\n\n"
+        "• TQQQ·SOXL에 아직 투입되지 않은 JDSS 배정금은 <b>SGOV</b>에 예치합니다.\n"
+        "• 계좌에는 최소 <code>$250</code> 현금 버퍼를 남기고, <code>$100</code> 이상일 때 조정합니다.\n"
+        "• 전략 매수 전 필요한 금액만큼 SGOV를 먼저 매도하고, "
+        "매도 체결과 달러 매수가능금액을 확인한 뒤 본 주문을 허용합니다.\n"
+        "• SGOV 현금화가 미체결·거절되거나 원장 수량이 맞지 않으면 전략 매수를 차단합니다.\n"
+        "• 기존 개인 SGOV는 JDSS 관리분으로 자동 편입하지 않습니다.\n\n"
+        "💡 <i>/cash 명령어로 JDSS 관리 SGOV 수량과 현금화 상태를 확인할 수 있습니다.</i>"
+    )
+    return card1, card2, card3, card4
 
 
 def _is_us_holding(item: dict) -> bool:
@@ -360,6 +371,7 @@ class TelegramBotApp:
         data_source: YFinanceDataSource,
         market_clock: MarketClock,
         account_client: TossClient | None = None,
+        idle_cash_manager: IdleCashManager | None = None,
     ) -> None:
         if not settings.telegram_bot_token:
             raise ValueError("TELEGRAM_BOT_TOKEN이 설정되지 않았습니다")
@@ -375,11 +387,13 @@ class TelegramBotApp:
         self.data_source = data_source
         self.market_clock = market_clock
         self.account_client = account_client
+        self.idle_cash_manager = idle_cash_manager
         self.allowed_chat_id = settings.allowed_chat_ids[0]
         self.bot = telebot.TeleBot(settings.telegram_bot_token, threaded=True)
         self._stop = threading.Event()
         self._backtest_lock = threading.Lock()
         self._last_monitor = 0.0
+        self._last_idle_cash_sweep = 0.0
         self._register_handlers()
 
     def _authorized_message(self, message) -> bool:
@@ -450,7 +464,7 @@ class TelegramBotApp:
             f"• 거래량 : <code>{snapshot.volume_ratio:.2f}배</code> → {_volume_label(snapshot.volume_ratio)}\n"
             f"• ATR : <code>{snapshot.atr_pct * 100:.2f}%</code> → {_atr_label(snapshot.atr_pct)}\n"
             f"• 종가 위치 : <code>{snapshot.close_position:.2f}</code> → {_close_position_label(snapshot.close_position)}\n\n"
-            "🚦 <b>FINAL 핵심 조건</b>\n"
+            "🚦 <b>JDSS 2.2 핵심 조건</b>\n"
             f"• 총점 55점 이상 : {_condition_mark(score.total >= 55)}\n"
             f"• 반등 5점 이상 : {_condition_mark(score.reversal_score >= 5)}\n"
             f"• RED 국면 아님 : {_condition_mark(regime_value not in {'RED', 'BEARISH'})}\n\n"
@@ -480,6 +494,24 @@ class TelegramBotApp:
                 ]
             )
         return "\n".join(lines)
+
+    def _format_idle_cash_message(self) -> str:
+        if self.idle_cash_manager is None or not self.config.idle_cash.enabled:
+            return "💵 <b>[유휴자금 운용]</b>\n\nSGOV 운용이 비활성화되어 있습니다."
+        snapshot = self.idle_cash_manager.snapshot()
+        state_label = "🚨 SAFE_MODE" if snapshot.safe_mode else "✅ 정상"
+        personal_qty = max(0, snapshot.broker_quantity - snapshot.state.managed_quantity)
+        return (
+            "💵 <b>[JDSS SGOV 유휴자금]</b>\n\n"
+            f"• <b>운용 상태</b> : {state_label}\n"
+            f"• <b>JDSS 관리 수량</b> : <code>{snapshot.state.managed_quantity}주</code>\n"
+            f"• <b>관리분 평가액</b> : <code>{_money(snapshot.market_value)}</code>\n"
+            f"• <b>SGOV 현재가</b> : <code>{_money(snapshot.price)}</code>\n"
+            f"• <b>목표 유휴자금</b> : <code>{_money(snapshot.target_value)}</code>\n"
+            f"• <b>달러 주문가능</b> : <code>{_money(snapshot.buying_power)}</code>\n"
+            f"• <b>비관리 SGOV</b> : <code>{personal_qty}주</code>\n\n"
+            "💡 <i>비관리 수량은 기존 개인 보유분으로 간주하며 자동 매도하지 않습니다.</i>"
+        )
 
     def _send_account(self) -> None:
         if self.account_client is None:
@@ -601,6 +633,12 @@ class TelegramBotApp:
                     )
                     lines.append(f"📅 <b>분석 기준일</b> : {results[0].trade_date.isoformat()}")
                 lines.append(f"⚙️ <b>운영 모드</b> : {mode_label}")
+                if self.idle_cash_manager is not None and self.config.idle_cash.enabled:
+                    cash = self.idle_cash_manager.snapshot()
+                    lines.append(
+                        f"💵 <b>SGOV 관리분</b> : <code>{cash.state.managed_quantity}주</code> "
+                        f"(<code>{_money(cash.market_value)}</code>)"
+                    )
                 lines.append("━━━━━━━━━━━━━━━━━━━━")
 
                 for result in results:
@@ -637,6 +675,18 @@ class TelegramBotApp:
             if not self._authorized_message(message):
                 return
             self._send_account()
+
+        @bot.message_handler(commands=["cash", "sgov"])
+        def idle_cash(message):
+            if not self._authorized_message(message):
+                return
+            try:
+                self._send(self._format_idle_cash_message())
+            except Exception as exc:
+                LOGGER.exception("SGOV 유휴자금 조회 실패")
+                self._send(
+                    f"❌ SGOV 유휴자금 조회 중 오류 발생:\n<code>{html.escape(str(exc))}</code>"
+                )
 
         @bot.message_handler(commands=["score", "sc", "indicator", "i"])
         def score(message):
@@ -784,6 +834,7 @@ class TelegramBotApp:
                 "☀️ <b>[JH홀딩스 JDSS 메뉴]</b>\n\n"
                 "• <code>/dashboard</code> : 통합 대시보드\n"
                 "• <code>/account</code> : 💰 토스 계좌 잔고\n"
+                "• <code>/cash</code> : 💵 JDSS SGOV 유휴자금\n"
                 "• <code>/status</code> : 종목별 상세 포지션\n"
                 "• <code>/score</code> : JDSS 세부 지표 분석\n"
                 "• <code>/signal</code> : 활성 매수 신호\n"
@@ -918,6 +969,11 @@ class TelegramBotApp:
             warmup_start = (request.start - timedelta(days=400)).isoformat()
             spy = self.data_source.daily("SPY", warmup_start, end)
             qqq = self.data_source.daily("QQQ", warmup_start, end)
+            idle_cash_data = (
+                self.data_source.daily(self.config.idle_cash.symbol, warmup_start, end)
+                if self.config.idle_cash.enabled
+                else None
+            )
             
             # 🚀 섹터 가드용 데이터 (실거래와 동일하게 SOXX, SMH 등 벤치마크 데이터를 백테스트 엔진에 전달)
             sector_data = {}
@@ -935,13 +991,14 @@ class TelegramBotApp:
             for symbol in request.symbols:
                 target = self.data_source.daily(symbol, warmup_start, end)
                 results[symbol] = engine.run(
-                    symbol, 
-                    target, 
-                    spy, 
-                    qqq, 
-                    start=start, 
+                    symbol,
+                    target,
+                    spy,
+                    qqq,
+                    start=start,
                     end=end,
-                    sector_data=sector_data if sector_data else None
+                    sector_data=sector_data if sector_data else None,
+                    idle_cash_data=idle_cash_data,
                 )
             self._send_long(self._format_backtest_results(results))
         except Exception as exc:
@@ -1068,6 +1125,7 @@ class TelegramBotApp:
                     f"✨ <b>[{symbol} 성과]</b>",
                     f"<code>├ 수익률 : {metrics['total_return_pct']:>+8.2f}%</code>",
                     f"<code>├ MDD    : {metrics['mdd_pct']:>8.2f}%</code>",
+                    f"<code>├ SGOV수익 : {_money(metrics.get('idle_cash_income', 0)):>10}</code>",
                     f"<code>├ 청산횟수 : {metrics['closed_cycles']:>8}회</code>",
                     f"<code>└ 승률    : {metrics['win_rate_pct']:>8.1f}%</code>",
                     "",
@@ -1115,6 +1173,9 @@ class TelegramBotApp:
                 if monitor_due:
                     for event in self.order_monitor.run_once():
                         self._send(f"ℹ️ {html.escape(event)}")
+                    if self.idle_cash_manager is not None:
+                        for event in self.idle_cash_manager.refresh_orders():
+                            self._send(f"💵 {html.escape(event)}")
                     mismatches = self.reconciliation_service.run()
                     for symbol, issues in mismatches.items():
                         self._send(
@@ -1122,6 +1183,15 @@ class TelegramBotApp:
                             + "\n".join(html.escape(issue) for issue in issues)
                         )
                     self._last_monitor = time.monotonic()
+                cash_due = (
+                    self.idle_cash_manager is not None
+                    and time.monotonic() - self._last_idle_cash_sweep
+                    >= self.config.idle_cash.sweep_interval_seconds
+                )
+                if cash_due:
+                    for event in self.idle_cash_manager.run_once():
+                        self._send(f"💵 {html.escape(event)}")
+                    self._last_idle_cash_sweep = time.monotonic()
                 self.repository.expire_stale_signals()
             except Exception as exc:
                 LOGGER.exception("scheduler 실패")
@@ -1132,6 +1202,7 @@ class TelegramBotApp:
             [
                 telebot.types.BotCommand("dashboard", "☀️ 통합 대시보드"),
                 telebot.types.BotCommand("account", "💰 토스 계좌 잔고"),
+                telebot.types.BotCommand("cash", "💵 SGOV 유휴자금"),
                 telebot.types.BotCommand("status", "✨ 종목별 포지션 상세"),
                 telebot.types.BotCommand("score", "🎯 JDSS 지표 분석"),
                 telebot.types.BotCommand("signal", "🚨 활성 매수 신호"),

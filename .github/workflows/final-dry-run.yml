@@ -1,4 +1,4 @@
-name: FINAL Dry Run
+name: JDSS 2.2 Dry Run
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
       - "strategy.yaml"
       - "src/jd_holdings/**"
       - "tests/test_final_dry_run.py"
+      - "tests/test_idle_cash_manager.py"
       - ".github/workflows/final-dry-run.yml"
 
 permissions:
@@ -22,5 +23,5 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - name: Run FINAL end-to-end dry run
-        run: pytest -q tests/test_final_dry_run.py
+      - name: Run JDSS 2.2 end-to-end dry run
+        run: pytest -q tests/test_final_dry_run.py tests/test_idle_cash_manager.py

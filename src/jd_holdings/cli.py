@@ -6,6 +6,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
+
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
@@ -94,6 +96,11 @@ def main(argv: list[str] | None = None) -> int:
         ).isoformat()
         spy = data_source.daily("SPY", warmup_start, end, refresh=args.refresh)
         qqq = data_source.daily("QQQ", warmup_start, end, refresh=args.refresh)
+        idle_cash_data = None
+        if config.idle_cash.enabled:
+            idle_cash_data = data_source.daily(
+                config.idle_cash.symbol, warmup_start, end, refresh=args.refresh
+            )
 
         guard = config.market_regime.get("soxl_sector_guard", {})
         sector_data: dict[str, object] = {}
@@ -118,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             "results": {},
         }
         engine = StrategyBacktestEngine(config)
+        completed_results = {}
         for symbol in symbols:
             target = data_source.daily(symbol, warmup_start, end, refresh=args.refresh)
             result = engine.run(
@@ -129,8 +137,10 @@ def main(argv: list[str] | None = None) -> int:
                 end=end,
                 slippage=args.slippage,
                 sector_data=sector_data if symbol == "SOXL" else None,
+                idle_cash_data=idle_cash_data,
             )
             output["results"][symbol] = result.to_dict(include_equity=False)
+            completed_results[symbol] = result
             metrics = result.metrics
             sector_text = ""
             if symbol == "SOXL" and metrics.get("sector_guard_requested"):
@@ -138,12 +148,45 @@ def main(argv: list[str] | None = None) -> int:
                     f" sector_guard={int(metrics['sector_guard_applied'])}"
                     f" blocks={int(metrics['sector_guard_blocks'])}"
                 )
+            cash_text = (
+                f" SGOV_income=${metrics['idle_cash_income']:.2f}"
+                if metrics.get("idle_cash_applied")
+                else ""
+            )
             print(
                 f"{symbol}: return={metrics['total_return_pct']:+.2f}% "
                 f"CAGR={metrics['cagr_pct']:+.2f}% MDD={metrics['mdd_pct']:.2f}% "
                 f"cycles={metrics['closed_cycles']} signals={metrics['signals']}"
-                f"{sector_text}"
+                f"{sector_text}{cash_text}"
             )
+        portfolio = pd.concat(
+            [result.equity_curve.rename(symbol) for symbol, result in completed_results.items()],
+            axis=1,
+            join="inner",
+        ).sum(axis=1)
+        years = (portfolio.index[-1] - portfolio.index[0]).days / 365.25
+        portfolio_metrics = {
+            "initial_equity": round(float(portfolio.iloc[0]), 2),
+            "final_equity": round(float(portfolio.iloc[-1]), 2),
+            "total_return_pct": round(float((portfolio.iloc[-1] / portfolio.iloc[0] - 1) * 100), 2),
+            "cagr_pct": round(float(((portfolio.iloc[-1] / portfolio.iloc[0]) ** (1 / years) - 1) * 100), 2),
+            "mdd_pct": round(float((portfolio / portfolio.cummax() - 1).min() * 100), 2),
+            "idle_cash_income": round(
+                sum(
+                    float(result.metrics.get("idle_cash_income", 0))
+                    for result in completed_results.values()
+                ),
+                2,
+            ),
+        }
+        output["portfolio_metrics"] = portfolio_metrics
+        print(
+            "PORTFOLIO: "
+            f"return={portfolio_metrics['total_return_pct']:+.2f}% "
+            f"CAGR={portfolio_metrics['cagr_pct']:+.2f}% "
+            f"MDD={portfolio_metrics['mdd_pct']:.2f}% "
+            f"SGOV_income=${portfolio_metrics['idle_cash_income']:.2f}"
+        )
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(
@@ -154,7 +197,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "toss-smoke":
         client = TossClient()
-        prices = client.get_prices(list(config.enabled_symbols))
+        smoke_symbols = list(config.enabled_symbols)
+        if config.idle_cash.enabled:
+            smoke_symbols.append(config.idle_cash.symbol)
+        prices = client.get_prices(smoke_symbols)
         calendar = client.get_market_calendar()
         print(
             json.dumps(

@@ -15,7 +15,7 @@ from typing import Any
 
 from jd_holdings.config import StrategyConfig
 from jd_holdings.core.enums import ApprovalStage, PositionState, RiskReviewLevel
-from jd_holdings.core.models import PositionSnapshot, ScoreResult, TradeDecision
+from jd_holdings.core.models import IdleCashState, PositionSnapshot, ScoreResult, TradeDecision
 
 
 def utc_now() -> datetime:
@@ -216,6 +216,21 @@ class SQLiteRepository:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS idle_cash_state (
+                    symbol TEXT PRIMARY KEY,
+                    managed_qty INTEGER NOT NULL DEFAULT 0 CHECK(managed_qty >= 0),
+                    avg_price TEXT NOT NULL DEFAULT '0',
+                    version INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS idle_cash_fill_progress (
+                    client_order_id TEXT PRIMARY KEY REFERENCES orders(client_order_id),
+                    applied_filled_qty INTEGER NOT NULL DEFAULT 0 CHECK(applied_filled_qty >= 0),
+                    applied_notional TEXT NOT NULL DEFAULT '0',
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_signals_active
                     ON signals(status, symbol, trade_date);
                 CREATE INDEX IF NOT EXISTS idx_orders_status
@@ -232,6 +247,19 @@ class SQLiteRepository:
                 connection.execute(
                     "ALTER TABLE tp_plans ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
                 )
+            idle_fill_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(idle_cash_fill_progress)"
+                ).fetchall()
+            }
+            if "applied_notional" not in idle_fill_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE idle_cash_fill_progress
+                    ADD COLUMN applied_notional TEXT NOT NULL DEFAULT '0'
+                    """
+                )
             for symbol in self.config.enabled_symbols:
                 connection.execute(
                     """
@@ -241,6 +269,148 @@ class SQLiteRepository:
                     """,
                     (symbol, str(self.config.global_.capital_per_symbol), now),
                 )
+            if self.config.idle_cash.enabled:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO idle_cash_state(symbol, updated_at)
+                    VALUES (?, ?)
+                    """,
+                    (self.config.idle_cash.symbol, now),
+                )
+
+    def get_idle_cash_state(self) -> IdleCashState:
+        symbol = self.config.idle_cash.symbol
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM idle_cash_state WHERE symbol = ?", (symbol,)
+            ).fetchone()
+        if row is None:
+            return IdleCashState(symbol=symbol)
+        return IdleCashState(
+            symbol=str(row["symbol"]),
+            managed_quantity=int(row["managed_qty"]),
+            average_price=_decimal(row["avg_price"]),
+            version=int(row["version"]),
+        )
+
+    def apply_idle_cash_fill(self, client_order_id: str) -> IdleCashState:
+        """Apply only the newly reported cumulative fill quantity for one SGOV order."""
+        terminal_statuses = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
+        now = utc_now().isoformat()
+        with self.transaction() as connection:
+            order = connection.execute(
+                "SELECT * FROM orders WHERE client_order_id = ?", (client_order_id,)
+            ).fetchone()
+            if order is None:
+                raise KeyError(client_order_id)
+            if not str(order["purpose"]).startswith("SGOV_"):
+                raise ValueError("SGOV 자금관리 주문이 아닙니다")
+            state = connection.execute(
+                "SELECT * FROM idle_cash_state WHERE symbol = ?", (order["symbol"],)
+            ).fetchone()
+            if state is None:
+                raise KeyError(f"idle_cash_state:{order['symbol']}")
+            progress = connection.execute(
+                """
+                SELECT applied_filled_qty, applied_notional FROM idle_cash_fill_progress
+                WHERE client_order_id = ?
+                """,
+                (client_order_id,),
+            ).fetchone()
+            applied_qty = int(progress["applied_filled_qty"]) if progress else 0
+            applied_notional = _decimal(progress["applied_notional"]) if progress else Decimal("0")
+            cumulative_qty = int(order["filled_qty"])
+            delta_qty = cumulative_qty - applied_qty
+            if delta_qty < 0:
+                raise StateConflictError("SGOV 누적 체결수량이 이전 반영값보다 작습니다")
+            managed_qty = int(state["managed_qty"])
+            average_price = _decimal(state["avg_price"])
+            if delta_qty > 0:
+                fill_price = _decimal(order["average_fill_price"] or order["price"])
+                cumulative_notional = fill_price * cumulative_qty
+                delta_notional = cumulative_notional - applied_notional
+                if delta_notional < 0:
+                    raise StateConflictError("SGOV 누적 체결금액이 이전 반영값보다 작습니다")
+                if order["side"] == "BUY":
+                    new_qty = managed_qty + delta_qty
+                    average_price = (
+                        average_price * managed_qty + delta_notional
+                    ) / new_qty
+                    managed_qty = new_qty
+                elif order["side"] == "SELL":
+                    if delta_qty > managed_qty:
+                        raise StateConflictError("JDSS 관리 SGOV 수량보다 많은 매도 체결입니다")
+                    managed_qty -= delta_qty
+                    if managed_qty == 0:
+                        average_price = Decimal("0")
+                else:
+                    raise ValueError("SGOV 주문 방향이 BUY/SELL이 아닙니다")
+                connection.execute(
+                    """
+                    UPDATE idle_cash_state
+                    SET managed_qty = ?, avg_price = ?, version = version + 1, updated_at = ?
+                    WHERE symbol = ?
+                    """,
+                    (managed_qty, str(average_price), now, order["symbol"]),
+                )
+            connection.execute(
+                """
+                INSERT INTO idle_cash_fill_progress(
+                    client_order_id, applied_filled_qty, applied_notional, updated_at
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(client_order_id) DO UPDATE SET
+                    applied_filled_qty = excluded.applied_filled_qty,
+                    applied_notional = excluded.applied_notional,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    client_order_id,
+                    cumulative_qty,
+                    str(
+                        _decimal(order["average_fill_price"] or order["price"])
+                        * cumulative_qty
+                    )
+                    if cumulative_qty > 0
+                    else str(applied_notional),
+                    now,
+                ),
+            )
+            if str(order["status"]) in terminal_statuses:
+                connection.execute(
+                    "UPDATE orders SET applied = 1, updated_at = ? WHERE client_order_id = ?",
+                    (now, client_order_id),
+                )
+        return self.get_idle_cash_state()
+
+    def strategy_invested_capital(self) -> Decimal:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT current_cost_basis FROM positions"
+            ).fetchall()
+        return sum((_decimal(row["current_cost_basis"]) for row in rows), Decimal("0"))
+
+    def has_active_approvals(self) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM approvals
+                WHERE status = 'ACTIVE' AND expires_at >= ? LIMIT 1
+                """,
+                (utc_now().isoformat(),),
+            ).fetchone()
+        return row is not None
+
+    def next_idle_cash_order_attempt(self, symbol: str, purpose: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS attempts FROM orders
+                WHERE symbol = ? AND purpose = ?
+                """,
+                (symbol.upper(), purpose),
+            ).fetchone()
+        return int(row["attempts"]) + 1
 
     def get_position(self, symbol: str) -> PositionSnapshot:
         with self._connect() as connection:

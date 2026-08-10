@@ -2,7 +2,7 @@
 
 > [!WARNING]
 > 이 문서는 **v1.1.2 ~ v1.3** 시절의 레거시(Legacy) 명세서입니다.
-> 현재 운영 계약은 [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md)를 참조하세요.
+> 현재 JDSS 2.2 계약은 [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md)를 참조하세요.
 
 **전략 명세서(Strategy Specification) v1.1.2 — 공식 기준선(Official Baseline)**
 

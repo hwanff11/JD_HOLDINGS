@@ -1,6 +1,6 @@
 # JDSS 개발자 가이드(Developer Guide)
 
-> **레거시 v1.1.2 기준선 문서.** 현재 FINAL 운영·배포 절차는
+> **레거시 v1.1.2 기준선 문서.** 현재 JDSS 2.2 운영·SGOV·배포 절차는
 > [`../../infra/DEPLOYMENT.md`](../../infra/DEPLOYMENT.md), 전략과 설정은
 > [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md)와 [`../../../strategy.yaml`](../../../strategy.yaml)을
 > 따른다.
