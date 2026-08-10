@@ -37,6 +37,11 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     assert 'SKIP_LOCAL_CHECKS: "1"' in workflow
     assert "Force server trading lock to dry_run" not in workflow
     assert "Toss read-only smoke test" not in workflow
+    assert "issues:" in workflow
+    assert "github.actor == github.repository_owner" in workflow
+    assert "[deploy-oracle-dry-run]" in workflow
+    assert "[0-9a-fA-F]{40}" in workflow
+    assert "gh issue comment" in workflow
 
 
 def test_workflows_use_node24_actions():

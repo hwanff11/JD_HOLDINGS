@@ -7,9 +7,12 @@ on:
         description: "main commit SHA to deploy (blank = current main)"
         required: false
         type: string
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: oracle-jdss-deploy
@@ -17,6 +20,11 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.issue.title, '[deploy-oracle-dry-run]'))
     runs-on: ubuntu-latest
     environment: oracle-dry-run
     steps:
@@ -24,9 +32,17 @@ jobs:
         id: ref
         env:
           REQUESTED_REF: ${{ inputs.ref }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           set -Eeuo pipefail
-          if [[ -n "$REQUESTED_REF" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "issues" ]]; then
+            requested_ref="$(printf '%s\n' "$ISSUE_BODY" | sed -nE 's/^ref:[[:space:]]*([0-9a-fA-F]{40})[[:space:]]*$/\1/p' | head -n 1)"
+            if [[ -z "$requested_ref" ]]; then
+              echo "ChatOps 배포 요청에는 'ref: <40자리 main SHA>'가 필요합니다." >&2
+              exit 1
+            fi
+            echo "ref=$requested_ref" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$REQUESTED_REF" ]]; then
             echo "ref=$REQUESTED_REF" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
@@ -87,3 +103,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           LOCAL_PYTHON="$(command -v python)" ./deploy.sh
+
+      - name: Report ChatOps deployment result
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          DEPLOY_REF: ${{ steps.ref.outputs.ref }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == "success" ]]; then
+            message="✅ Oracle dry-run 배포 성공: \`$DEPLOY_REF\`\n\nmain 계보·CI·설정·dry-run 잠금·Toss smoke test를 통과했습니다."
+          else
+            message="❌ Oracle dry-run 배포 실패: \`${DEPLOY_REF:-ref 확인 실패}\`\n\nActions 로그를 확인해 주세요."
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '%b' "$message")"

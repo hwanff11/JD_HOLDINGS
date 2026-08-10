@@ -44,6 +44,7 @@
 - Oracle dry-run 배포 경로를 단일 `deploy.sh`로 통합해 Actions의 중복 pytest·Ruff, 별도 dry-run SSH, 별도 smoke SSH를 제거했다.
 - 로컬 직접 배포의 기본 검증은 유지하고 Actions에서만 중복 검증을 생략하며, 서버 dry-run 강제·재시작 1회·Toss smoke test를 한 경로에서 수행하도록 정리했다.
 - 배포 때마다 후속 문서 PR이 필요하지 않도록 실제 운영 SHA의 기준을 서버 `current` 링크와 배포 출력으로 통일했다.
+- ChatGPT에서도 서버 비밀값 접근 없이 저장소 소유자 배포 이슈와 40자리 `main` SHA로 Actions를 시작하고, 결과를 이슈 댓글로 확인하는 dry-run ChatOps 경로를 추가했다.
 - 2.2.2에서 SQLite `cash_release_intents`로 신호별 SGOV 현금화 의도를 영속화하고 재시작 후 자동 재개를 구현했다.
 - SGOV 체결 후 TQQQ/SOXL 최종 승인을 자동 전송하되 본 주문의 수동 최종 승인은 유지했다.
 - 활성 현금화 중 SGOV 자동 재예치 차단, 복수 의도 현금 예약, 실제 DB·연결 주문 취소를 구현했다.

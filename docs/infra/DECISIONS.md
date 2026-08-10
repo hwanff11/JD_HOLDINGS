@@ -134,3 +134,4 @@ Telegram dry-run 관찰, Toss 조회 smoke test, 서버 정합성 검사를 통�
 - `deploy.sh`가 서버 `.env`의 `dry_run`·빈 live 확인값을 직접 강제하고 서비스를 한 번만 재시작한 뒤 Toss 조회 전용 smoke test까지 수행한다.
 - pip 업그레이드와 systemd enable은 최초 설치 시에만 수행한다.
 - 최신 운영 SHA는 배포 직후 바뀌는 문서 상수가 아니라 Oracle `current` 심볼릭 링크와 배포 출력을 기준으로 한다.
+- ChatGPT 환경에서는 저장소 소유자가 생성한 전용 GitHub 이슈와 정확한 `main` SHA를 ChatOps 배포 요청으로 사용하며, 배포 비밀값은 GitHub Environment에만 보관한다.
