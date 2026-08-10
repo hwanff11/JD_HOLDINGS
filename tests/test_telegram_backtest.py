@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import tomllib
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from conftest import make_score, make_snapshot
@@ -17,8 +17,8 @@ from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
     _format_idle_cash_event,
-    _is_toss_order_maintenance_window,
     _guide_cards,
+    _is_toss_order_maintenance_window,
     _profit_loss,
     _regime_label,
     _won,
