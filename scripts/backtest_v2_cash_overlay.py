@@ -1,213 +1,51 @@
 #!/usr/bin/env python3
-"""Compare JDSS FINAL plus idle-cash yield against SPY and QQQ."""
-
+"""Compare JDSS FINAL plus SGOV-era idle-cash yield against SPY and QQQ."""
 from __future__ import annotations
-
-import argparse
-import json
+import argparse, json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
 import pandas as pd
-
 from backtest_v2_gap_grid import BENCHMARKS, SYMBOLS, _candidate, _run
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
+ROOT=Path(__file__).resolve().parent.parent
+INITIAL_PER_SYMBOL=10_000.0
 
-ROOT = Path(__file__).resolve().parent.parent
-INITIAL_PER_SYMBOL = 10_000.0
+def _mdd_pct(e): return float((e/e.cummax()-1).min()*100)
+def _cagr_pct(e):
+    years=(e.index[-1]-e.index[0]).days/365.25
+    return float(((e.iloc[-1]/e.iloc[0])**(1/years)-1)*100) if years>0 else 0.0
+def _summary(e): return {"start_equity":float(e.iloc[0]),"end_equity":float(e.iloc[-1]),"cumulative_return_pct":float((e.iloc[-1]/e.iloc[0]-1)*100),"cagr_pct":_cagr_pct(e),"mdd_pct":_mdd_pct(e)}
+def _calendar_returns(e): return {str(y):float((v.iloc[-1]/v.iloc[0]-1)*100) for y,v in e.groupby(e.index.year) if len(v)>=2}
+def _sgov_returns(index,sgov):
+    raw=sgov["close"].dropna(); start=raw.index.min(); close=raw.reindex(index).ffill(); r=close.pct_change().fillna(0.0); r.loc[r.index<start]=0.0; return r,start
+def _cash_balance_series(result,index):
+    tc={pd.Timestamp(t["date"]):float(t["cash_after"]) for t in result.trades}; cash=INITIAL_PER_SYMBOL; vals=[]
+    for d in index:
+        if d in tc: cash=tc[d]
+        vals.append(max(cash,0.0))
+    return pd.Series(vals,index=index)
+def _overlay(base,idle,r):
+    interest=0.0; vals=[]
+    for i,d in enumerate(base.index):
+        if i>0: interest+=(float(idle.loc[d])+interest)*float(r.get(d,0.0))
+        vals.append(float(base.loc[d])+interest)
+    return pd.Series(vals,index=base.index)
+def _buy_hold(frame,start,end,initial):
+    v=frame.loc[start:end,"close"].dropna(); return v/v.iloc[0]*initial
 
-
-def _mdd_pct(equity: pd.Series) -> float:
-    drawdown = equity / equity.cummax() - 1.0
-    return float(drawdown.min() * 100.0)
-
-
-def _cagr_pct(equity: pd.Series) -> float:
-    years = (equity.index[-1] - equity.index[0]).days / 365.25
-    if years <= 0:
-        return 0.0
-    return float(((equity.iloc[-1] / equity.iloc[0]) ** (1.0 / years) - 1.0) * 100.0)
-
-
-def _summary(equity: pd.Series) -> dict[str, float]:
-    return {
-        "start_equity": float(equity.iloc[0]),
-        "end_equity": float(equity.iloc[-1]),
-        "cumulative_return_pct": float((equity.iloc[-1] / equity.iloc[0] - 1.0) * 100.0),
-        "cagr_pct": _cagr_pct(equity),
-        "mdd_pct": _mdd_pct(equity),
-    }
-
-
-def _calendar_returns(equity: pd.Series) -> dict[str, float]:
-    output: dict[str, float] = {}
-    for year, values in equity.groupby(equity.index.year):
-        if len(values) >= 2:
-            output[str(year)] = float((values.iloc[-1] / values.iloc[0] - 1.0) * 100.0)
-    return output
-
-
-def _cash_returns(index: pd.DatetimeIndex, irx: pd.DataFrame, sgov: pd.DataFrame) -> pd.Series:
-    irx_yield = irx["close"].reindex(index).ffill()
-    irx_daily = (irx_yield / 100.0) / 252.0
-
-    sgov_close = sgov["close"].reindex(index).ffill()
-    sgov_daily = sgov_close.pct_change().fillna(0.0)
-    sgov_start = sgov["close"].dropna().index.min()
-
-    returns = irx_daily.fillna(0.0)
-    returns.loc[returns.index >= sgov_start] = sgov_daily.loc[
-        returns.index >= sgov_start
-    ]
-    return returns.clip(lower=-0.01, upper=0.01)
-
-
-def _cash_balance_series(result, index: pd.DatetimeIndex) -> pd.Series:
-    trade_cash: dict[pd.Timestamp, float] = {}
-    for trade in result.trades:
-        trade_cash[pd.Timestamp(trade["date"])] = float(trade["cash_after"])
-
-    values: list[float] = []
-    cash = INITIAL_PER_SYMBOL
-    for date in index:
-        if date in trade_cash:
-            cash = trade_cash[date]
-        values.append(max(cash, 0.0))
-    return pd.Series(values, index=index, name=f"{result.symbol}_cash")
-
-
-def _overlay_from_idle_cash(
-    base_equity: pd.Series,
-    idle_cash: pd.Series,
-    cash_returns: pd.Series,
-) -> pd.Series:
-    accrued_interest = 0.0
-    values: list[float] = []
-    for i, date in enumerate(base_equity.index):
-        if i > 0:
-            rate = float(cash_returns.get(date, 0.0))
-            accrued_interest += (float(idle_cash.loc[date]) + accrued_interest) * rate
-        values.append(float(base_equity.loc[date]) + accrued_interest)
-    return pd.Series(values, index=base_equity.index)
-
-
-def _buy_hold(frame: pd.DataFrame, start: str, end: str, initial: float) -> pd.Series:
-    values = frame.loc[start:end, "close"].dropna()
-    return values / values.iloc[0] * initial
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--end", default=datetime.now(UTC).date().isoformat())
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=ROOT / "reports" / "v2_cash_overlay.json",
-    )
-    args = parser.parse_args()
-
-    base = load_config(ROOT / "strategy.yaml")
-    config = _candidate(base, (0.02, 0.05, 0.07))
-    source = YFinanceDataSource(ROOT / "data" / "cache")
-    warmup_start = (
-        datetime.fromisoformat("2011-01-01").date() - timedelta(days=400)
-    ).isoformat()
-    symbols = (*SYMBOLS, *BENCHMARKS, "^IRX", "SGOV")
-    frames = {
-        symbol: source.daily(symbol, warmup_start, args.end, refresh=True)
-        for symbol in symbols
-    }
-
-    results = _run(config, frames, "2011-01-01", args.end)
-    common_index = results["TQQQ"].equity_curve.index.intersection(
-        results["SOXL"].equity_curve.index
-    )
-    cash_returns = _cash_returns(common_index, frames["^IRX"], frames["SGOV"])
-
-    plain_by_symbol = {
-        symbol: result.equity_curve.reindex(common_index)
-        for symbol, result in results.items()
-    }
-    cash_by_symbol = {
-        symbol: _cash_balance_series(result, common_index)
-        for symbol, result in results.items()
-    }
-    overlay_by_symbol = {
-        symbol: _overlay_from_idle_cash(
-            plain_by_symbol[symbol],
-            cash_by_symbol[symbol],
-            cash_returns,
-        )
-        for symbol in SYMBOLS
-    }
-
-    jdss_plain = sum(plain_by_symbol.values())
-    jdss_cash = sum(overlay_by_symbol.values())
-    spy = _buy_hold(frames["SPY"], "2011-01-01", args.end, 20_000.0).reindex(
-        common_index
-    ).ffill()
-    qqq = _buy_hold(frames["QQQ"], "2011-01-01", args.end, 20_000.0).reindex(
-        common_index
-    ).ffill()
-
-    series = {
-        "JDSS_FINAL": jdss_plain,
-        "JDSS_FINAL_CASH_YIELD": jdss_cash,
-        "SPY_BUY_HOLD": spy,
-        "QQQ_BUY_HOLD": qqq,
-    }
-    report = {
-        "generated_at": datetime.now(UTC).isoformat(),
-        "cash_method": (
-            "Interest sidecar on actual backtest cash_after balances; ^IRX/252 before "
-            "SGOV inception and SGOV adjusted-close daily return thereafter"
-        ),
-        "metrics": {name: _summary(values) for name, values in series.items()},
-        "annual_returns": {
-            name: _calendar_returns(values) for name, values in series.items()
-        },
-    }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-    lines = [
-        "# JDSS FINAL Cash-Yield Overlay",
-        "",
-        "| Strategy | End Equity | Cum Return | CAGR | MDD |",
-        "|---|---:|---:|---:|---:|",
-    ]
-    for name, metrics in report["metrics"].items():
-        lines.append(
-            f"| {name} | ${metrics['end_equity']:,.0f} | "
-            f"{metrics['cumulative_return_pct']:+.2f}% | "
-            f"{metrics['cagr_pct']:+.2f}% | {metrics['mdd_pct']:.2f}% |"
-        )
-
-    lines.extend(["", "## Calendar-year returns", ""])
-    years = sorted({year for values in report["annual_returns"].values() for year in values})
-    lines.extend(
-        [
-            "| Year | JDSS | JDSS + Cash | SPY | QQQ |",
-            "|---:|---:|---:|---:|---:|",
-        ]
-    )
-    annual = report["annual_returns"]
-    for year in years:
-        lines.append(
-            f"| {year} | {annual['JDSS_FINAL'].get(year, 0):+.2f}% | "
-            f"{annual['JDSS_FINAL_CASH_YIELD'].get(year, 0):+.2f}% | "
-            f"{annual['SPY_BUY_HOLD'].get(year, 0):+.2f}% | "
-            f"{annual['QQQ_BUY_HOLD'].get(year, 0):+.2f}% |"
-        )
-
-    args.output.with_suffix(".md").write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
-    print("\n".join(lines))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+def main():
+    p=argparse.ArgumentParser(); p.add_argument("--end",default=datetime.now(UTC).date().isoformat()); p.add_argument("--output",type=Path,default=ROOT/"reports/v2_cash_overlay.json"); a=p.parse_args()
+    base=load_config(ROOT/"strategy.yaml"); config=_candidate(base,(0.02,0.05,0.07)); source=YFinanceDataSource(ROOT/"data/cache"); warm=(datetime.fromisoformat("2011-01-01").date()-timedelta(days=400)).isoformat()
+    frames={s:source.daily(s,warm,a.end,refresh=True) for s in (*SYMBOLS,*BENCHMARKS,"SGOV")}; results=_run(config,frames,"2011-01-01",a.end); idx=results["TQQQ"].equity_curve.index.intersection(results["SOXL"].equity_curve.index); cash_r,sgov_start=_sgov_returns(idx,frames["SGOV"])
+    plain={s:r.equity_curve.reindex(idx) for s,r in results.items()}; cash={s:_cash_balance_series(r,idx) for s,r in results.items()}; overlay={s:_overlay(plain[s],cash[s],cash_r) for s in SYMBOLS}
+    series={"JDSS_FINAL":sum(plain.values()),"JDSS_FINAL_SGOV_CASH":sum(overlay.values()),"SPY_BUY_HOLD":_buy_hold(frames["SPY"],"2011-01-01",a.end,20000).reindex(idx).ffill(),"QQQ_BUY_HOLD":_buy_hold(frames["QQQ"],"2011-01-01",a.end,20000).reindex(idx).ffill()}
+    report={"generated_at":datetime.now(UTC).isoformat(),"cash_method":"0% idle-cash return before SGOV inception; SGOV adjusted-close daily return on actual idle cash thereafter","sgov_start":sgov_start.isoformat(),"metrics":{n:_summary(v) for n,v in series.items()},"annual_returns":{n:_calendar_returns(v) for n,v in series.items()}}
+    a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(json.dumps(report,indent=2),encoding="utf-8")
+    lines=["# JDSS FINAL SGOV Cash Overlay","",f"SGOV overlay starts: {sgov_start.date()}","","| Strategy | End Equity | Cum Return | CAGR | MDD |","|---|---:|---:|---:|---:|"]
+    for n,m in report["metrics"].items(): lines.append(f"| {n} | ${m['end_equity']:,.0f} | {m['cumulative_return_pct']:+.2f}% | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% |")
+    lines += ["","## Calendar-year returns","","| Year | JDSS | JDSS + SGOV cash | SPY | QQQ |","|---:|---:|---:|---:|---:|"]
+    annual=report["annual_returns"]
+    for y in sorted({y for x in annual.values() for y in x}): lines.append(f"| {y} | {annual['JDSS_FINAL'].get(y,0):+.2f}% | {annual['JDSS_FINAL_SGOV_CASH'].get(y,0):+.2f}% | {annual['SPY_BUY_HOLD'].get(y,0):+.2f}% | {annual['QQQ_BUY_HOLD'].get(y,0):+.2f}% |")
+    a.output.with_suffix('.md').write_text('\n'.join(lines)+'\n',encoding='utf-8'); print('\n'.join(lines)); return 0
+if __name__=='__main__': raise SystemExit(main())
