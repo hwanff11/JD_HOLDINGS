@@ -12,6 +12,7 @@ from jd_holdings import __version__
 from jd_holdings.core.enums import DecisionType
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.telegram_bot import (
+    IDLE_CASH_COMMANDS,
     BacktestCommandError,
     TelegramBotApp,
     _guide_cards,
@@ -151,15 +152,19 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "2.2.0"
+    assert __version__ == "2.2.1"
     assert project["version"] == __version__
     assert config.config_version == __version__
+
+
+def test_sgov_is_the_only_idle_cash_command():
+    assert IDLE_CASH_COMMANDS == ("sgov",)
 
 
 def test_telegram_guide_matches_final_contract():
     cards = _guide_cards()
     guide = "\n".join(cards)
-    for expected in ("2.2", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%", "SGOV", "/cash"):
+    for expected in ("2.2", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%", "SGOV", "/sgov"):
         assert expected in guide
     for expected in ("CCI 5 / 10", "RSI 5 / 14", "EMA 5 / 20 / 60", "볼린저 하단", "ATR 비율", "종가 위치"):
         assert expected in guide

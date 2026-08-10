@@ -1,8 +1,8 @@
 # Oracle 배포 가이드
 
-다음 배포 후보는 **JDSS-2.2.0-SGOV**이며 아직 작업 브랜치에 있다. 현재 Oracle 운영본은 이전 **JDSS-2.1.0-FINAL**이다. 2.2 최초 반영도 반드시 `dry_run`으로 수행하며 SGOV를 포함한 실주문 잠금을 해제하지 않는다.
+다음 배포 후보는 **JDSS-2.2.1-SGOV**이다. 현재 Oracle 운영본은 **JDSS-2.2.0-SGOV**이며, 2.2.1 반영도 반드시 `dry_run`으로 수행하고 SGOV를 포함한 실주문 잠금을 해제하지 않는다.
 
-현재 운영 스냅샷은 Oracle 릴리스 `b9dd21c`이며 서비스는 active, 거래 모드는 `dry_run`이다. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문은 0건으로 확인됐다. 이 값은 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
+현재 운영 스냅샷은 Oracle 릴리스 `598a550`이며 서비스는 active, 거래 모드는 `dry_run`이다. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문은 0건으로 확인됐다. 이 값은 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
 
 ## 1. 서버 준비
 
@@ -83,7 +83,7 @@ ls -l /home/ubuntu/JD_HOLDINGS/current
 grep '^JDSS_TRADING_MODE=' /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
-Telegram `/ping`, `/dashboard`, `/account`, `/cash`, `/backtest`를 확인합니다. `/cash`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. 인자 없는
+Telegram `/ping`, `/dashboard`, `/account`, `/sgov`, `/backtest`를 확인합니다. `/sgov`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. 인자 없는
 `/backtest`는 SOXL 최근 300거래일을 실행하며, 신호·매수·미체결·TP1·TP2 내역이
 종목당 최근 15건까지 표시되는지 확인합니다. `/account`는 미국주식과
 수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서

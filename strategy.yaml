@@ -1,5 +1,5 @@
-version: JDSS-2.2.0-SGOV
-config_version: "2.2.0"
+version: JDSS-2.2.1-SGOV
+config_version: "2.2.1"
 
 global:
   capital_per_symbol: 10000

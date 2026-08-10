@@ -1,11 +1,11 @@
 # JDSS Strategy Guide & History
 
-이 문서는 JDSS 전략의 발전 이력을 보존합니다. 현재 개발 계약은 **JDSS-2.2.0-SGOV**이며, 정확한 수치와 실행 규칙은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)와 루트 `strategy.yaml`을 기준으로 합니다.
+이 문서는 JDSS 전략의 발전 이력을 보존합니다. 현재 개발 계약은 **JDSS-2.2.1-SGOV**이며, 정확한 수치와 실행 규칙은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)와 루트 `strategy.yaml`을 기준으로 합니다.
 
 > [!IMPORTANT]
 > 이 문서에서 `Archive` 아래의 v2.0·v1.x 수치와 Mermaid 흐름도는 과거 연구 기록입니다. 현재 구현이나 설정을 수정할 때 복사하지 마세요. 문서 탐색 순서는 [`README.md`](README.md)를 따릅니다.
 
-## 현재 주력: JDSS-2.2.0-SGOV
+## 현재 주력: JDSS-2.2.1-SGOV
 
 - 모든 매수 단계 Score 55 이상, Reversal Score 5 이상, `Regime != RED`
 - 40% / 30% / 20% / 10% 분할, 최초 체결가 대비 -2% / -5% / -7% 추가매수
@@ -17,7 +17,7 @@
 - Telegram `/score`는 원지표 해석과 55점·반등 5점·RED 차단 여부를 함께 표시
 - 미투입 전략 배정금은 `$250` 현금 버퍼를 제외하고 SGOV로 운용
 - 전략 매수 전 JDSS 관리 SGOV를 먼저 현금화하며, 기존 개인 SGOV는 자동 편입하지 않음
-- Telegram `/cash`에서 관리 수량·평가액·목표액·비관리 수량·SAFE_MODE 확인
+- Telegram `/sgov`에서 관리 수량·평가액·목표액·비관리 수량·SAFE_MODE 확인
 
 아래 JDSS 2.0 이하 내용은 후보 선정 과정과 과거 운영 기록이며 현재 설정이 아닙니다. 현재 수치와 충돌하는 것은 의도된 역사 기록입니다.
 
