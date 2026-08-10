@@ -907,7 +907,7 @@ class TelegramBotApp:
                 self._backtest_lock.release()
                 raise
 
-        @bot.message_handler(commands=["help", "h", "start"])
+        @bot.message_handler(commands=["help", "menu", "start"])
         def help_handler(message):
             if not self._authorized_message(message):
                 return
