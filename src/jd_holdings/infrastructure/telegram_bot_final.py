@@ -12,7 +12,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class FinalTelegramBotApp(TelegramBotApp):
-    """JDSS 2.1 FINAL Telegram app with production-equivalent backtests."""
+    """JDSS 2.2 Telegram app with production-equivalent SGOV backtests."""
 
     def _run_backtest_and_send(self, request: TelegramBacktestRequest) -> None:
         try:
@@ -21,6 +21,11 @@ class FinalTelegramBotApp(TelegramBotApp):
             warmup_start = (request.start - timedelta(days=400)).isoformat()
             spy = self.data_source.daily("SPY", warmup_start, end)
             qqq = self.data_source.daily("QQQ", warmup_start, end)
+            idle_cash_data = (
+                self.data_source.daily(self.config.idle_cash.symbol, warmup_start, end)
+                if self.config.idle_cash.enabled
+                else None
+            )
 
             guard = self.config.market_regime.get("soxl_sector_guard", {})
             sector_data = {}
@@ -44,6 +49,7 @@ class FinalTelegramBotApp(TelegramBotApp):
                     start=start,
                     end=end,
                     sector_data=sector_data if symbol == "SOXL" else None,
+                    idle_cash_data=idle_cash_data,
                 )
             self._send_long(self._format_backtest_results(results))
         except Exception as exc:

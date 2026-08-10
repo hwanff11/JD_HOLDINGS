@@ -149,6 +149,7 @@ class BacktestEngine:
         snapshots_precomputed: Mapping[str, Mapping[pd.Timestamp, IndicatorSnapshot]] | None = None,
         regimes_precomputed: Mapping[pd.Timestamp, MarketRegime] | None = None,
         sector_data: Mapping[str, pd.DataFrame] | None = None,
+        idle_cash_data: pd.DataFrame | None = None,
     ) -> BacktestResult:
         """
         주어진 종목(symbol)과 지표 데이터(symbol_data)를 바탕으로 
@@ -199,7 +200,7 @@ class BacktestEngine:
                     frame if indicators_precomputed else calculate_indicators(frame, self.config)
                 )
         
-        # FINAL의 warn_and_allow 계약에 따라 사용 가능한 벤치마크가 하나라도
+        # JDSS 2.2의 warn_and_allow 계약에 따라 사용 가능한 벤치마크가 하나라도
         # 있으면 그 데이터로 가드를 적용한다. 모두 누락된 경우에만 허용한다.
         sector_guard_applied = guard_requested and bool(sector_frames)
 
@@ -241,6 +242,12 @@ class BacktestEngine:
         if len(common_index) < 2:
             raise ValueError("백테스트 가능한 공통 거래일이 부족합니다")
 
+        idle_cash_returns = pd.Series(0.0, index=common_index)
+        idle_cash_applied = self.config.idle_cash.enabled and idle_cash_data is not None
+        if idle_cash_applied:
+            close = idle_cash_data["close"].reindex(common_index).ffill()
+            idle_cash_returns = close.pct_change(fill_method=None).fillna(0.0)
+
         state = _SimulationState(
             symbol=symbol,
             capital=self.config.global_.capital_per_symbol,
@@ -262,8 +269,20 @@ class BacktestEngine:
         rebuy_cycles = 0
         rebuy_profitable_cycles = 0
         sector_guard_blocks = 0
+        idle_cash_income = Decimal("0")
 
         for timestamp in common_index:
+            if idle_cash_applied:
+                yieldable_cash = max(
+                    Decimal("0"),
+                    state.cash
+                    - self.config.idle_cash.cash_buffer / len(self.config.enabled_symbols),
+                )
+                daily_income = yieldable_cash * Decimal(
+                    str(float(idle_cash_returns.loc[timestamp]))
+                )
+                state.cash += daily_income
+                idle_cash_income += daily_income
             row = target.loc[timestamp]
             if snapshots_precomputed is None:
                 snapshot = snapshot_from_row(symbol, timestamp, row)
@@ -417,6 +436,9 @@ class BacktestEngine:
         metrics["sector_guard_applied"] = int(sector_guard_applied)
         metrics["sector_guard_available_benchmarks"] = len(sector_frames)
         metrics["sector_guard_blocks"] = sector_guard_blocks
+        metrics["idle_cash_enabled"] = int(self.config.idle_cash.enabled)
+        metrics["idle_cash_applied"] = int(idle_cash_applied)
+        metrics["idle_cash_income"] = round(float(idle_cash_income), 2)
 
         open_position = {
             "state": state.state.value,

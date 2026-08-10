@@ -1,6 +1,6 @@
 # JDSS 백테스트 명세서(Backtest Specification)
 
-> **레거시 v1.1.2 기준선 문서.** 현재 FINAL 백테스트 규칙과 Telegram 출력은
+> **레거시 v1.1.2 기준선 문서.** 현재 JDSS 2.2 백테스트·SGOV 규칙과 Telegram 출력은
 > [`../../JDSS_FINAL_SPEC.md`](../../JDSS_FINAL_SPEC.md)와
 > [`../../TELEGRAM_BOT_GUIDE.md`](../../TELEGRAM_BOT_GUIDE.md)를 따른다.
 

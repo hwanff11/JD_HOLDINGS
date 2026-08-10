@@ -10,7 +10,7 @@
 main
 ```
 
-현재 운영 기준은 **JDSS-2.1.0-FINAL**이다. 실제 기능 개발·전략 연구는 최신 `main`에서 별도 작업 브랜치를 생성하여 진행하고, 검증 완료 후 PR로 `main`에 반영한다.
+현재 개발 기준은 **JDSS-2.2.0-SGOV**이며 운영 배포 기준은 아직 **JDSS-2.1.0-FINAL**이다. SGOV 기능은 `codex/jdss-2.2.0-sgov`에서 검증하고 PR을 거쳐 `main`에 반영한다.
 
 문서를 처음 읽는 환경은 `CURRENT_WORK.md` → `docs/README.md` → 작업별 기준 문서 순서로 확인한다. `docs/archive/` 및 현행 문서의 `Archive` 구역은 과거 재현용이며 현재 구현의 입력으로 사용하지 않는다.
 

@@ -151,7 +151,7 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "2.1.0"
+    assert __version__ == "2.2.0"
     assert project["version"] == __version__
     assert config.config_version == __version__
 
@@ -159,11 +159,11 @@ def test_final_code_version_matches_strategy_release(config):
 def test_telegram_guide_matches_final_contract():
     cards = _guide_cards()
     guide = "\n".join(cards)
-    for expected in ("2.1 FINAL", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%"):
+    for expected in ("2.2", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%", "SGOV", "/cash"):
         assert expected in guide
     for expected in ("CCI 5 / 10", "RSI 5 / 14", "EMA 5 / 20 / 60", "볼린저 하단", "ATR 비율", "종가 위치"):
         assert expected in guide
-    assert len(cards) == 3
+    assert len(cards) == 4
     assert all(len(card) < 4096 for card in cards)
     assert "50점" not in guide
     assert "-4% 하락" not in guide

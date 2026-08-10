@@ -1,10 +1,10 @@
 # JD_HOLDINGS
 
-JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반등을 이용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 운영 기준은 **JDSS-2.1.0-FINAL**이다.
+JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반등을 이용하고 유휴 전략자금을 SGOV로 운용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 개발 기준은 **JDSS-2.2.0-SGOV**이다.
 
-> 현재 상태: **JDSS-2.1.0-FINAL `b9dd21c`가 Oracle에 dry-run 배포되었습니다.** 당분간 Telegram 백테스트 전용으로 운용하며 JDSS 내부 TQQQ/SOXL 포지션은 `qty=0`, `EMPTY`, 미체결 전략 주문은 0건입니다. 실거래 승격은 금지된 상태입니다. 변동 가능한 최신 상태는 [`CURRENT_WORK.md`](CURRENT_WORK.md)를 확인하세요.
+> 현재 상태: Oracle에는 이전 **JDSS-2.1.0-FINAL `b9dd21c`**가 `dry_run` 배포되어 있다. **JDSS-2.2.0-SGOV는 작업 브랜치에서 개발·검증 중이며 아직 운영 배포본이 아니다.** 실거래 승격은 금지된 상태다. 변동 가능한 최신 상태는 [`CURRENT_WORK.md`](CURRENT_WORK.md)를 확인한다.
 
-## FINAL 전략 요약
+## JDSS 2.2 전략 요약
 
 - 대상: TQQQ, SOXL / 종목당 전략자금 $10,000
 - 모든 매수 단계: Score 55 이상, Reversal Score 5 이상, `Regime != RED`
@@ -13,17 +13,22 @@ JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반�
 - TP1 완전체결 후 20개 완결 거래일 동안 TP2 미체결 시 잔량을 평단 +2% 주문으로 전환
 - SOXL 섹터 가드: SOXX/SMH EMA60 기준으로 1·3·4차 차단
 - 자동손절·재매수 없음, 모든 매수는 2단계 사용자 승인 필수
+- TQQQ/SOXL에 쓰지 않은 배정금은 SGOV로 운용하고 계좌에 최소 `$250`를 남김
+- 전략 매수 전 필요한 SGOV 관리분을 먼저 매도하며, 현금화 미완료 시 본 주문 차단
+- 기존 개인 SGOV는 JDSS 관리분으로 자동 편입하거나 매도하지 않음
 
-처음 저장소를 인수하는 환경은 [문서 안내](docs/README.md)와 [현재 작업 상태](CURRENT_WORK.md)를 먼저 읽으세요. 정식 계약은 [FINAL 사양](docs/JDSS_FINAL_SPEC.md), 운영 이력은 [전략 가이드](docs/STRATEGY_GUIDE.md), 검증 기록은 [백테스트 보고서](docs/BACKTEST_REPORT.md), 협업 절차는 [개발 워크플로](docs/infra/DEVELOPMENT_WORKFLOW.md)를 참고합니다.
+처음 저장소를 인수하는 환경은 [문서 안내](docs/README.md)와 [현재 작업 상태](CURRENT_WORK.md)를 먼저 읽으세요. 정식 계약은 [JDSS 2.2 사양](docs/JDSS_FINAL_SPEC.md), 운영 이력은 [전략 가이드](docs/STRATEGY_GUIDE.md), 검증 기록은 [백테스트 보고서](docs/BACKTEST_REPORT.md), 협업 절차는 [개발 워크플로](docs/infra/DEVELOPMENT_WORKFLOW.md)를 참고합니다.
 
 ## 구현 범위
 
 - 완결 미국 거래일 검증과 yfinance 수정주가 일봉 분석
-- 노룩어헤드 백테스트와 실거래 공용 FINAL 전략 규칙
+- 노룩어헤드 백테스트와 실거래 공용 JDSS 2.2 전략 규칙
 - SQLite WAL, 상태 전이, 낙관적 잠금, 신호·주문 멱등성
 - Telegram 관리자 1명 제한과 검토 → 최종 실행의 2단계 매수 승인
 - Toss Securities OAuth2/OpenAPI 어댑터와 실주문 이중 잠금
 - 부분체결, TP 자동복구, `REMAINDER_EXIT`, 재시작 Reconciliation과 SAFE_MODE
+- JDSS 관리 SGOV 전용 원장, 자동 예치·선현금화·부분체결·정합성 SAFE_MODE
+- Telegram `/cash`와 SGOV 수익을 반영하는 CLI·Telegram 백테스트
 - 별도 `jd_holdings_bot.service`와 commit별 Oracle 릴리스 배포
 
 ## 빠른 시작

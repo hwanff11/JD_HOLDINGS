@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.broker import MarketDataDryRunBroker
 from jd_holdings.application.database import SQLiteRepository
+from jd_holdings.application.idle_cash_manager import IdleCashManager
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.position_manager import PositionManager
@@ -20,6 +22,35 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 from jd_holdings.infrastructure.telegram_bot_final import FinalTelegramBotApp
 from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import load_runtime_settings
+
+
+def restore_dry_run_holdings(
+    repository: SQLiteRepository,
+    broker: MarketDataDryRunBroker,
+) -> None:
+    """Rebuild the in-memory dry-run account from its persisted JDSS ledger."""
+    used_capital = Decimal("0")
+    for symbol in repository.config.enabled_symbols:
+        position = repository.get_position(symbol)
+        if position.quantity <= 0:
+            continue
+        broker.holdings[symbol] = {
+            "quantity": position.quantity,
+            "averagePurchasePrice": position.average_price,
+        }
+        used_capital += position.current_cost_basis
+    if repository.config.idle_cash.enabled:
+        cash_state = repository.get_idle_cash_state()
+        if cash_state.managed_quantity > 0:
+            broker.holdings[cash_state.symbol] = {
+                "quantity": cash_state.managed_quantity,
+                "averagePurchasePrice": cash_state.average_price,
+            }
+            used_capital += cash_state.average_price * cash_state.managed_quantity
+    allocated = repository.config.global_.capital_per_symbol * len(
+        repository.config.enabled_symbols
+    )
+    broker.buying_power = max(Decimal("0"), allocated - used_capital)
 
 
 def configure_logging(log_path: Path) -> None:
@@ -51,12 +82,16 @@ def main() -> None:
             data_source,
             buying_power=config.global_.capital_per_symbol * len(config.enabled_symbols),
         )
+        restore_dry_run_holdings(repository, broker)
     account_client = (
         TossClient()
         if os.getenv("TOSS_APP_KEY") and os.getenv("TOSS_APP_SECRET")
         else None
     )
     order_manager = OrderManager(repository, broker, settings)
+    idle_cash_manager = IdleCashManager(
+        config, repository, broker, order_manager, market_clock
+    )
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
     trading_service = TradingService(
@@ -67,6 +102,7 @@ def main() -> None:
         position_manager,
         tp_manager,
         market_clock,
+        idle_cash_manager,
     )
     order_monitor = OrderMonitor(
         config,
@@ -77,6 +113,7 @@ def main() -> None:
         tp_manager,
     )
     reconciliation_service = ReconciliationService(config, repository, broker)
+    idle_cash_manager.refresh_orders()
     mismatches = reconciliation_service.run()
     if mismatches:
         logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
@@ -92,6 +129,7 @@ def main() -> None:
         data_source,
         market_clock,
         account_client,
+        idle_cash_manager,
     ).run()
 
 

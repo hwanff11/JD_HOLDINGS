@@ -172,3 +172,11 @@ class OrderReceipt:
     filled_quantity: int = 0
     average_fill_price: Decimal | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class IdleCashState:
+    symbol: str
+    managed_quantity: int = 0
+    average_price: Decimal = ZERO
+    version: int = 0

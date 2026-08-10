@@ -16,6 +16,7 @@ from jd_holdings.infrastructure.market_clock import MarketClock, session_is_allo
 
 from .broker import Broker
 from .database import ApprovalError, SQLiteRepository
+from .idle_cash_manager import IdleCashManager
 from .order_manager import OrderManager, build_client_order_id
 from .position_manager import PositionManager
 from .tp_manager import TakeProfitManager
@@ -66,6 +67,7 @@ class TradingService:
         position_manager: PositionManager,
         tp_manager: TakeProfitManager,
         market_clock: MarketClock | None = None,
+        idle_cash_manager: IdleCashManager | None = None,
     ) -> None:
         self.config = config
         self.repository = repository
@@ -74,6 +76,7 @@ class TradingService:
         self.position_manager = position_manager
         self.tp_manager = tp_manager
         self.market_clock = market_clock or MarketClock()
+        self.idle_cash_manager = idle_cash_manager
 
     def create_review_approval(self, signal_id: int) -> tuple[int, str]:
         signal = self._active_signal(signal_id)
@@ -267,6 +270,9 @@ class TradingService:
             raise ApprovalError("계산된 매수수량이 0주입니다")
         buying_power = self.broker.get_buying_power("USD")
         total = Decimal(quantity) * limit * (Decimal("1") + self.config.global_.buy_fee)
+        if self.idle_cash_manager is not None:
+            self.idle_cash_manager.ensure_buying_power(total)
+            buying_power = self.broker.get_buying_power("USD")
         if total > buying_power:
             raise ApprovalError("실제 달러 매수가능금액이 부족합니다")
         return ReviewQuote(

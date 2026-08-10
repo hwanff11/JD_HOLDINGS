@@ -1,6 +1,6 @@
 # Oracle 배포 가이드
 
-현재 배포 대상은 `main`의 **JDSS-2.1.0-FINAL**이다. 최초 반영은 반드시 `dry_run`으로 수행하며, 이 단계에서는 실주문 잠금을 해제하지 않는다.
+다음 배포 후보는 **JDSS-2.2.0-SGOV**이며 아직 작업 브랜치에 있다. 현재 Oracle 운영본은 이전 **JDSS-2.1.0-FINAL**이다. 2.2 최초 반영도 반드시 `dry_run`으로 수행하며 SGOV를 포함한 실주문 잠금을 해제하지 않는다.
 
 현재 운영 스냅샷은 Oracle 릴리스 `b9dd21c`이며 서비스는 active, 거래 모드는 `dry_run`이다. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문은 0건으로 확인됐다. 이 값은 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
 
@@ -49,7 +49,7 @@ git remote -v
 env -u GITHUB_TOKEN ./deploy.sh
 ```
 
-권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고, Ruff·pytest·설정 검증·FINAL 버전 검사를 다시 통과한 뒤 서버 `.env`를 아래처럼 강제 잠근다.
+권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고, Ruff·pytest·설정 검증·2.2 버전 검사를 다시 통과한 뒤 서버 `.env`를 아래처럼 강제 잠근다.
 
 ```dotenv
 JDSS_TRADING_MODE=dry_run
@@ -83,13 +83,13 @@ ls -l /home/ubuntu/JD_HOLDINGS/current
 grep '^JDSS_TRADING_MODE=' /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
-Telegram `/ping`, `/dashboard`, `/account`, `/backtest`를 확인합니다. 인자 없는
+Telegram `/ping`, `/dashboard`, `/account`, `/cash`, `/backtest`를 확인합니다. `/cash`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. 인자 없는
 `/backtest`는 SOXL 최근 300거래일을 실행하며, 신호·매수·미체결·TP1·TP2 내역이
 종목당 최근 15건까지 표시되는지 확인합니다. `/account`는 미국주식과
 수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서
-`jdss toss-smoke`를 실행해 조회 전용 인증을 확인합니다.
+`jdss toss-smoke`를 실행해 TQQQ·SOXL·SGOV 시세와 조회 전용 인증을 확인합니다.
 
-배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 포지션과 주문 상태를 Reconciliation한다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. `dry_run` 관찰과 운영자 확인이 끝나기 전에는 `JDSS_TRADING_MODE=live` 또는 실주문 확인 문자열을 설정하지 않는다.
+배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 포지션과 주문 상태 및 SGOV 관리 원장을 Reconciliation한다. 2.1 DB에서 처음 생성되는 SGOV 관리 수량은 0이며 기존 계좌 SGOV를 자동 인수하지 않는다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. `dry_run` 관찰과 운영자 확인이 끝나기 전에는 `JDSS_TRADING_MODE=live` 또는 실주문 확인 문자열을 설정하지 않는다.
 
 ## 4. 롤백
 

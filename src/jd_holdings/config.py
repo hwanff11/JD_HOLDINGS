@@ -106,6 +106,18 @@ class SchedulerConfig:
 
 
 @dataclass(frozen=True)
+class IdleCashConfig:
+    enabled: bool
+    symbol: str
+    cash_buffer: Decimal
+    minimum_order_amount: Decimal
+    buy_limit_buffer: Decimal
+    sell_limit_buffer: Decimal
+    sweep_interval_seconds: int
+    require_sale_fill_before_entry: bool
+
+
+@dataclass(frozen=True)
 class BacktestConfig:
     default_start: str
     default_slippage: Decimal
@@ -128,6 +140,7 @@ class StrategyConfig:
     rebuy: RebuyConfig
     risk_review: RiskReviewConfig
     scheduler: SchedulerConfig
+    idle_cash: IdleCashConfig
     backtest: BacktestConfig
 
     @property
@@ -164,6 +177,19 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
     rebuy_raw = _require(raw, "rebuy")
     risk_raw = _require(raw, "risk_review")
     scheduler_raw = _require(raw, "scheduler")
+    idle_cash_raw = raw.get(
+        "idle_cash",
+        {
+            "enabled": False,
+            "symbol": "SGOV",
+            "cash_buffer": 0,
+            "minimum_order_amount": 100,
+            "buy_limit_buffer": 0.001,
+            "sell_limit_buffer": 0.001,
+            "sweep_interval_seconds": 300,
+            "require_sale_fill_before_entry": True,
+        },
+    )
     backtest_raw = _require(raw, "backtest")
 
     config = StrategyConfig(
@@ -247,6 +273,18 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             poll_interval_seconds=int(scheduler_raw["poll_interval_seconds"]),
             order_monitor_interval_seconds=int(scheduler_raw["order_monitor_interval_seconds"]),
         ),
+        idle_cash=IdleCashConfig(
+            enabled=bool(idle_cash_raw["enabled"]),
+            symbol=str(idle_cash_raw["symbol"]).upper(),
+            cash_buffer=_decimal(idle_cash_raw["cash_buffer"]),
+            minimum_order_amount=_decimal(idle_cash_raw["minimum_order_amount"]),
+            buy_limit_buffer=_decimal(idle_cash_raw["buy_limit_buffer"]),
+            sell_limit_buffer=_decimal(idle_cash_raw["sell_limit_buffer"]),
+            sweep_interval_seconds=int(idle_cash_raw["sweep_interval_seconds"]),
+            require_sale_fill_before_entry=bool(
+                idle_cash_raw["require_sale_fill_before_entry"]
+            ),
+        ),
         backtest=BacktestConfig(
             default_start=str(backtest_raw["default_start"]),
             default_slippage=_decimal(backtest_raw["default_slippage"]),
@@ -301,6 +339,23 @@ def validate_config(config: StrategyConfig) -> None:
         errors.append("실행 토큰 TTL은 양수여야 합니다")
     if config.global_.entry_max_chase_pct < 0:
         errors.append("추격매수 상한은 0 이상이어야 합니다")
+    if config.idle_cash.enabled:
+        if config.idle_cash.symbol in config.enabled_symbols:
+            errors.append("유휴현금 ETF는 전략 매매 종목과 달라야 합니다")
+        if not config.idle_cash.symbol.isalnum():
+            errors.append("유휴현금 ETF 티커 형식이 올바르지 않습니다")
+        if config.idle_cash.cash_buffer < 0:
+            errors.append("유휴현금 현금 버퍼는 0 이상이어야 합니다")
+        if config.idle_cash.minimum_order_amount <= 0:
+            errors.append("유휴현금 최소 주문금액은 양수여야 합니다")
+        if not Decimal("0") <= config.idle_cash.buy_limit_buffer <= Decimal("0.05"):
+            errors.append("SGOV 매수 지정가 버퍼는 0~5%여야 합니다")
+        if not Decimal("0") <= config.idle_cash.sell_limit_buffer <= Decimal("0.05"):
+            errors.append("SGOV 매도 지정가 버퍼는 0~5%여야 합니다")
+        if config.idle_cash.sweep_interval_seconds <= 0:
+            errors.append("SGOV 점검 주기는 양수여야 합니다")
+        if not config.idle_cash.require_sale_fill_before_entry:
+            errors.append("전략 매수 전 SGOV 매도 체결 확인은 비활성화할 수 없습니다")
     calibration = config.scoring.get("calibration", {})
     if calibration:
         if calibration.get("method", "power") != "power":
