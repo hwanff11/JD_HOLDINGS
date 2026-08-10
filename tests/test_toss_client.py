@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from jd_holdings.core.models import OrderRequest
-from jd_holdings.infrastructure.toss_client import TossClient
+from jd_holdings.infrastructure.toss_client import TossApiError, TossClient
 
 
 class FakeResponse:
@@ -94,3 +96,56 @@ def test_market_order_omits_price_for_toss_api():
     payload = session.requests[-1][2]["json"]
     assert payload["orderType"] == "MARKET"
     assert "price" not in payload
+
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("symbol", "../TQQQ", "종목 코드"),
+        ("side", "HOLD", "주문 방향"),
+        ("order_type", "STOP", "주문 유형"),
+        ("quantity", 0, "주문 수량"),
+        ("price", Decimal("NaN"), "지정가 주문"),
+    ],
+)
+def test_order_boundary_rejects_invalid_values(field, value, message):
+    values = {
+        "client_order_id": "JDSS-TQQQ-E1-boundary",
+        "symbol": "TQQQ",
+        "side": "BUY",
+        "order_type": "LIMIT",
+        "quantity": 1,
+        "price": Decimal("100"),
+        "purpose": "ENTRY_1",
+    }
+    values[field] = value
+    client = TossClient(
+        client_id="client",
+        client_secret="secret",
+        account_seq="1",
+        session=FakeSession(),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        client.place_order(OrderRequest(**values))
+
+
+def test_success_response_rejects_non_json_payload():
+    class InvalidJsonResponse(FakeResponse):
+        def json(self):
+            raise ValueError("invalid json")
+
+    class InvalidJsonSession(FakeSession):
+        def request(self, method, url, **kwargs):
+            return InvalidJsonResponse(None)
+
+    client = TossClient(
+        client_id="client",
+        client_secret="secret",
+        account_seq="1",
+        session=InvalidJsonSession(),
+    )
+
+    with pytest.raises(TossApiError, match="JSON 형식"):
+        client.get_price("TQQQ")
