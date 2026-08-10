@@ -49,9 +49,10 @@
 ## 운영 배포 상태와 남은 게이트
 
 1. Oracle dry-run 배포와 조회 전용 smoke는 완료했다.
-2. 운영 계좌와 JDSS SQLite의 불일치 항목을 비공개 환경에서 확인한다.
-3. 기존 운영 자산과 JDSS 상태의 관계를 결정한 뒤 Reconciliation을 재실행한다.
-4. Reconciliation이 완전히 통과하기 전까지 신규 실주문을 금지하고 `dry_run`을 유지한다.
+2. 당분간 Telegram `/bt` 백테스트 전용으로 운용한다.
+3. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문 0건을 유지한다.
+4. 향후 live 검토 시 기존 운영 자산과 JDSS 상태의 관계를 먼저 결정하고 Reconciliation을 재실행한다.
+5. Reconciliation이 완전히 통과하기 전까지 신규 실주문을 금지하고 `dry_run`을 유지한다.
 
 ## 실거래 잠금
 
@@ -60,15 +61,16 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.1 FINAL 전체 계약 감사와 Oracle dry-run 배포 완료. 서비스와 Toss smoke는 정상이나 운영 Reconciliation 추가 확인 전까지 live 승격 금지.
+- 상태: JDSS 2.1 FINAL 전체 계약 감사와 Oracle dry-run 배포 완료. JDSS 내부 포지션·주문은 비어 있으며 당분간 Telegram 백테스트 전용으로 운용. live 승격 금지.
 - 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
 - 액션 갱신 커밋: `0e685cf` (`ci: upgrade workflows to Node 24 actions`)
 - GitHub CI: run `31383081468` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
 - Oracle dry-run 배포: `a41e35ac551e06e265b605752eb0748ea27ff693` 배포 완료
 - 배포 후 검증: 서비스 active/enabled, 패키지 2.1.0, FINAL 설정 검증, `dry_run` 잠금, Toss 인증·TQQQ/SOXL 시세 조회 성공
-- 읽기 전용 Reconciliation: 운영자 추가 확인 필요. 세부 계좌 정보는 공개 저장소에 기록하지 않으며 자동 인수·DB 수정·주문 취소를 수행하지 않음.
-- 다음 우선순위: 비공개 환경에서 운영 상태 확인 → Reconciliation 재검증. 그 전까지 `dry_run` 유지 및 live 승격 금지.
+- JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
+- 운영 방침: Telegram `/bt` 백테스트 전용, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
+- 다음 우선순위: Telegram 백테스트 동작 모니터링. live 검토 전 비공개 Reconciliation 재검증.
 
 ## 갱신 규칙
 
