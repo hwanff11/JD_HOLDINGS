@@ -113,6 +113,8 @@ class IdleCashConfig:
     minimum_order_amount: Decimal
     buy_limit_buffer: Decimal
     sell_limit_buffer: Decimal
+    orderbook_limit_offset: Decimal
+    reprice_after_seconds: int
     sweep_interval_seconds: int
     require_sale_fill_before_entry: bool
 
@@ -186,6 +188,8 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             "minimum_order_amount": 100,
             "buy_limit_buffer": 0.001,
             "sell_limit_buffer": 0.001,
+            "orderbook_limit_offset": 0.01,
+            "reprice_after_seconds": 60,
             "sweep_interval_seconds": 300,
             "require_sale_fill_before_entry": True,
         },
@@ -280,6 +284,8 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             minimum_order_amount=_decimal(idle_cash_raw["minimum_order_amount"]),
             buy_limit_buffer=_decimal(idle_cash_raw["buy_limit_buffer"]),
             sell_limit_buffer=_decimal(idle_cash_raw["sell_limit_buffer"]),
+            orderbook_limit_offset=_decimal(idle_cash_raw["orderbook_limit_offset"]),
+            reprice_after_seconds=int(idle_cash_raw["reprice_after_seconds"]),
             sweep_interval_seconds=int(idle_cash_raw["sweep_interval_seconds"]),
             require_sale_fill_before_entry=bool(
                 idle_cash_raw["require_sale_fill_before_entry"]
@@ -352,6 +358,10 @@ def validate_config(config: StrategyConfig) -> None:
             errors.append("SGOV 매수 지정가 버퍼는 0~5%여야 합니다")
         if not Decimal("0") <= config.idle_cash.sell_limit_buffer <= Decimal("0.05"):
             errors.append("SGOV 매도 지정가 버퍼는 0~5%여야 합니다")
+        if not Decimal("0") <= config.idle_cash.orderbook_limit_offset <= Decimal("1"):
+            errors.append("SGOV 호가 지정가 오프셋은 0~1달러여야 합니다")
+        if config.idle_cash.reprice_after_seconds <= 0:
+            errors.append("SGOV 재가격 대기시간은 양수여야 합니다")
         if config.idle_cash.sweep_interval_seconds <= 0:
             errors.append("SGOV 점검 주기는 양수여야 합니다")
         if not config.idle_cash.require_sale_fill_before_entry:

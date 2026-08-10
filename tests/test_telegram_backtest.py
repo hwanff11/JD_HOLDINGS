@@ -152,7 +152,7 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "2.2.1"
+    assert __version__ == "2.2.2"
     assert project["version"] == __version__
     assert config.config_version == __version__
 

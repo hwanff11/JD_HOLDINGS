@@ -1,6 +1,6 @@
 # JDSS Backtest Reports & History
 
-이 문서는 JDSS의 백테스트와 후보 연구 기록을 보존합니다. 현재 개발 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)의 **JDSS-2.2.1-SGOV**입니다.
+이 문서는 JDSS의 백테스트와 후보 연구 기록을 보존합니다. 현재 개발 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)의 **JDSS-2.2.2-SGOV**입니다.
 
 > [!IMPORTANT]
 > `Archive` 아래의 성과와 파라미터는 당시 코드·데이터 조건의 역사 기록이며 현재 전략 성과로 인용하지 않습니다. 현재 작업과 재현 경로는 [`README.md`](README.md)와 [`../CURRENT_WORK.md`](../CURRENT_WORK.md)를 먼저 확인하세요.
@@ -20,6 +20,7 @@
 - TQQQ는 `+334.76%`/CAGR `+9.89%`/MDD `-21.87%`, SOXL은 `+310.40%`/CAGR `+9.48%`/MDD `-39.68%`였다.
 - 재현 명령: `jdss backtest --symbol ALL --start 2011-01-01 --end 2026-08-04 --output reports/jdss_2_2_sgov_20260804.json`
 - 정확한 재현 조건과 제한은 2.2 사양 및 생성된 테스트·artifact를 함께 확인한다.
+- 2.2.2는 신호·비중·익절·SGOV 수익률 모델을 바꾸지 않고 실거래 현금화 오케스트레이션만 보강하므로 기존 2.2 회귀 성과를 계승한다.
 
 아래 V2.0 이하 보고서는 전략 발전 과정의 역사적 결과이며 현재 운영 파라미터가 아닙니다.
 

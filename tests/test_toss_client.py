@@ -37,6 +37,15 @@ class FakeSession:
             )
         if url.endswith("/api/v1/prices"):
             return FakeResponse({"result": [{"symbol": "TQQQ", "lastPrice": "100.25"}]})
+        if url.endswith("/api/v1/orderbook"):
+            return FakeResponse(
+                {
+                    "result": {
+                        "asks": [{"price": "100.02", "volume": "100"}],
+                        "bids": [{"price": "100.01", "volume": "200"}],
+                    }
+                }
+            )
         raise AssertionError((method, url, kwargs))
 
 
@@ -63,3 +72,25 @@ def test_current_official_order_schema_and_idempotency_key():
     assert order_call["json"]["quantity"] == "8"
     assert order_call["json"]["price"] == "100.50"
     assert client.get_price("TQQQ") == Decimal("100.25")
+    assert client.get_orderbook("SGOV")["asks"][0]["price"] == "100.02"
+
+
+def test_market_order_omits_price_for_toss_api():
+    session = FakeSession()
+    client = TossClient(
+        client_id="client", client_secret="secret", account_seq="1", session=session
+    )
+    client.place_order(
+        OrderRequest(
+            client_order_id="JDSS-SGOV-SELL-market",
+            symbol="SGOV",
+            side="SELL",
+            order_type="MARKET",
+            quantity=2,
+            price=None,
+            purpose="SGOV_ENTRY_RELEASE",
+        )
+    )
+    payload = session.requests[-1][2]["json"]
+    assert payload["orderType"] == "MARKET"
+    assert "price" not in payload

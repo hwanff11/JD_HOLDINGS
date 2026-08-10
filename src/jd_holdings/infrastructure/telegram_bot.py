@@ -18,7 +18,7 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 from jd_holdings import __version__
 from jd_holdings.application.analysis_service import AnalysisResult, AnalysisService
 from jd_holdings.application.database import SQLiteRepository
-from jd_holdings.application.idle_cash_manager import IdleCashManager
+from jd_holdings.application.idle_cash_manager import IdleCashManager, IdleCashReleasePending
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.trading_service import QuoteChangedError, TradingService
@@ -884,25 +884,23 @@ class TelegramBotApp:
             try:
                 _, approval_id, token = call.data.split("|", 2)
                 quote = self.trading_service.consume_review(int(approval_id), token)
+                self._send_final_quote(quote)
+                bot.answer_callback_query(call.id, "최종 주문조건을 계산했습니다.")
+            except IdleCashReleasePending as exc:
                 markup = InlineKeyboardMarkup()
-                markup.add(
-                    InlineKeyboardButton(
-                        "✅ 최종 매수 실행",
-                        callback_data=(f"ex|{quote.execution_approval_id}|{quote.execution_token}"),
+                if exc.signal_id is not None:
+                    markup.add(
+                        InlineKeyboardButton(
+                            "❌ 현금화 후 매수 취소",
+                            callback_data=f"cancel|cash|{exc.signal_id}",
+                        )
                     )
-                )
-                markup.add(InlineKeyboardButton("❌ 취소", callback_data="cancel|review"))
                 self._send(
-                    f"🌞 <b>[{quote.symbol} 최종 매수 승인]</b>\n\n"
-                    f"• <b>현재 가격</b> : <code>{_money(quote.current_price)}</code>\n"
-                    f"• <b>지정 가격</b> : <code>{_money(quote.limit_price)}</code>\n"
-                    f"• <b>주문 수량</b> : <code>{_quantity(quote.quantity)}주</code>\n"
-                    f"• <b>투자 금액</b> : <code>{_money(quote.planned_budget)}</code>\n"
-                    f"• <b>예상 수수료</b> : <code>{_money(quote.estimated_fee)}</code>\n\n"
-                    f"⏰ <i>{self.config.global_.execution_token_ttl_seconds}초 안에 아래 실행 버튼을 눌러주세요.</i>",
+                    "💵 <b>SGOV 현금화를 진행하고 있습니다.</b>\n\n"
+                    "체결과 달러 매수가능금액이 확인되면 최종 매수 승인 버튼을 자동으로 보내드립니다.",
                     markup=markup,
                 )
-                bot.answer_callback_query(call.id, "최종 주문조건을 계산했습니다.")
+                bot.answer_callback_query(call.id, str(exc), show_alert=True)
             except Exception as exc:
                 LOGGER.exception("매수 검토 실패")
                 bot.answer_callback_query(call.id, str(exc), show_alert=True)
@@ -932,6 +930,15 @@ class TelegramBotApp:
         @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel|"))
         def cancel_callback(call):
             if self._authorized_callback(call):
+                try:
+                    _, kind, raw_id = call.data.split("|", 2)
+                    if kind == "approval":
+                        self.trading_service.cancel_approval(int(raw_id))
+                    elif kind == "cash":
+                        self.trading_service.cancel_cash_release(int(raw_id))
+                except Exception as exc:
+                    bot.answer_callback_query(call.id, str(exc), show_alert=True)
+                    return
                 self._send(
                     "❌ <b>매수 승인 요청을 취소했습니다.</b>\n다음 좋은 타점을 기다릴게요. ☕"
                 )
@@ -951,7 +958,11 @@ class TelegramBotApp:
                 callback_data=f"rv|{approval_id}|{token}",
             )
         )
-        markup.add(InlineKeyboardButton("❌ 무시 / 취소", callback_data="cancel|signal"))
+        markup.add(
+            InlineKeyboardButton(
+                "❌ 무시 / 취소", callback_data=f"cancel|approval|{approval_id}"
+            )
+        )
         self._send(
             f"🌟 <b>[{signal['symbol']} 매수 신호 포착]</b>\n\n"
             f"<code>├ JDSS 점수 : {signal['score']:>3}점 · {_grade_label(signal['grade'])}</code>\n"
@@ -960,6 +971,31 @@ class TelegramBotApp:
             f"<code>├ 신호 가격 : {_money(signal['signal_close']):>11}</code>\n"
             f"<code>└ 추격 상한 : {_money(signal['max_chase_price']):>11}</code>\n\n"
             "💡 아래 버튼을 누르면 실시간 시세로 한 번 더 확인합니다.",
+            markup=markup,
+        )
+
+    def _send_final_quote(self, quote) -> None:
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton(
+                "✅ 최종 매수 실행",
+                callback_data=f"ex|{quote.execution_approval_id}|{quote.execution_token}",
+            )
+        )
+        markup.add(
+            InlineKeyboardButton(
+                "❌ 취소",
+                callback_data=f"cancel|approval|{quote.execution_approval_id}",
+            )
+        )
+        self._send(
+            f"🌞 <b>[{quote.symbol} 최종 매수 승인]</b>\n\n"
+            f"• <b>현재 가격</b> : <code>{_money(quote.current_price)}</code>\n"
+            f"• <b>지정 가격</b> : <code>{_money(quote.limit_price)}</code>\n"
+            f"• <b>주문 수량</b> : <code>{_quantity(quote.quantity)}주</code>\n"
+            f"• <b>투자 금액</b> : <code>{_money(quote.planned_budget)}</code>\n"
+            f"• <b>예상 수수료</b> : <code>{_money(quote.estimated_fee)}</code>\n\n"
+            f"⏰ <i>{self.config.global_.execution_token_ttl_seconds}초 안에 아래 실행 버튼을 눌러주세요.</i>",
             markup=markup,
         )
 
@@ -1177,6 +1213,12 @@ class TelegramBotApp:
                     if self.idle_cash_manager is not None:
                         for event in self.idle_cash_manager.refresh_orders():
                             self._send(f"💵 {html.escape(event)}")
+                        for quote in self.trading_service.resume_cash_releases():
+                            self._send(
+                                f"💵 <b>[{quote.symbol} SGOV 현금화 완료]</b>\n"
+                                "최신 주문조건을 다시 확인했습니다."
+                            )
+                            self._send_final_quote(quote)
                     mismatches = self.reconciliation_service.run()
                     for symbol, issues in mismatches.items():
                         self._send(

@@ -1,8 +1,8 @@
 # Oracle 배포 가이드
 
-현재 Oracle 운영본은 **JDSS-2.2.1-SGOV**이다. `dry_run`으로 배포됐으며 SGOV를 포함한 실주문 잠금은 해제하지 않는다.
+현재 Oracle 운영본은 **JDSS-2.2.1-SGOV**이다. **JDSS-2.2.2-SGOV**는 `main` 병합 후 이 절차로 `dry_run` 배포하며 SGOV를 포함한 실주문 잠금은 해제하지 않는다.
 
-현재 운영 스냅샷은 Oracle 릴리스 `3de66d1`이며 서비스는 active, 거래 모드는 `dry_run`이다. JDSS SQLite와 브로커 상태는 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
+배포 전 운영 스냅샷은 Oracle 릴리스 `3de66d1`, 서비스 active, 거래 모드 `dry_run`이다. JDSS SQLite와 브로커 상태는 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
 
 ## 1. 서버 준비
 
@@ -83,7 +83,7 @@ ls -l /home/ubuntu/JD_HOLDINGS/current
 grep '^JDSS_TRADING_MODE=' /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
-Telegram `/ping`, `/dashboard`, `/account`, `/sgov`, `/backtest`를 확인합니다. `/sgov`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. 인자 없는
+Telegram `/ping`, `/dashboard`, `/account`, `/sgov`, `/backtest`를 확인합니다. `/sgov`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. 2.2.2에서는 현금화 의도 DB 마이그레이션, SGOV 현금화 후 최종 승인 자동 재개, 활성 의도 중 재예치 차단, 60초 미체결 재가격을 추가로 확인합니다. 인자 없는
 `/backtest`는 SOXL 최근 300거래일을 실행하며, 신호·매수·미체결·TP1·TP2 내역이
 종목당 최근 15건까지 표시되는지 확인합니다. `/account`는 미국주식과
 수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서
