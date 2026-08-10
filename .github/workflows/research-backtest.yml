@@ -7,6 +7,7 @@ on:
       - "scripts/backtest_v2_audit.py"
       - "scripts/backtest_v2_tp2_decay.py"
       - "scripts/backtest_v2_remainder_exit.py"
+      - "scripts/backtest_v2_deep_stage_guard.py"
       - "src/jd_holdings/backtest/**"
       - "src/jd_holdings/core/**"
       - "strategy.yaml"
@@ -31,6 +32,7 @@ jobs:
       - run: python scripts/backtest_v2_audit.py --output reports/v2_backtest_audit.json
       - run: python scripts/backtest_v2_tp2_decay.py --output reports/v2_tp2_decay.json
       - run: python scripts/backtest_v2_remainder_exit.py --output reports/v2_remainder_exit.json
+      - run: python scripts/backtest_v2_deep_stage_guard.py --output reports/v2_deep_stage_guard.json
       - uses: actions/upload-artifact@v4
         with:
           name: jdss-v2-focused-backtest
@@ -43,3 +45,5 @@ jobs:
             reports/v2_tp2_decay.md
             reports/v2_remainder_exit.json
             reports/v2_remainder_exit.md
+            reports/v2_deep_stage_guard.json
+            reports/v2_deep_stage_guard.md
