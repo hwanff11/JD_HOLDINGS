@@ -42,7 +42,7 @@ def test_first_entry_score_55_is_required(config):
     blocked = evaluate_entry(make_snapshot(), make_score(54), position, config)
     allowed = evaluate_entry(make_snapshot(), make_score(55), position, config)
     assert not blocked.allowed
-    assert "SCORE_BELOW_ENTRY" in blocked.reason_codes
+    assert "ENTRY_SCORE_FAIL" in blocked.reason_codes
     assert allowed.allowed
 
 
