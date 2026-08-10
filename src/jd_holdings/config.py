@@ -157,7 +157,10 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
     exposure_raw = _require(raw, "exposure")
     add_raw = _require(raw, "additional_entry")
     tp_raw = _require(raw, "take_profit")
-    remainder_raw = _require(tp_raw, "remainder_exit")
+    remainder_raw = tp_raw.get(
+        "remainder_exit",
+        {"enabled": False, "wait_trading_days": 20, "target_from_avg": 0.02},
+    )
     rebuy_raw = _require(raw, "rebuy")
     risk_raw = _require(raw, "risk_review")
     scheduler_raw = _require(raw, "scheduler")
