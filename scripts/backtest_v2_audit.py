@@ -85,6 +85,10 @@ def _audit_result(result: BacktestResult) -> dict[str, Any]:
 
 
 def _markdown(report: dict[str, Any]) -> str:
+    table_header = (
+        "| Candidate | Symbol | Total signals | First signals | First buys | "
+        "Add signals | Add buys | Closed | Max hold |"
+    )
     lines = [
         "# JDSS 2.0 Backtest Audit",
         "",
@@ -93,7 +97,7 @@ def _markdown(report: dict[str, Any]) -> str:
         "This report separates first-entry signals from additional-entry signals. "
         "The existing `signals` metric counts every allowed strategy decision, not only new entries.",
         "",
-        "| Candidate | Symbol | Total signals | First signals | First buys | Add signals | Add buys | Closed | Max hold |",
+        table_header,
         "|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for candidate_name, symbols in report["candidates"].items():
