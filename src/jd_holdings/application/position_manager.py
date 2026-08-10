@@ -147,8 +147,9 @@ class PositionManager:
             "REJECTED",
             "REPLACED",
         }
+        tp_leg = "TP2" if purpose == "REMAINDER_EXIT" else purpose
         self.repository.update_tp_fills(
-            int(plan["tp_plan_id"]), leg=purpose, filled_qty=int(order["filled_qty"])
+            int(plan["tp_plan_id"]), leg=tp_leg, filled_qty=int(order["filled_qty"])
         )
         holdings = self.broker.get_holdings(symbol)
         holding = next((item for item in holdings if item.get("symbol") == symbol), None)
