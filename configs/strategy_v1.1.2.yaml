@@ -1,3 +1,7 @@
+# ARCHIVE ONLY: JDSS 1.1.2 연구 재현용 설정입니다.
+# 현재 애플리케이션은 저장소 루트 strategy.yaml만 사용합니다.
+# 현행 전략 수치나 운영 설정의 기준으로 사용하지 마세요.
+
 version: JDSS-1.1.2
 config_version: "1.0.0"
 
