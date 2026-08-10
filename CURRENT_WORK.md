@@ -48,6 +48,13 @@
 - Telegram `/score`에 CCI·RSI·EMA·볼린저·거래량·ATR·종가 위치의 한국어 해석과 FINAL 핵심 조건 충족 여부를 추가했다.
 - Telegram `/guide`에 보조지표 기준을 쉽게 설명하는 세 번째 카드를 추가하고 운영 가이드를 같은 내용으로 최신화했다.
 - 로컬 및 배포 전 검증: pytest 81개 통과, Ruff 통과, Telegram 카드·점수 메시지 4,096자 제한 검증 완료.
+- Git 추적 대상 Markdown 18개를 소스·`strategy.yaml`·워크플로와 교차 검증했다.
+  - `docs/README.md`를 새 문서 진입점으로 추가해 현재 계약·운영 문서·Archive의 우선순위를 명확히 했다.
+  - README의 Oracle 배포 SHA를 `b9dd21c`로 갱신하고 TQQQ/SOXL `qty=0`, `EMPTY`, 미체결 주문 0건 상태를 반영했다.
+  - FINAL 사양에 현재 점수 구성과 WATCH 50 / B 72 / A 82 / S 90 표시 등급을 반영했다.
+  - 과거 전략·백테스트·결정 기록에 Archive 경계를 강화하고 Telegram의 현재 15건 타임라인·3카드 가이드를 D-011로 기록했다.
+  - 배포 가이드에 `env -u GITHUB_TOKEN ./deploy.sh`, 실제 shared DB·로그·캐시 경로와 dry-run 운영 스냅샷을 반영했다.
+  - Codex·ChatGPT·Antigravity가 동일한 문서 읽기 순서와 브랜치 인수인계 규칙을 사용하도록 협업 문서를 정리했다.
 
 ## 운영 배포 상태와 남은 게이트
 
@@ -64,16 +71,18 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.1 FINAL 전체 계약 감사와 Oracle dry-run 배포 완료. `/score` 보조지표 해석과 `/guide` 설명 카드까지 운영 반영. JDSS 내부 포지션·주문은 비어 있으며 당분간 Telegram 백테스트 전용으로 운용. live 승격 금지.
+- 상태: JDSS 2.1 FINAL 전체 계약 감사, Telegram 지표 해석, 전체 Markdown 인수인계 정리와 Oracle dry-run 배포 완료. JDSS 내부 포지션·주문은 비어 있으며 당분간 Telegram 백테스트 전용으로 운용. live 승격 금지.
 - 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
 - 액션 갱신 커밋: `0e685cf` (`ci: upgrade workflows to Node 24 actions`)
 - 백테스트 전용 운영 커밋: `f48b118` (`docs: set dry-run backtest-only operations`)
 - Telegram 지표 설명 커밋: `b9dd21c` (`feat: clarify Telegram score indicators`)
+- 문서 인수인계 정리 커밋: `20e3315` (`docs: finalize cross-environment handoff`)
 - GitHub CI: run `31383081468` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
 - Oracle dry-run 배포: `b9dd21ca9a76dce9bdbe4d5f42c6991d27d53857` 배포 완료
 - 배포 후 검증: 서비스 active/enabled, 패키지 2.1.0, FINAL 설정 검증, `dry_run` 잠금, Toss 인증·TQQQ/SOXL 시세 조회 성공
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
+- 문서 검증: Git 추적 Markdown 18개, 깨진 로컬 링크 0개, FINAL/Archive 경계 확인
 - 운영 방침: Telegram `/bt` 백테스트 전용, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
 - 다음 우선순위: Telegram 백테스트 동작 모니터링. live 검토 전 비공개 Reconciliation 재검증.
 
