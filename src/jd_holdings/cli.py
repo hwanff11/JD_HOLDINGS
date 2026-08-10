@@ -8,7 +8,7 @@ from pathlib import Path
 
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.database import SQLiteRepository
-from jd_holdings.backtest.engine import BacktestEngine
+from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
@@ -17,7 +17,7 @@ from jd_holdings.settings import load_runtime_settings
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="JDSS v1.3.1 운영 도구")
+    parser = argparse.ArgumentParser(description="JDSS 운영 도구")
     parser.add_argument("--config", default="strategy.yaml", help="strategy.yaml 경로")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -89,7 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         # 지표 초기값(EMA60/ATR/RSI 등)이 요청 시작일 전에 충분히 형성되도록
         # 약 400일의 워밍업 데이터를 함께 조회한다. 성과 집계는 engine.run(start=...)에서
         # 사용자가 요청한 기간부터만 시작한다.
-        warmup_start = (datetime.fromisoformat(start).date() - timedelta(days=400)).isoformat()
+        warmup_start = (
+            datetime.fromisoformat(start).date() - timedelta(days=400)
+        ).isoformat()
         spy = data_source.daily("SPY", warmup_start, end, refresh=args.refresh)
         qqq = data_source.daily("QQQ", warmup_start, end, refresh=args.refresh)
 
@@ -108,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             "config_version": config.config_version,
             "results": {},
         }
-        engine = BacktestEngine(config)
+        engine = StrategyBacktestEngine(config)
         for symbol in symbols:
             target = data_source.daily(symbol, warmup_start, end, refresh=args.refresh)
             result = engine.run(
