@@ -94,6 +94,18 @@ def fill_tp1_completely(repository, broker, monitor):
     return events
 
 
+def switch_to_remainder_exit(repository, broker, trading, monitor):
+    quote, premarket = create_approved_entry(repository, trading, repository.config)
+    trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
+    fill_tp1_completely(repository, broker, monitor)
+    monitor.run_once(now=datetime(2026, 9, 15, 22, 0, tzinfo=UTC))
+    return next(
+        order
+        for order in repository.open_orders("TQQQ")
+        if order["purpose"] == "REMAINDER_EXIT"
+    )
+
+
 def test_two_step_dry_run_order_flow(tmp_path, config):
     repository, broker, trading, _ = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
@@ -161,6 +173,17 @@ def test_tp1_completion_resets_tp2_clock_and_switches_after_20_sessions(tmp_path
     assert Decimal(str(remainder["price"])) == expected_price
     assert int(remainder["qty"]) == position.quantity
     assert any("잔량 +2% 회수주문 전환" in event for event in events)
+
+
+def test_reconciliation_accepts_open_remainder_exit_after_restart(tmp_path, config):
+    repository, broker, trading, monitor = build_services(tmp_path, config)
+    remainder = switch_to_remainder_exit(repository, broker, trading, monitor)
+    assert remainder["purpose"] == "REMAINDER_EXIT"
+    assert repository.get_position("TQQQ").state == PositionState.PARTIAL_TP_1
+
+    issues = ReconciliationService(config, repository, broker).run()
+    assert issues == {}
+    assert repository.get_position("TQQQ").state == PositionState.PARTIAL_TP_1
 
 
 class FailingBroker(DryRunBroker):
