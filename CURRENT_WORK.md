@@ -5,8 +5,8 @@
 ## 현재 작업
 
 - 운영 안정 기준선: `main`
-- 최신 확인 `main` SHA: `1d0031c737a9c09fdf836949215e86a5cc824cb0`
-- 활성 작업 브랜치: `agent/code-quality-security-docs-audit`
+- 최신 확인 `main` SHA: `065cd0c22a4313d809b91174b4215ac0b1435d82`
+- 활성 작업 브랜치: `main`
 - 작업 목표: 동작 보존형 코드 정리, 보안 점검·강화, Markdown 중복 제거와 역할 명확화
 - 전략 변경: 없음
 - 실거래 승격: 금지
@@ -52,7 +52,7 @@
 
 ## 검증 상태
 
-- Draft PR: #22
+- PR #22: `main` 병합 완료 (`065cd0c22a4313d809b91174b4215ac0b1435d82`)
 - CI run `31439294132`: Ruff 통과, pytest 114개 통과, 전체 커버리지 69%, 설정 검증 통과
 - JDSS 2.2 Dry Run run `31439294213`: 성공
 - Markdown 링크·문서 역할·변동 상태 단일 기준·레거시 설정 경계 테스트 통과
@@ -61,9 +61,8 @@
 
 ## 다음 작업
 
-1. Draft PR #22의 변경 범위와 잔여 위험 검토
-2. 사용자 승인 후 PR을 ready 상태로 전환하고 병합 여부 결정
-3. Oracle 배포는 GitHub Environment secret 등록 결정 전까지 보류
+1. Oracle 배포는 GitHub Environment secret 등록 결정 전까지 보류
+2. 배포 재개 시 `main` 최신 SHA 기준 dry-run과 systemd·Toss smoke 검증
 
 ## 작업 종료 갱신 규칙
 
