@@ -11,7 +11,7 @@
 - 연구 기록 브랜치: `research/jdss-v2-swing-optimization`
 - 연구 PR #3은 최적화 과정 보관용이며 운영 병합 대상이 아니다.
 
-사용자 명시 승인 전에는 PR #4를 `main`에 병합하거나 운영 서버에 배포하지 않는다.
+현재 PR #4는 기술 검증을 완료한 **Ready for review / mergeable** 상태다. 사용자가 이번 단계에서 요청한 범위는 `main` 적용 직전까지이므로, 이번 작업에서는 `main` 병합과 Oracle 운영 배포를 수행하지 않는다.
 
 ## 현재 전략 버전
 
@@ -63,14 +63,17 @@ Dry Run은 실제 외부 주문을 전송하지 않는 `DryRunBroker`를 사용�
 
 ## 검증 상태
 
-기능 head `6c68a3addf022e5f72310a5f55900082b44c9b0c` 기준:
+최신 코드/계보 동기화 head `271fc28118163b04034120a9efc80e43f8961d08` 기준:
 
-- GitHub Actions `FINAL Dry Run` #1: 성공
-- GitHub Actions CI #164: 성공
+- GitHub Actions CI #169: **SUCCESS**
+- GitHub Actions `FINAL Dry Run` #3: **SUCCESS**
 - Ruff: 성공
 - 전체 pytest + coverage: 성공
 - `jdss validate-config`: 성공
 - FINAL E2E Dry Run: 성공
+- PR #4: open / ready for review / mergeable
+- 미해결 PR 리뷰 스레드: 0건
+- 최신 `main` 대비: ahead 7 / behind 0
 
 연구 회귀검증 참고:
 
@@ -82,8 +85,8 @@ Dry Run은 실제 외부 주문을 전송하지 않는 `DryRunBroker`를 사용�
 
 ## 다음 작업
 
-1. PR #4는 코드/설정/문서/CI/모의 브로커 E2E Dry Run 기준으로 병합 검토 가능 상태다.
-2. **사용자가 명시적으로 승인한 뒤에만** PR #4를 `main`에 병합한다.
+1. 현재 상태는 `main` 병합 직전 게이트까지 완료된 상태다.
+2. 사용자가 `main 병합` 또는 이에 준하는 명시 지시를 하면 PR #4의 최신 head와 CI를 다시 확인한 뒤 병합한다.
 3. 병합 후 Oracle Cloud 운영 서버에 배포한다.
 4. 운영 서버에서 `toss-smoke`로 주문 없이 인증·현재가·장상태를 확인한다.
 5. 실제 브로커 잔고, 미체결 주문, SQLite 상태를 Reconciliation하고 이상이 있으면 신규매수를 중지한다.
@@ -101,8 +104,8 @@ Dry Run은 실제 외부 주문을 전송하지 않는 `DryRunBroker`를 사용�
 ## 마지막 인수인계
 
 - 작성 주체: ChatGPT
-- 상태: JDSS 2.1 FINAL 운영 PR #4의 코드·설정·문서·CI 및 모의 브로커 E2E Dry Run까지 성공. main 미병합/Oracle 미배포.
-- 다음 우선순위: 사용자 병합 승인 → main 병합 → Oracle 배포 → `toss-smoke` → 브로커/DB Reconciliation
+- 상태: JDSS 2.1 FINAL 운영 PR #4의 코드·설정·문서·전체 CI·모의 브로커 E2E Dry Run·최신 main 동기화·최종 PR 리뷰 점검까지 완료. `main` 병합 직전에서 정지. Oracle 미배포.
+- 다음 우선순위: 사용자 main 병합 지시 → PR #4 병합 → Oracle 배포 → `toss-smoke` → 브로커/DB Reconciliation
 
 ## 갱신 규칙
 
