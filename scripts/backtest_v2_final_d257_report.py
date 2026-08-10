@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from backtest_v2_gap_grid import BENCHMARKS, SYMBOLS, _candidate, _run
-
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
