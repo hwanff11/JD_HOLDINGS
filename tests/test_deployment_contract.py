@@ -19,6 +19,12 @@ def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
     assert '"$(git branch --show-current)" != "main"' in deploy
     assert '"$(git rev-parse HEAD)" != "$(git rev-parse origin/main)"' in deploy
     assert '"$target_dir/shared/data/cache"' in deploy
+    assert "SKIP_LOCAL_CHECKS" in deploy
+    assert "JDSS_TRADING_MODE=dry_run" in deploy
+    assert "JDSS_LIVE_CONFIRMATION=" in deploy
+    assert "toss-smoke" in deploy
+    assert deploy.count('sudo systemctl restart "$service_name"') == 1
+    assert 'pip install --upgrade pip' in deploy
     assert "git push origin main || true" not in deploy
 
 
@@ -28,8 +34,9 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     )
     assert "git merge-base --is-ancestor HEAD origin/main" in workflow
     assert "git checkout -B main HEAD" in workflow
-    assert "JDSS_TRADING_MODE=dry_run" in workflow
-    assert "JDSS_LIVE_CONFIRMATION=" in workflow
+    assert 'SKIP_LOCAL_CHECKS: "1"' in workflow
+    assert "Force server trading lock to dry_run" not in workflow
+    assert "Toss read-only smoke test" not in workflow
 
 
 def test_workflows_use_node24_actions():

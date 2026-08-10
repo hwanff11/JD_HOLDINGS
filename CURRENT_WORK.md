@@ -5,8 +5,8 @@
 ## 현재 작업 구조
 
 - 운영 안정 기준선: `main`
-- 현재 활성 브랜치: `main`
-- 작업 기준: `origin/main` 최신 (운영 기능 릴리스 `a98b671`)
+- 현재 활성 브랜치: `codex/simplify-oracle-deployment`
+- 작업 기준: `origin/main` 최신; 운영 SHA는 서버 `current` 링크가 실시간 기준
 - JDSS 2.2.2 PR #13: `main` 병합 및 Oracle `dry_run` 배포 완료 (`a98b671`)
 - JDSS 2.2.1 PR #11: `main` 병합 및 Oracle 배포 완료 (`3de66d1`)
 - JDSS 2.2 SGOV PR #8: `main` 병합 완료 (`c86ca23`)
@@ -41,6 +41,9 @@
 
 ## JDSS 2.2 구현 완료 상태
 
+- Oracle dry-run 배포 경로를 단일 `deploy.sh`로 통합해 Actions의 중복 pytest·Ruff, 별도 dry-run SSH, 별도 smoke SSH를 제거했다.
+- 로컬 직접 배포의 기본 검증은 유지하고 Actions에서만 중복 검증을 생략하며, 서버 dry-run 강제·재시작 1회·Toss smoke test를 한 경로에서 수행하도록 정리했다.
+- 배포 때마다 후속 문서 PR이 필요하지 않도록 실제 운영 SHA의 기준을 서버 `current` 링크와 배포 출력으로 통일했다.
 - 2.2.2에서 SQLite `cash_release_intents`로 신호별 SGOV 현금화 의도를 영속화하고 재시작 후 자동 재개를 구현했다.
 - SGOV 체결 후 TQQQ/SOXL 최종 승인을 자동 전송하되 본 주문의 수동 최종 승인은 유지했다.
 - 활성 현금화 중 SGOV 자동 재예치 차단, 복수 의도 현금 예약, 실제 DB·연결 주문 취소를 구현했다.
@@ -54,7 +57,7 @@
 - SGOV 관리 테스트를 추가했고 전체 pytest 89개가 통과했다.
 - 2011-01-01~2026-08-04 장기 회귀: 포트폴리오 `+322.58%`, CAGR `+9.69%`, MDD `-24.68%`, SGOV 기여 `$10,810.54`.
 - 구현 커밋 `aaab561`을 PR #8로 검증해 `main`에 병합했고 Oracle에 `c86ca23`을 배포했다.
-- Oracle 운영은 JDSS 2.2.2 릴리스 `a98b671`이며 서비스 active, `dry_run` 잠금, 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
+- Oracle 운영은 JDSS 2.2.2이며 서비스 active, `dry_run` 잠금, 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다. 실제 SHA는 서버 `current` 링크로 확인한다.
 - 배포 후 TQQQ·SOXL·SGOV 시세와 미국장 캘린더 조회 전용 Toss smoke test를 통과했다.
 - Telegram `/signal`이 DB의 `ACTIVE` 플래그만 신뢰하던 결함을 수정해, 표시·승인 전에 현재 버전과 점수·반등·RED 국면 게이트를 재검증하고 부적격 레코드를 `INVALID` 처리한다.
 
@@ -89,7 +92,7 @@
 
 ## 운영 배포 상태와 남은 게이트
 
-1. JDSS 2.2.2 Oracle dry-run 릴리스 `a98b671` 배포를 완료했다.
+1. JDSS 2.2.2 Oracle dry-run 배포를 완료했다. 현재 SHA는 서버 `current` 링크가 기준이다.
 2. 당분간 Telegram `/bt`, `/sgov` 등 조회·검증 중심으로 운용한다.
 3. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문 0건을 유지한다.
 4. 향후 live 검토 시 기존 운영 자산과 JDSS 상태의 관계를 먼저 결정하고 Reconciliation을 재실행한다.

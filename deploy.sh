@@ -28,6 +28,7 @@ SERVER_TARGET_DIR="$(read_env_value SERVER_TARGET_DIR)"
 SYSTEMD_SERVICE="$(read_env_value SYSTEMD_SERVICE)"
 REMOTE_PYTHON_BIN="$(read_env_value REMOTE_PYTHON_BIN)"
 LOCAL_PYTHON="${LOCAL_PYTHON:-$PROJECT_ROOT/.venv/bin/python}"
+SKIP_LOCAL_CHECKS="${SKIP_LOCAL_CHECKS:-0}"
 
 : "${SSH_KEY_PATH:?SSH_KEY_PATH가 필요합니다}"
 : "${SERVER_HOST:?SERVER_HOST가 필요합니다}"
@@ -52,7 +53,11 @@ if [[ ! -f "$SSH_KEY_PATH" ]]; then
   echo "SSH 키 파일이 없습니다: $SSH_KEY_PATH" >&2
   exit 1
 fi
-if [[ ! -x "$LOCAL_PYTHON" ]]; then
+if [[ "$SKIP_LOCAL_CHECKS" != "0" && "$SKIP_LOCAL_CHECKS" != "1" ]]; then
+  echo "SKIP_LOCAL_CHECKS는 0 또는 1이어야 합니다." >&2
+  exit 1
+fi
+if [[ "$SKIP_LOCAL_CHECKS" == "0" && ! -x "$LOCAL_PYTHON" ]]; then
   echo "로컬 가상환경 Python이 없습니다: $LOCAL_PYTHON" >&2
   exit 1
 fi
@@ -71,8 +76,11 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   exit 1
 fi
 
-"$LOCAL_PYTHON" -m pytest
-"$LOCAL_PYTHON" -m ruff check .
+if [[ "$SKIP_LOCAL_CHECKS" == "0" ]]; then
+  "$LOCAL_PYTHON" -m pytest
+  "$LOCAL_PYTHON" -m ruff check .
+  "$LOCAL_PYTHON" -m jd_holdings.cli --config strategy.yaml validate-config
+fi
 
 COMMIT_SHA="$(git rev-parse HEAD)"
 ARCHIVE_PATH="$(mktemp "/tmp/jd_holdings_${COMMIT_SHA}.XXXXXX.tar.gz")"
@@ -121,14 +129,25 @@ if [[ ! -f "$target_dir/shared/.env" ]]; then
   echo "서버의 $target_dir/shared/.env를 먼저 생성해야 합니다." >&2
   exit 1
 fi
-chmod 600 "$target_dir/shared/.env"
+env_file="$target_dir/shared/.env"
+if grep -q '^JDSS_TRADING_MODE=' "$env_file"; then
+  sed -i 's/^JDSS_TRADING_MODE=.*/JDSS_TRADING_MODE=dry_run/' "$env_file"
+else
+  printf '\nJDSS_TRADING_MODE=dry_run\n' >> "$env_file"
+fi
+if grep -q '^JDSS_LIVE_CONFIRMATION=' "$env_file"; then
+  sed -i 's/^JDSS_LIVE_CONFIRMATION=.*/JDSS_LIVE_CONFIRMATION=/' "$env_file"
+else
+  printf 'JDSS_LIVE_CONFIRMATION=\n' >> "$env_file"
+fi
+chmod 600 "$env_file"
 mkdir -p "$release_dir"
 tar -xzf "$remote_archive" -C "$release_dir"
 
 if [[ ! -x "$target_dir/venv/bin/python" ]]; then
   "$remote_python" -m venv "$target_dir/venv"
+  "$target_dir/venv/bin/python" -m pip install --upgrade pip
 fi
-"$target_dir/venv/bin/python" -m pip install --upgrade pip
 "$target_dir/venv/bin/python" -m pip install "$release_dir"
 "$target_dir/venv/bin/jdss" --config "$release_dir/strategy.yaml" validate-config
 
@@ -136,10 +155,20 @@ ln -sfn "$release_dir" "$target_dir/current.new"
 mv -Tf "$target_dir/current.new" "$target_dir/current"
 sudo install -m 0644 "$remote_service" "/etc/systemd/system/${service_name}.service"
 sudo systemctl daemon-reload
-sudo systemctl enable "$service_name"
+if ! sudo systemctl is-enabled --quiet "$service_name"; then
+  sudo systemctl enable "$service_name"
+fi
 sudo systemctl restart "$service_name"
+sudo systemctl is-active --quiet "$service_name"
+
+set -a
+source "$env_file"
+set +a
+test "${JDSS_TRADING_MODE:-}" = "dry_run"
+test -z "${JDSS_LIVE_CONFIRMATION:-}"
+"$target_dir/venv/bin/jdss" --config "$target_dir/current/strategy.yaml" toss-smoke
 sudo systemctl is-active --quiet "$service_name"
 rm -f "$remote_archive" "$remote_service"
 REMOTE
 
-echo "배포 완료: $COMMIT_SHA ($SYSTEMD_SERVICE)"
+echo "배포 완료: $COMMIT_SHA ($SYSTEMD_SERVICE, forced dry_run, smoke OK)"

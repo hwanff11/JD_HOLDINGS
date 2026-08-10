@@ -2,7 +2,7 @@
 
 현재 Oracle 운영본은 **JDSS-2.2.2-SGOV**이다. `dry_run`으로 배포됐으며 SGOV를 포함한 실주문 잠금은 해제하지 않는다.
 
-현재 운영 스냅샷은 Oracle 릴리스 `a98b671`, 서비스 active, 패키지·설정 `2.2.2`, 거래 모드 `dry_run`, 빈 `JDSS_LIVE_CONFIRMATION`이다. TQQQ·SOXL·SGOV 시세와 미국장 캘린더 조회 smoke test를 통과했다. JDSS SQLite와 브로커 상태는 변할 수 있으므로 배포 전후에는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 우선 확인한다.
+현재 운영 스냅샷은 서비스 active, 패키지·설정 `2.2.2`, 거래 모드 `dry_run`, 빈 `JDSS_LIVE_CONFIRMATION`이다. TQQQ·SOXL·SGOV 시세와 미국장 캘린더 조회 smoke test를 통과했다. 운영 SHA는 문서에 반복 기록하지 않고 `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 출력을 실시간 기준으로 사용한다.
 
 ## 1. 서버 준비
 
@@ -49,7 +49,7 @@ git remote -v
 env -u GITHUB_TOKEN ./deploy.sh
 ```
 
-권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고, Ruff·pytest·설정 검증·2.2 버전 검사를 다시 통과한 뒤 서버 `.env`를 아래처럼 강제 잠근다.
+권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고 Ruff·pytest·설정·버전을 한 번 검증한 뒤, `deploy.sh`에 이미 검증했음을 알려 중복 실행만 생략한다.
 
 ```dotenv
 JDSS_TRADING_MODE=dry_run
@@ -58,8 +58,9 @@ JDSS_LIVE_CONFIRMATION=
 
 워크플로 파일: `.github/workflows/deploy-oracle-dry-run.yml`
 
-배포는 원격 `main` 일치 확인 → 테스트와 린트 → commit별 릴리스 업로드 → 의존성 설치 → 설정
-검증 → `current` 심볼릭 링크 교체 → 전용 systemd 서비스 재시작 순서로 수행됩니다.
+로컬 직접 배포는 기본으로 pytest·Ruff·설정 검증을 실행한다. `SKIP_LOCAL_CHECKS=1`은 같은 커밋을 바로 앞 단계에서 검증한 GitHub Actions만 사용한다.
+
+배포는 원격 `main` 일치 확인 → 필요 시 로컬 검증 → commit별 릴리스 업로드 → 서버 `dry_run` 잠금 → 의존성·설정 검증 → `current` 링크 교체 → systemd 재시작 1회 → Toss 조회 전용 smoke test 순으로 한 번에 수행된다. pip 자체 업그레이드와 systemd enable은 최초 구성 시에만 실행한다.
 DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
 Telegram 백테스트의 yfinance 캐시도
 `/home/ubuntu/JD_HOLDINGS/shared/data/cache`에 저장되어 읽기 전용 릴리스와 분리됩니다.

@@ -74,7 +74,7 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           chmod 600 ~/.ssh/oracle_jdss
 
-      - name: Deploy JDSS 2.2 in forced dry-run mode
+      - name: Deploy and smoke-test JDSS 2.2 in forced dry-run mode
         env:
           SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
@@ -83,54 +83,7 @@ jobs:
           SYSTEMD_SERVICE: jd_holdings_bot
           REMOTE_PYTHON_BIN: ${{ vars.ORACLE_PYTHON || 'python3.12' }}
           LOCAL_PYTHON: /opt/hostedtoolcache/Python/3.12.*/x64/bin/python
+          SKIP_LOCAL_CHECKS: "1"
         run: |
           set -Eeuo pipefail
           LOCAL_PYTHON="$(command -v python)" ./deploy.sh
-
-      - name: Force server trading lock to dry_run
-        env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
-          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
-        run: |
-          set -Eeuo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i ~/.ssh/oracle_jdss "$SERVER_USER@$ORACLE_HOST" bash -s -- "$SERVER_TARGET_DIR" <<'REMOTE'
-          set -Eeuo pipefail
-          target="$1"
-          env_file="$target/shared/.env"
-          test -f "$env_file"
-          if grep -q '^JDSS_TRADING_MODE=' "$env_file"; then
-            sed -i 's/^JDSS_TRADING_MODE=.*/JDSS_TRADING_MODE=dry_run/' "$env_file"
-          else
-            printf '\nJDSS_TRADING_MODE=dry_run\n' >> "$env_file"
-          fi
-          if grep -q '^JDSS_LIVE_CONFIRMATION=' "$env_file"; then
-            sed -i 's/^JDSS_LIVE_CONFIRMATION=.*/JDSS_LIVE_CONFIRMATION=/' "$env_file"
-          else
-            printf 'JDSS_LIVE_CONFIRMATION=\n' >> "$env_file"
-          fi
-          chmod 600 "$env_file"
-          sudo systemctl restart jd_holdings_bot
-          sudo systemctl is-active --quiet jd_holdings_bot
-          REMOTE
-
-      - name: Toss read-only smoke test
-        env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
-          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
-        run: |
-          set -Eeuo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i ~/.ssh/oracle_jdss "$SERVER_USER@$ORACLE_HOST" bash -s -- "$SERVER_TARGET_DIR" <<'REMOTE'
-          set -Eeuo pipefail
-          target="$1"
-          set -a
-          source "$target/shared/.env"
-          set +a
-          test "${JDSS_TRADING_MODE:-}" = "dry_run"
-          test -z "${JDSS_LIVE_CONFIRMATION:-}"
-          "$target/venv/bin/jdss" --config "$target/current/strategy.yaml" validate-config
-          "$target/venv/bin/jdss" --config "$target/current/strategy.yaml" toss-smoke
-          sudo systemctl is-active --quiet jd_holdings_bot
-          echo "Oracle dry-run deployment and read-only Toss smoke test succeeded."
-          REMOTE
