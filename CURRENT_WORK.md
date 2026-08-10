@@ -5,8 +5,9 @@
 ## 현재 작업 구조
 
 - 운영 안정 기준선: `main`
-- 현재 활성 브랜치: `codex/jdss-2.2.0-sgov`
-- 작업 기준 커밋: `main` / `1395246`
+- 현재 활성 브랜치: `main`
+- 작업 기준 커밋: `main` / `c86ca23`
+- JDSS 2.2 SGOV PR #8: `main` 병합 완료 (`c86ca23`)
 - FINAL 기능 PR #4: `main` 병합 완료 (`b871413`)
 - Oracle dry-run 워크플로 원본: `ops/oracle-dry-run-deploy`
 - 연구 기록: `research/jdss-v2-swing-optimization` (운영 병합 대상 아님)
@@ -42,7 +43,8 @@
 - CLI·Telegram 백테스트가 SGOV 상장 전 0%, 상장 후 조정종가 일별 수익률을 유휴현금에 적용하도록 연결했다.
 - SGOV 관리 테스트를 추가했고 전체 pytest 89개가 통과했다.
 - 2011-01-01~2026-08-04 장기 회귀: 포트폴리오 `+322.58%`, CAGR `+9.69%`, MDD `-24.68%`, SGOV 기여 `$10,810.54`.
-- 아직 commit·push·PR·Oracle 배포하지 않았다. 운영은 계속 2.1 `dry_run`이다.
+- 구현 커밋 `aaab561`을 PR #8로 검증해 `main`에 병합했고 Oracle에 `c86ca23`을 배포했다.
+- 운영은 JDSS 2.2.0이며 `dry_run` 잠금과 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
 
 ## 2.1 기준선 완료 상태
 
@@ -75,13 +77,13 @@
 
 ## 운영 배포 상태와 남은 게이트
 
-1. Oracle dry-run 배포와 조회 전용 smoke는 완료했다.
-2. 당분간 Telegram `/bt` 백테스트 전용으로 운용한다.
+1. JDSS 2.2.0 Oracle dry-run 배포(`c86ca23`)와 조회 전용 smoke를 완료했다.
+2. 당분간 Telegram `/bt`, `/cash` 등 조회·검증 중심으로 운용한다.
 3. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문 0건을 유지한다.
 4. 향후 live 검토 시 기존 운영 자산과 JDSS 상태의 관계를 먼저 결정하고 Reconciliation을 재실행한다.
 5. Reconciliation이 완전히 통과하기 전까지 신규 실주문을 금지하고 `dry_run`을 유지한다.
-6. 2.2 장기 SGOV 회귀는 완료했다. 전체 Ruff·pytest·설정·문서 링크 검증을 마친 뒤 PR로만 `main`에 반영한다.
-7. 2.2 최초 Oracle 반영에서도 SGOV 실주문은 잠금 상태로 두고 `/cash`와 원장 마이그레이션을 확인한다.
+6. 2.2 장기 SGOV 회귀와 전체 Ruff·pytest·설정·문서 링크 검증, PR #8의 GitHub Actions 검증을 완료했다.
+7. 최초 운영 점검에서 Telegram `/cash`, SGOV 원장 마이그레이션, broker reconciliation 상태를 확인한다.
 
 ## 실거래 잠금
 
@@ -90,20 +92,21 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.2 SGOV 자금관리 구현·장기 회귀·로컬 검증 완료. 미커밋 작업 상태이며 운영 Oracle은 JDSS 2.1 FINAL dry-run, live 승격 금지.
-- 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
+- 상태: JDSS 2.2 SGOV 자금관리 구현·장기 회귀·PR 검증·`main` 병합·Oracle dry-run 배포 완료. live 승격 금지.
+- JDSS 2.2 구현 커밋: `aaab561` (`Add JDSS 2.2 SGOV cash management`)
+- JDSS 2.2 main 병합 커밋: `c86ca23` (PR #8)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
 - 액션 갱신 커밋: `0e685cf` (`ci: upgrade workflows to Node 24 actions`)
 - 백테스트 전용 운영 커밋: `f48b118` (`docs: set dry-run backtest-only operations`)
 - Telegram 지표 설명 커밋: `b9dd21c` (`feat: clarify Telegram score indicators`)
 - 문서 인수인계 정리 커밋: `20e3315` (`docs: finalize cross-environment handoff`)
-- GitHub CI: 문서 정리 `main` 커밋 `376958d`의 run `31385563164` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
-- Oracle dry-run 배포: `b9dd21ca9a76dce9bdbe4d5f42c6991d27d53857` 배포 완료
-- 배포 후 검증: 서비스 active/enabled, 패키지 2.1.0, FINAL 설정 검증, `dry_run` 잠금, Toss 인증·TQQQ/SOXL 시세 조회 성공
+- GitHub CI: PR #8의 CI run `31391947578` 및 JDSS 2.2 Dry Run `31391947705` 성공
+- Oracle dry-run 배포: `c86ca23ed1e2b7782697f11976906a6a4d69d9d6` 배포 완료
+- 배포 후 검증: `jd_holdings_bot` 배포 완료, 패키지 2.2.0, 전략 `JDSS-2.2.0-SGOV`, config 2.2.0, `dry_run` 잠금 유지
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
 - 문서 검증: Git 추적 Markdown 18개, 깨진 로컬 링크 0개, FINAL/Archive 경계 확인
-- 운영 방침: Telegram `/bt` 백테스트 전용, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
-- 다음 우선순위: 사용자 변경 검토. 이후 작업 종료 지시 시 commit·push하고 PR/CI 단계로 넘긴다.
+- 운영 방침: Telegram `/bt`, `/cash` 조회·검증 중심, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
+- 다음 우선순위: Telegram `/cash` 표시와 SGOV 원장·broker reconciliation을 관찰하고, 별도 승인 전까지 live 전환하지 않는다.
 
 ## 갱신 규칙
 
