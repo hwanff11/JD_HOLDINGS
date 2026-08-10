@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -21,18 +22,17 @@ from backtest_v2_focus import (
 from jd_holdings.backtest.engine import BacktestEngine
 from jd_holdings.config import load_config
 from jd_holdings.core.enums import PositionState
+from jd_holdings.core.remainder_exit import remainder_exit_due, remainder_exit_price
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 class RemainderExitEngine(BacktestEngine):
-    """Research-only engine that relaxes TP2 after TP1 without selling at a loss."""
+    """Backtest engine using the same post-TP1 remainder rule as live trading."""
 
-    def __init__(self, config, *, wait_days: int | None, target_pct: Decimal) -> None:
+    def __init__(self, config) -> None:
         super().__init__(config)
-        self.wait_days = wait_days
-        self.target_pct = target_pct
         self._tp1_day: dict[str, int] = {}
 
     def _process_take_profit(self, state, timestamp, high, trades, closed_cycles):
@@ -40,10 +40,12 @@ class RemainderExitEngine(BacktestEngine):
         tp1_hits, tp2_hits, profitable_rebuy = super()._process_take_profit(
             state, timestamp, high, trades, closed_cycles
         )
-        if tp1_hits and cycle_id:
+        if tp1_hits and cycle_id and state.quantity > 0:
             self._tp1_day[cycle_id] = state.cycle_holding_days
+
+        rule = self.config.take_profit.remainder_exit
         if (
-            self.wait_days is None
+            not rule.enabled
             or state.quantity <= 0
             or state.state != PositionState.PARTIAL_TP_1
             or not state.tp1_done
@@ -52,10 +54,13 @@ class RemainderExitEngine(BacktestEngine):
             return tp1_hits, tp2_hits, profitable_rebuy
 
         tp1_day = self._tp1_day.get(state.cycle_id)
-        if tp1_day is None or state.cycle_holding_days - tp1_day < self.wait_days:
+        if tp1_day is None:
+            return tp1_hits, tp2_hits, profitable_rebuy
+        elapsed_sessions = state.cycle_holding_days - tp1_day
+        if not remainder_exit_due(elapsed_sessions, rule):
             return tp1_hits, tp2_hits, profitable_rebuy
 
-        exit_price = state.average_price * (Decimal("1") + self.target_pct)
+        exit_price = remainder_exit_price(state.average_price, rule)
         if high < exit_price:
             return tp1_hits, tp2_hits, profitable_rebuy
 
@@ -66,7 +71,7 @@ class RemainderExitEngine(BacktestEngine):
             timestamp,
             exit_price,
             state.quantity,
-            f"TP1_REMAINDER_{self.wait_days}D_{self.target_pct}",
+            "REMAINDER_EXIT",
             trades,
         )
         closed_cycles.append(
@@ -89,15 +94,34 @@ class RemainderExitEngine(BacktestEngine):
         return tp1_hits, tp2_hits, profitable_rebuy
 
 
+def _with_remainder_rule(config, wait_days: int | None, target_pct: Decimal):
+    rule = replace(
+        config.take_profit.remainder_exit,
+        enabled=wait_days is not None,
+        wait_trading_days=(
+            wait_days
+            if wait_days is not None
+            else config.take_profit.remainder_exit.wait_trading_days
+        ),
+        target_from_avg=target_pct,
+    )
+    return replace(
+        config,
+        take_profit=replace(config.take_profit, remainder_exit=rule),
+    )
+
+
 def build_candidates(base):
     candidates = {}
     for label, tp2 in (("TP46", "0.06"), ("TP48", "0.08")):
         champion = _with_stage1_guard(_with_entry_score(_with_tp(base, tp2), 55))
-        candidates[f"{label}_CHAMPION"] = (champion, None, Decimal("0"))
+        candidates[f"{label}_CHAMPION"] = _with_remainder_rule(
+            champion, None, Decimal("0")
+        )
         for wait_days in (20, 40, 60):
             for target in (Decimal("0"), Decimal("0.02")):
                 name = f"{label}_R{wait_days}_P{int(target * 100):02d}"
-                candidates[name] = (champion, wait_days, target)
+                candidates[name] = _with_remainder_rule(champion, wait_days, target)
     return candidates
 
 
@@ -125,13 +149,15 @@ def main():
     }
     report = {"generated_at": datetime.now(UTC).isoformat(), "candidates": {}}
 
-    for name, (config, wait_days, target_pct) in build_candidates(base).items():
+    for name, config in build_candidates(base).items():
+        rule = config.take_profit.remainder_exit
         item = {
             "settings": {
                 "tp2": float(config.take_profit.tp2_base),
                 "entry_score": config.global_.entry_score,
-                "wait_days_after_tp1": wait_days,
-                "remainder_target_pct": float(target_pct),
+                "remainder_enabled": rule.enabled,
+                "wait_days_after_tp1": rule.wait_trading_days if rule.enabled else None,
+                "remainder_target_pct": float(rule.target_from_avg),
             },
             "segments": {},
         }
@@ -143,9 +169,7 @@ def main():
                     if symbol == "SOXL"
                     else None
                 )
-                engine = RemainderExitEngine(
-                    config, wait_days=wait_days, target_pct=target_pct
-                )
+                engine = RemainderExitEngine(config)
                 results[symbol] = engine.run(
                     symbol,
                     frames[symbol],
@@ -180,23 +204,22 @@ def main():
         "# JDSS 2.0 Post-TP1 Remainder Exit Search",
         "",
         (
-            "Research-only: after TP1, wait N trading days and exit the remainder "
-            "only if price recovers to average cost or average cost +2%. "
-            "No stop-loss is used."
+            "Research comparison using the same remainder-exit due/price functions "
+            "as live trading. No stop-loss is used."
         ),
         "",
         "| Candidate | CAGR | MDD | P95 MAE | >40d | Max hold | Open DD | Cycles |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name, item in report["candidates"].items():
-        m = item["segments"]["validation_2021_2024"]["combined"]
+        metrics = item["segments"]["validation_2021_2024"]["combined"]
         lines.append(
-            f"| {name} | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | "
-            f"{m['mae_p95_worst_symbol_pct']:.2f}% | "
-            f"{m['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
-            f"{m['max_holding_days_worst_symbol_including_open']}d | "
-            f"{m['open_price_drawdown_worst_symbol_pct']:.2f}% | "
-            f"{m['closed_cycles']} |"
+            f"| {name} | {metrics['cagr_pct']:+.2f}% | {metrics['mdd_pct']:.2f}% | "
+            f"{metrics['mae_p95_worst_symbol_pct']:.2f}% | "
+            f"{metrics['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
+            f"{metrics['max_holding_days_worst_symbol_including_open']}d | "
+            f"{metrics['open_price_drawdown_worst_symbol_pct']:.2f}% | "
+            f"{metrics['closed_cycles']} |"
         )
     md_path = args.output.with_suffix(".md")
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
