@@ -19,11 +19,11 @@ from jd_holdings.infrastructure.telegram_bot import (
     _format_idle_cash_event,
     _guide_cards,
     _is_toss_order_maintenance_window,
-    parse_history_request,
     _profit_loss,
     _regime_label,
     _won,
     parse_backtest_request,
+    parse_history_request,
 )
 
 SYMBOLS = ("TQQQ", "SOXL")
