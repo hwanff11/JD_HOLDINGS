@@ -209,10 +209,11 @@ def _markdown(report: dict[str, Any]) -> str:
             "## Stateful threshold finding",
             "",
             (
-                "A stricter entry score does not guarantee fewer later first-entry signals because the strategy "
-                "is stateful. An earlier low-threshold entry can remain open for years and block all later "
-                "first entries, while a stricter candidate can skip that cycle and become EMPTY sooner for "
-                "future signals. Compare the open/long cycles above before interpreting signal totals."
+                "A stricter entry score can still produce more later first-entry signals because the "
+                "strategy is stateful. An earlier low-threshold entry can remain open for years and "
+                "block all later first entries, while a stricter candidate can skip that cycle and "
+                "become EMPTY sooner for future signals. Compare the open/long cycles above before "
+                "interpreting signal totals."
             ),
             "",
             "## Invariant checks",
