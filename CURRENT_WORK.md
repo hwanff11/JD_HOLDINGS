@@ -5,7 +5,7 @@
 ## 현재 작업 구조
 
 - 운영 안정 기준선: `main`
-- 현재 준비 브랜치: `codex/final-deploy-readiness`
+- 현재 활성 브랜치: `main`
 - FINAL 기능 PR #4: `main` 병합 완료 (`b871413`)
 - Oracle dry-run 워크플로 원본: `ops/oracle-dry-run-deploy`
 - 연구 기록: `research/jdss-v2-swing-optimization` (운영 병합 대상 아님)
@@ -38,11 +38,10 @@
 
 ## 배포 전 남은 게이트
 
-1. 검증된 변경을 commit/push하고 PR 또는 안전한 fast-forward 방식으로 `main`에 반영한다.
-2. GitHub `oracle-dry-run` Environment의 SSH secret과 서버 variable을 확인한다.
-3. 사용자의 배포 지시에 따라 `Deploy Oracle Dry Run`을 실행한다.
-4. 서버에서 `toss-smoke`, 서비스 상태, 브로커 잔고·미체결 주문·SQLite 상태를 Reconciliation한다.
-5. 이상이 있으면 신규매수를 중지하고 `dry_run`을 유지한다.
+1. GitHub `oracle-dry-run` Environment의 SSH secret과 서버 variable을 확인한다.
+2. 사용자의 배포 지시에 따라 `Deploy Oracle Dry Run`을 실행한다.
+3. 서버에서 `toss-smoke`, 서비스 상태, 브로커 잔고·미체결 주문·SQLite 상태를 Reconciliation한다.
+4. 이상이 있으면 신규매수를 중지하고 `dry_run`을 유지한다.
 
 ## 실거래 잠금
 
@@ -51,8 +50,9 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.1 FINAL의 `main` 병합을 확인하고 문서·Oracle 강제 dry-run 배포 워크플로를 배포 직전 기준으로 정합화 중. 실제 Oracle 배포는 미실행.
-- 다음 우선순위: 로컬 전체 검증 → 준비 브랜치 commit/push → `main` 반영 → 사용자 승인 후 Oracle dry-run 배포
+- 상태: JDSS 2.1 FINAL 코드, 최신 문서, Oracle 강제 dry-run 배포 워크플로를 `main`에 반영하고 전체 로컬 검증 완료. 실제 Oracle 배포는 미실행.
+- 마지막 관련 커밋: `b1cb850` (`docs: align FINAL deployment readiness`)
+- 다음 우선순위: GitHub Environment 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
 
 ## 갱신 규칙
 
