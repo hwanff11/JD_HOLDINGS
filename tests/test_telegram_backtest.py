@@ -59,6 +59,26 @@ def test_history_command_rejects_invalid_input(command):
         parse_history_request(command, ("TQQQ", "SOXL"))
 
 
+def test_score_history_format_lists_date_score_grade_and_regime():
+    message = TelegramBotApp._format_score_history(
+        "TQQQ",
+        [
+            {
+                "trade_date": date(2026, 8, 10),
+                "score": 72,
+                "grade": "WATCH",
+                "regime": "YELLOW",
+            }
+        ],
+        7,
+    )
+    assert "TQQQ 최근 7거래일" in message
+    assert "2026-08-10" in message
+    assert "72점" in message
+    assert "WATCH" in message
+    assert "YELLOW" in message
+
+
 def test_backtest_command_defaults_to_soxl_and_300_trading_days():
     request = parse_backtest_request("/bt", SYMBOLS, "2011-01-01", LATEST)
     assert request.symbols == ("SOXL",)
