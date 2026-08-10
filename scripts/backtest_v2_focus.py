@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Focused JDSS 2.0 phase-3 swing-strategy comparison.
+"""Focused JDSS 2.0 phase-4 sector-guard comparison.
 
-Phase 3 follows the audit finding that several catastrophic long-lock cycles
-started at the minimum 50-point entry threshold. It tests only a small set of
-slightly stricter entry gates, with TP 4/8 and the promising TP 4/6 variant.
+The audit found a severe SOXL stale cycle that started near the 2021 peak and
+remained open after TP1. Phase 4 keeps the core entry/add rules fixed and tests
+whether extending the existing semiconductor EMA60 guard to SOXL stage 1 can
+avoid this failure mode without sacrificing too much return.
 """
 
 from __future__ import annotations
@@ -28,10 +29,6 @@ SYMBOLS = ("TQQQ", "SOXL")
 BENCHMARKS = ("SPY", "QQQ", "SOXX", "SMH")
 
 
-def _with_entry(base, entry_score: int):
-    return replace(base, global_=replace(base.global_, entry_score=entry_score))
-
-
 def _with_tp(base, tp1: str, tp2: str):
     return replace(
         base,
@@ -43,15 +40,32 @@ def _with_tp(base, tp1: str, tp2: str):
     )
 
 
+def _with_soxl_stage1_guard(base, rule: str):
+    guard = dict(base.market_regime.get("soxl_sector_guard", {}))
+    blocked = {int(stage) for stage in guard.get("blocked_stages", (3, 4))}
+    blocked.add(1)
+    guard["blocked_stages"] = sorted(blocked)
+    guard["rule"] = rule
+    return replace(
+        base,
+        market_regime={**base.market_regime, "soxl_sector_guard": guard},
+    )
+
+
 def build_candidates(base):
     tp46 = _with_tp(base, "0.04", "0.06")
     return {
-        "A_entry50_tp48": base,
-        "O_entry52_tp48": _with_entry(base, 52),
-        "P_entry53_tp48": _with_entry(base, 53),
-        "B_entry55_tp48": _with_entry(base, 55),
-        "Q_entry52_tp46": _with_entry(tp46, 52),
-        "R_entry53_tp46": _with_entry(tp46, 53),
+        "A_baseline_tp48_guard34": base,
+        "I_tp46_guard34": tp46,
+        "V_tp48_guard134_any": _with_soxl_stage1_guard(
+            base, "any_benchmark_below_ema60"
+        ),
+        "W_tp46_guard134_any": _with_soxl_stage1_guard(
+            tp46, "any_benchmark_below_ema60"
+        ),
+        "X_tp46_guard134_all": _with_soxl_stage1_guard(
+            tp46, "all_benchmarks_below_ema60"
+        ),
     }
 
 
@@ -131,6 +145,7 @@ def combined_metrics(results: dict[str, BacktestResult], annualization_days: int
 
 
 def settings(config) -> dict[str, Any]:
+    guard = config.market_regime.get("soxl_sector_guard", {})
     return {
         "entry_score": config.global_.entry_score,
         "stage_weights": [float(value) for value in config.position.stage_weights],
@@ -140,14 +155,17 @@ def settings(config) -> dict[str, Any]:
         ],
         "tp": [float(config.take_profit.tp1_base), float(config.take_profit.tp2_base)],
         "rebuy_enabled": config.rebuy.enabled,
+        "soxl_guard_blocked_stages": list(guard.get("blocked_stages", [])),
+        "soxl_guard_rule": guard.get("rule"),
     }
 
 
 def markdown_summary(report: dict[str, Any]) -> str:
     lines = [
-        "# JDSS 2.0 Phase-3 Entry Filter Backtest",
+        "# JDSS 2.0 Phase-4 SOXL First-Entry Guard Backtest",
         "",
         "Primary decision window: **2021-2024 validation**. Recent years are reference only.",
+        "TQQQ logic is unchanged. Only the SOXL semiconductor guard and TP2 8%/6% are compared.",
         "Open positions at the end of each segment are included in holding/lockup risk.",
         "",
         (
@@ -179,9 +197,9 @@ def markdown_summary(report: dict[str, Any]) -> str:
             "",
             "## Decision rule",
             "",
-            "A higher entry gate is useful only if it filters the 50-point failure mode while retaining "
-            "reasonable cycle count and avoiding the large drawdowns seen at entry 55. Prefer stability "
-            "across development, validation and recent windows over a single-period winner.",
+            "The stage-1 sector guard is useful only if it removes or materially reduces the SOXL "
+            "2021-2024 stale-position failure while preserving validation CAGR and avoiding a new "
+            "drawdown regime. The stricter `any` rule must earn its opportunity-cost versus `all`.",
         ]
     )
     return "\n".join(lines) + "\n"
