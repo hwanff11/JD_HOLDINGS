@@ -46,20 +46,24 @@
 - `AGENTS.md`에 기준 문서 우선순위, 변경 영향표, 코드 품질·보안 규칙 추가
 - 문서 안내와 개발 워크플로에서 변동 상태 중복 제거
 - `docs/infra/SECURITY.md` 보안 기준 추가
+- Telegram 취소 콜백의 권한 거부와 미지원 유형을 fail-closed로 처리
+- 로컬 SSH·개인키 형식을 `.gitignore`에 추가
+- Markdown 링크·문서 역할·변동 상태 단일 기준·레거시 설정 경계를 계약 테스트로 고정
 
 ## 검증 상태
 
-- 브랜치 전체 GitHub Actions: 아직 실행 전
-- 필수 검증: Ruff, pytest, 설정 검증, JDSS Dry Run, Markdown 링크, 배포 계약
-- 기준선: `main` 배포 시도에서 pytest 100개와 Ruff·설정 검증 통과
+- Draft PR: #22
+- CI run `31439294132`: Ruff 통과, pytest 114개 통과, 전체 커버리지 69%, 설정 검증 통과
+- JDSS 2.2 Dry Run run `31439294213`: 성공
+- Markdown 링크·문서 역할·변동 상태 단일 기준·레거시 설정 경계 테스트 통과
+- 배포 계약과 systemd 보안 옵션 테스트 통과
+- 전략 수치와 실거래 잠금 변경 없음
 
 ## 다음 작업
 
-1. 코드 중복·예외처리·모듈 책임 추가 점검
-2. Telegram 권한 검사와 오류 노출 회귀 점검
-3. Markdown 링크·현행/Archive 경계와 중복 내용 교차 점검
-4. 전체 검증 후 발견사항과 잔여 위험 정리
-5. PR 생성 전 전략 동작 변경이 없는지 최종 diff 검토
+1. Draft PR #22의 변경 범위와 잔여 위험 검토
+2. 사용자 승인 후 PR을 ready 상태로 전환하고 병합 여부 결정
+3. Oracle 배포는 GitHub Environment secret 등록 결정 전까지 보류
 
 ## 작업 종료 갱신 규칙
 
