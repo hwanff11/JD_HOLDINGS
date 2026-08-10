@@ -78,7 +78,7 @@
 - 백테스트 전용 운영 커밋: `f48b118` (`docs: set dry-run backtest-only operations`)
 - Telegram 지표 설명 커밋: `b9dd21c` (`feat: clarify Telegram score indicators`)
 - 문서 인수인계 정리 커밋: `20e3315` (`docs: finalize cross-environment handoff`)
-- GitHub CI: run `31383081468` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
+- GitHub CI: 문서 정리 `main` 커밋 `376958d`의 run `31385563164` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
 - Oracle dry-run 배포: `b9dd21ca9a76dce9bdbe4d5f42c6991d27d53857` 배포 완료
 - 배포 후 검증: 서비스 active/enabled, 패키지 2.1.0, FINAL 설정 검증, `dry_run` 잠금, Toss 인증·TQQQ/SOXL 시세 조회 성공
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
