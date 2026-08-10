@@ -99,6 +99,10 @@ take_profit:
   use_atr: true
   tp1_atr_multiplier: 0.8
   tp2_atr_multiplier: 1.6
+  remainder_exit:
+    enabled: false
+    wait_trading_days: 20
+    target_from_avg: 0.02
 
 rebuy:
   enabled: true
