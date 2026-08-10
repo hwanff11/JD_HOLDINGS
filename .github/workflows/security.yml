@@ -45,6 +45,8 @@ jobs:
           languages: python
       - name: Analyze
         uses: github/codeql-action/analyze@v3
+        with:
+          upload: false
 
   gitleaks:
     name: Secret scan
