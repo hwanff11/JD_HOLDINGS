@@ -63,7 +63,9 @@
 - 상태: JDSS 2.1 FINAL 전체 계약 감사를 완료하고 발견된 코드·Telegram·백테스트·패키지 버전·배포 경로·문서 링크 불일치를 수정 및 검증. 실제 Oracle 배포는 미실행.
 - 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
-- 다음 우선순위: 액션 v7 갱신 CI 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
+- 액션 갱신 커밋: `0e685cf` (`ci: upgrade workflows to Node 24 actions`)
+- GitHub CI: run `31383081468` 성공 (`actions/checkout@v7`, `actions/setup-python@v7`, Ruff, pytest, 설정 검증)
+- 다음 우선순위: GitHub `oracle-dry-run` Environment 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
 
 ## 갱신 규칙
 
