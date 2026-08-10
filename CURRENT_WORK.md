@@ -7,7 +7,7 @@
 
 - 운영 안정 기준선: `main`
 - FINAL 운영 통합 브랜치: `feature/jdss-2.1-final`
-- 운영 통합 Draft PR: **#4 `JDSS 2.1 FINAL: production trading integration`**
+- 운영 통합 PR: **#4 `JDSS 2.1 FINAL: production trading integration`**
 - 연구 기록 브랜치: `research/jdss-v2-swing-optimization`
 - 연구 PR #3은 최적화 과정 보관용이며 운영 병합 대상이 아니다.
 
@@ -51,16 +51,26 @@
 - 실거래와 운영 백테스트는 `remainder_exit_due()` / `remainder_exit_price()` 공용 함수를 사용한다.
 - 기존 2단계 매수승인, 현재가 재조회, 수량 재계산, 가격상한, 주문 멱등성, SAFE_MODE는 유지한다.
 
+## FINAL 운영 Dry Run
+
+`tests/test_final_dry_run.py`와 `.github/workflows/final-dry-run.yml`을 운영 병합 게이트로 추가했다.
+
+검증 흐름:
+
+`2단계 승인 → 1차 매수체결 → TP1/TP2 생성 → TP1 완전체결 → TP2 취소/자동복구 → TP1 기준 20거래일 유지 → REMAINDER_EXIT 전환 → 서비스 재시작 → Reconciliation → 잔여청산 완전체결 → EMPTY 복귀`
+
+Dry Run은 실제 외부 주문을 전송하지 않는 `DryRunBroker`를 사용하지만, 운영 `TradingService`, `OrderMonitor`, `PositionManager`, `TakeProfitManager`, SQLite 상태/주문 저장소, Reconciliation 경로를 그대로 사용한다.
+
 ## 검증 상태
 
-운영 PR #4 최신 검증 기준:
+기능 head `6c68a3addf022e5f72310a5f55900082b44c9b0c` 기준:
 
-- head: `987a1f98e2d26b3a42c6d0d571edbbea012f949f`
-- GitHub Actions CI #161: 성공
+- GitHub Actions `FINAL Dry Run` #1: 성공
+- GitHub Actions CI #164: 성공
 - Ruff: 성공
 - 전체 pytest + coverage: 성공
 - `jdss validate-config`: 성공
-- PR #4: open / draft / mergeable
+- FINAL E2E Dry Run: 성공
 
 연구 회귀검증 참고:
 
@@ -72,11 +82,12 @@
 
 ## 다음 작업
 
-1. 실제/모의 브로커 환경에서 Dry Run으로 `승인 → 매수체결 → TP 생성 → TP1 → TP2 복구 → 20거래일 잔여청산 → 재시작 Reconciliation` 흐름을 확인한다.
-2. Dry Run에서 주문 API 응답 형식, 부분체결, 취소 직전 체결, 서버 재시작을 확인한다.
-3. 문제가 없으면 사용자에게 PR #4 병합 준비 완료 상태를 보고한다.
-4. **사용자가 명시적으로 승인한 뒤에만** PR #4를 `main`에 병합한다.
-5. 병합 후 Oracle Cloud에 배포하고 실제 브로커 잔고/미체결주문/SQLite Reconciliation을 확인한다.
+1. PR #4는 코드/설정/문서/CI/모의 브로커 E2E Dry Run 기준으로 병합 검토 가능 상태다.
+2. **사용자가 명시적으로 승인한 뒤에만** PR #4를 `main`에 병합한다.
+3. 병합 후 Oracle Cloud 운영 서버에 배포한다.
+4. 운영 서버에서 `toss-smoke`로 주문 없이 인증·현재가·장상태를 확인한다.
+5. 실제 브로커 잔고, 미체결 주문, SQLite 상태를 Reconciliation하고 이상이 있으면 신규매수를 중지한다.
+6. 정상 확인 후 JDSS 2.1 FINAL 운영을 시작한다.
 
 ## 작업 환경 원칙
 
@@ -90,8 +101,8 @@
 ## 마지막 인수인계
 
 - 작성 주체: ChatGPT
-- 상태: JDSS 2.1 FINAL 사양과 실거래 핵심 로직을 운영 PR #4에 반영하고 CI 검증 완료. 아직 main 미병합/운영 미배포.
-- 다음 우선순위: 브로커 Dry Run → 사용자 병합 승인 → main 병합 → Oracle 배포/Reconciliation
+- 상태: JDSS 2.1 FINAL 운영 PR #4의 코드·설정·문서·CI 및 모의 브로커 E2E Dry Run까지 성공. main 미병합/Oracle 미배포.
+- 다음 우선순위: 사용자 병합 승인 → main 병합 → Oracle 배포 → `toss-smoke` → 브로커/DB Reconciliation
 
 ## 갱신 규칙
 
