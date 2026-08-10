@@ -3,7 +3,7 @@ name: Research Backtest
 on:
   pull_request:
     paths:
-      - "scripts/backtest_v2_final_stress.py"
+      - "scripts/backtest_v2_main_vs_final.py"
       - "scripts/backtest_v2_remainder_exit.py"
       - "scripts/backtest_v2_focus.py"
       - "src/jd_holdings/backtest/**"
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  final-stress:
+  main-vs-final:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -26,10 +26,10 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: python scripts/backtest_v2_final_stress.py --output reports/v2_final_stress.json
+      - run: python scripts/backtest_v2_main_vs_final.py --output reports/v2_main_vs_final.json
       - uses: actions/upload-artifact@v4
         with:
-          name: jdss-v2-final-stress
+          name: jdss-v2-main-vs-final
           path: |
-            reports/v2_final_stress.json
-            reports/v2_final_stress.md
+            reports/v2_main_vs_final.json
+            reports/v2_main_vs_final.md
