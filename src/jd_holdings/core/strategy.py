@@ -50,11 +50,7 @@ def soxl_sector_guard_blocks(
     sector_benchmarks: dict[str, IndicatorSnapshot] | None,
     config: StrategyConfig,
 ) -> bool:
-    """Block configured SOXL entry stages when semiconductor benchmarks are weak.
-
-    Missing benchmark data follows the configured ``warn_and_allow`` behavior so
-    existing analysis does not fail closed accidentally.
-    """
+    """Block configured SOXL entry stages when semiconductor benchmarks are weak."""
     guard = config.market_regime.get("soxl_sector_guard", {})
     if symbol.upper() != "SOXL" or not guard.get("enabled", False):
         return False
@@ -64,7 +60,10 @@ def soxl_sector_guard_blocks(
     if not sector_benchmarks:
         return False
 
-    candidates = [str(value).upper() for value in guard.get("benchmark_candidates", ("SOXX", "SMH"))]
+    candidates = [
+        str(value).upper()
+        for value in guard.get("benchmark_candidates", ("SOXX", "SMH"))
+    ]
     available = [sector_benchmarks[name] for name in candidates if name in sector_benchmarks]
     if not available:
         return False
@@ -74,6 +73,31 @@ def soxl_sector_guard_blocks(
     if rule == "all_benchmarks_below_ema60":
         return all(below)
     return any(below)
+
+
+def first_entry_trend_guard_blocks(
+    snapshot: IndicatorSnapshot,
+    config: StrategyConfig,
+) -> bool:
+    """Block only the first entry during a confirmed bearish trend.
+
+    This guard intentionally does not affect averaging stages.  The default
+    research rule requires both price below EMA60 and EMA20 below EMA60, which
+    is stricter than merely buying below a long moving average and therefore
+    preserves more ordinary oversold-rebound opportunities.
+    """
+    guard = config.market_regime.get("first_entry_trend_guard", {})
+    if not guard.get("enabled", False):
+        return False
+    symbols = {str(value).upper() for value in guard.get("symbols", ("TQQQ", "SOXL"))}
+    if snapshot.symbol.upper() not in symbols:
+        return False
+    rule = str(guard.get("rule", "price_below_ema60_and_ema20_below_ema60"))
+    price_below = float(snapshot.close) < snapshot.ema60
+    ema_bearish = snapshot.ema20 < snapshot.ema60
+    if rule == "ema20_below_ema60":
+        return ema_bearish
+    return price_below and ema_bearish
 
 
 def evaluate_entry(
@@ -103,6 +127,8 @@ def evaluate_entry(
     reasons = list(eligibility.reason_codes)
     if soxl_sector_guard_blocks(snapshot.symbol, 1, sector_benchmarks, config):
         reasons.append("SOXL_SECTOR_GUARD")
+    if first_entry_trend_guard_blocks(snapshot, config):
+        reasons.append("FIRST_ENTRY_TREND_GUARD")
     allowed = not reasons
     return TradeDecision(
         action=DecisionType.FIRST_ENTRY_CANDIDATE if allowed else DecisionType.NO_ACTION,
@@ -205,7 +231,9 @@ def evaluate_rebuy(
     data_ok: bool = True,
     system_ok: bool = True,
 ) -> TradeDecision:
-    available_capital = max(Decimal("0"), position.cycle_exposure_cap - position.current_cost_basis)
+    available_capital = max(
+        Decimal("0"), position.cycle_exposure_cap - position.current_cost_basis
+    )
     eligibility = evaluate_eligibility(
         data_ok=data_ok,
         system_ok=system_ok,
@@ -230,8 +258,8 @@ def evaluate_rebuy(
     trigger = position.average_price * (Decimal("1") - config.rebuy.min_drop_from_avg)
     if snapshot.close > trigger:
         reasons.append("REBUY_PRICE_NOT_MET")
-    requested = (
-        Decimal(position.tp1_filled_qty) * snapshot.close * (Decimal("1") + config.global_.buy_fee)
+    requested = Decimal(position.tp1_filled_qty) * snapshot.close * (
+        Decimal("1") + config.global_.buy_fee
     )
     budget = min(available_capital, requested).quantize(Decimal("0.01"))
     if budget <= 0:
@@ -258,7 +286,6 @@ def evaluate_strategy(
     system_ok: bool = True,
     sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
-    """Evaluate the appropriate strategy action for the current position state."""
     if position.state == PositionState.EMPTY:
         return evaluate_entry(
             snapshot,
@@ -269,31 +296,29 @@ def evaluate_strategy(
             system_ok=system_ok,
             sector_benchmarks=sector_benchmarks,
         )
-
-    if position.state in {
-        PositionState.HOLDING_1ST,
-        PositionState.HOLDING_2ND,
-        PositionState.HOLDING_3RD,
-    }:
-        return evaluate_additional_entry(
+    for stage in (2, 3, 4):
+        if position.state == expected_holding_state(stage - 1):
+            return evaluate_additional_entry(
+                snapshot,
+                score,
+                position,
+                stage,
+                config,
+                data_ok=data_ok,
+                system_ok=system_ok,
+                sector_benchmarks=sector_benchmarks,
+            )
+    if position.state == PositionState.PARTIAL_TP_1:
+        return evaluate_rebuy(
             snapshot,
             score,
             position,
-            position.entry_count + 1,
             config,
             data_ok=data_ok,
             system_ok=system_ok,
-            sector_benchmarks=sector_benchmarks,
         )
-
-    if position.state == PositionState.PARTIAL_TP_1:
-        return evaluate_rebuy(
-            snapshot, score, position, config, data_ok=data_ok, system_ok=system_ok
-        )
-
     return TradeDecision(
         action=DecisionType.NO_ACTION,
         allowed=False,
         reason_codes=("STATE_NOT_ELIGIBLE",),
-        cycle_exposure_cap=position.cycle_exposure_cap,
     )
