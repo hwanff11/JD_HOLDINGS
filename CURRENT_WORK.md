@@ -5,7 +5,7 @@
 ## 현재 작업 구조
 
 - 운영 안정 기준선: `main`
-- 현재 활성 브랜치: `codex/simplify-oracle-deployment`
+- 현재 활성 브랜치: `main`
 - 작업 기준: `origin/main` 최신; 운영 SHA는 서버 `current` 링크가 실시간 기준
 - JDSS 2.2.2 PR #13: `main` 병합 및 Oracle `dry_run` 배포 완료 (`a98b671`)
 - JDSS 2.2.1 PR #11: `main` 병합 및 Oracle 배포 완료 (`3de66d1`)
@@ -45,6 +45,7 @@
 - 로컬 직접 배포의 기본 검증은 유지하고 Actions에서만 중복 검증을 생략하며, 서버 dry-run 강제·재시작 1회·Toss smoke test를 한 경로에서 수행하도록 정리했다.
 - 배포 때마다 후속 문서 PR이 필요하지 않도록 실제 운영 SHA의 기준을 서버 `current` 링크와 배포 출력으로 통일했다.
 - ChatGPT에서도 서버 비밀값 접근 없이 저장소 소유자 배포 이슈와 40자리 `main` SHA로 Actions를 시작하고, 결과를 이슈 댓글로 확인하는 dry-run ChatOps 경로를 추가했다.
+- 배포 단순화와 ChatGPT ChatOps를 PR #16으로 검증해 `main` 커밋 `14b3007`에 병합했다.
 - 2.2.2에서 SQLite `cash_release_intents`로 신호별 SGOV 현금화 의도를 영속화하고 재시작 후 자동 재개를 구현했다.
 - SGOV 체결 후 TQQQ/SOXL 최종 승인을 자동 전송하되 본 주문의 수동 최종 승인은 유지했다.
 - 활성 현금화 중 SGOV 자동 재예치 차단, 복수 의도 현금 예약, 실제 DB·연결 주문 취소를 구현했다.
@@ -108,7 +109,7 @@
 ## 마지막 인수인계
 
 - 작성 주체: Codex
-- 상태: JDSS 2.2.2 SGOV 현금화 자동 재개·호가 집행 구현, PR #13 `main` 병합, Oracle dry-run 배포·smoke test 완료. live 승격 금지.
+- 상태: JDSS 2.2.2 운영 유지. Oracle dry-run 배포 단순화와 ChatGPT ChatOps를 PR #16으로 `main`에 병합 완료. live 승격 금지.
 - JDSS 2.2 구현 커밋: `aaab561` (`Add JDSS 2.2 SGOV cash management`)
 - JDSS 2.2 main 병합 커밋: `c86ca23` (PR #8)
 - main 반영 커밋: `2b209e8` (`docs: record FINAL contract audit`)
@@ -120,13 +121,15 @@
 - JDSS 2.2.1 릴리스: PR #11, main `3de66d1`
 - JDSS 2.2.2 릴리스: PR #13, main·Oracle `a98b671`
 - JDSS 2.2.2 배포 기록: PR #14, main `cdedd4b`
+- 배포 단순화·ChatGPT ChatOps: PR #16, main `14b3007`
 - GitHub CI: PR #13의 CI run `31397181235` 및 JDSS 2.2 Dry Run `31397181217` 성공
 - Oracle dry-run 배포: `a98b6717f70d7adca0f118b93de452fccc342dc1` 배포 완료
 - 배포 후 검증: `jd_holdings_bot` active, 패키지 2.2.2, 전략 `JDSS-2.2.2-SGOV`, config 2.2.2, `dry_run`, 빈 live 확인값, Toss TQQQ·SOXL·SGOV 시세·미국장 캘린더 조회 성공
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
 - 문서 검증: Git 추적 Markdown 18개, 깨진 로컬 링크 0개, FINAL/Archive 경계 확인
 - 운영 방침: Telegram `/bt`, `/sgov` 조회·검증 중심, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
-- 다음 우선순위: Telegram에서 SGOV 현금화 의도·자동 재개·취소·재가격 이벤트와 SGOV 원장·broker reconciliation을 관찰하고, 별도 승인 전까지 live 전환하지 않는다.
+- 마지막 검증: 로컬 pytest 98개, Ruff, `bash -n deploy.sh`, 설정 검증 및 PR #16 CI run `31399768019` 성공
+- 다음 우선순위: 필요 시 owner 전용 ChatGPT 배포 요청을 최초 1회 dry-run으로 검증하고, Telegram에서 SGOV 현금화 의도·자동 재개·취소·재가격 이벤트와 SGOV 원장·broker reconciliation을 관찰한다. 별도 승인 전까지 live 전환하지 않는다.
 
 ## 갱신 규칙
 
