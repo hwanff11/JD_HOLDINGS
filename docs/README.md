@@ -26,6 +26,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 | [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md) | 현재 전략 요약과 과거 전략 발전사 | 첫 부분만 현재, Archive는 과거 |
 | [`BACKTEST_REPORT.md`](BACKTEST_REPORT.md) | 현재 회귀 요약과 과거 백테스트 기록 | 첫 부분만 현재, Archive는 과거 |
 | [`archive/spec_v1/`](archive/spec_v1/) | v1 계열 명세 보존 | 현재 구현에 사용 금지 |
+| [`../configs/strategy_v1.1.2.yaml`](../configs/strategy_v1.1.2.yaml) | v1.1.2 연구 재현용 설정 | Archive 전용, 현재 구현에 사용 금지 |
 
 ## 변동 상태 기록 원칙
 
