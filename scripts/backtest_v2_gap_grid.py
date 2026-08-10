@@ -19,8 +19,8 @@ from backtest_v2_focus import (
     _with_tp,
     combined_metrics,
 )
-from backtest_v2_remainder_exit import RemainderExitEngine
 
+from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
@@ -51,11 +51,7 @@ def _run(config, frames, start, end):
             if symbol == "SOXL"
             else None
         )
-        engine = RemainderExitEngine(
-            config,
-            wait_days=20,
-            target_pct=Decimal("0.02"),
-        )
+        engine = StrategyBacktestEngine(config)
         results[symbol] = engine.run(
             symbol,
             frames[symbol],
