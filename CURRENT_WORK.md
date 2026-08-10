@@ -60,7 +60,8 @@
 
 - 작성 주체: Codex
 - 상태: JDSS 2.1 FINAL 전체 계약 감사를 완료하고 발견된 코드·Telegram·백테스트·패키지 버전·배포 경로·문서 링크 불일치를 수정 및 검증. 실제 Oracle 배포는 미실행.
-- 다음 우선순위: 감사 브랜치 commit/push 및 `main` 반영 → GitHub CI 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
+- 마지막 관련 커밋: `8fb24d4` (`fix: align FINAL runtime and deployment contract`)
+- 다음 우선순위: 감사 브랜치 push 및 `main` 반영 → GitHub CI 확인 → 사용자 승인 후 Oracle dry-run 배포 → Toss smoke 및 Reconciliation
 
 ## 갱신 규칙
 
