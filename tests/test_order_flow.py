@@ -145,7 +145,7 @@ def test_partial_tp_is_applied_cumulatively_and_recovered(tmp_path, config):
     assert repository.get_order_by_client_id(tp1_local["client_order_id"])["applied"] == 1
 
 
-def test_tp1_completion_resets_tp2_clock_and_switches_after_20_sessions(tmp_path, config):
+def test_tp1_completion_persists_clock_and_switches_after_20_sessions(tmp_path, config):
     repository, broker, trading, monitor = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
     trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
@@ -153,7 +153,7 @@ def test_tp1_completion_resets_tp2_clock_and_switches_after_20_sessions(tmp_path
     events = fill_tp1_completely(repository, broker, monitor)
     position = repository.get_position("TQQQ")
     assert position.state == PositionState.PARTIAL_TP_1
-    assert any("TP2 기준시점 재설정" in event for event in events)
+    assert any("TP2 주문 재확인" in event for event in events)
     open_after_tp1 = repository.open_orders("TQQQ")
     assert [order["purpose"] for order in open_after_tp1] == ["TP2"]
 
@@ -173,6 +173,30 @@ def test_tp1_completion_resets_tp2_clock_and_switches_after_20_sessions(tmp_path
     assert Decimal(str(remainder["price"])) == expected_price
     assert int(remainder["qty"]) == position.quantity
     assert any("잔량 +2% 회수주문 전환" in event for event in events)
+
+
+def test_tp2_recovery_does_not_reset_tp1_remainder_clock(tmp_path, config):
+    repository, broker, trading, monitor = build_services(tmp_path, config)
+    quote, premarket = create_approved_entry(repository, trading, config)
+    trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
+    fill_tp1_completely(repository, broker, monitor)
+
+    tp2_local = next(
+        order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2"
+    )
+    broker.orders[tp2_local["broker_order_id"]]["status"] = "CANCELED"
+    events = monitor.run_once(now=datetime(2026, 8, 20, 22, 0, tzinfo=UTC))
+    assert any("자동 복구" in event for event in events)
+    recovered_tp2 = next(
+        order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2"
+    )
+    assert recovered_tp2["client_order_id"] != tp2_local["client_order_id"]
+
+    events = monitor.run_once(now=datetime(2026, 9, 8, 22, 0, tzinfo=UTC))
+    assert any("20거래일 경과" in event for event in events)
+    assert [order["purpose"] for order in repository.open_orders("TQQQ")] == [
+        "REMAINDER_EXIT"
+    ]
 
 
 def test_reconciliation_accepts_open_remainder_exit_after_restart(tmp_path, config):
