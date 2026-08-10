@@ -13,50 +13,74 @@
 
 `main`
 
-- `main`: 검증된 안정 기준선 및 공통 작업 규칙
-- `research/jdss-v2-swing-optimization`: JDSS 2.0 전략 후보 비교와 백테스트 검증을 수행하는 현재 연구 브랜치
-- 기능/전략 검증이 끝나면 PR을 통해 채택된 변경만 `main`에 병합한다.
+- `main`: 검증된 안정 기준선 및 공통 작업 규칙. FINAL 검증 완료와 사용자 승인 전에는 전략 변경을 병합하지 않는다.
+- `research/jdss-v2-swing-optimization`: JDSS 2.1 FINAL 사양 및 실거래 반영 검증 브랜치.
+- 최신 main 변경분은 동기화용 PR #5를 통해 research 브랜치에 반영했다.
+- Draft PR #3에서 FINAL 변경을 검토 중이며 사용자 승인 전에는 `main`에 병합하지 않는다.
 
 ## 현재 전략 버전
 
-JDSS 2.0 Swing (Option A: ultra_hf_50_tp48)
+`JDSS-2.1.0-FINAL` / config `2.1.0`
 
-## 현재 개발 목표
+FINAL 기준문서: `docs/JDSS_FINAL_SPEC.md`
 
-TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단기 스윙 전략을 검증하고 안정화한다.
+## FINAL 전략 계약
 
-현재 연구 목표:
-
-- JDSS 2.0 A~F 전략 후보를 동일 조건으로 백테스트하여 현재 A안 대비 개선 가능성을 검증한다.
-- 2021~2024 검증구간(OOS 성격)을 우선 평가한다.
-- CAGR/Total Return뿐 아니라 MDD, P95 MAE, 40일 초과 고착비율, 평균 보유기간, 사이클 수 등 위험·회전 지표를 함께 비교한다.
-- TQQQ/SOXL 실거래 후보 전략과 임의 미국주식 연구용 백테스트 기능을 분리하여 관리한다.
-- Oracle Cloud 서버의 JDSS 운영 안정성을 유지하면서 연구용 계산은 운영 프로세스와 분리한다.
-
-## 현재 전략 후보
-
-- A: 현재 기준안 — 진입 50 / 추가매수 -2·-4·-7% / TP 4·8%
-- B: 진입점수 55
-- C: 추가매수 -3·-6·-10%
-- D: TP 3·6%
-- E: 추가매수 -3·-6·-10% + TP 3·6%
-- F: TP 5·10%
+- 대상 종목: TQQQ, SOXL
+- 종목당 전략 자금: $10,000
+- 모든 매수 단계 최소 Score: 55
+- 최소 Reversal Score: 5
+- 모든 매수 단계에서 `Regime != RED`
+- 비중: 40% / 30% / 20% / 10%
+- 추가매수: 최초 실제 체결가 대비 -2% / -5% / -7%
+- TP1: 평단 +4%, 약 50% 매도
+- TP2: 평단 +6%, 잔량 매도
+- SOXL 섹터 가드: 1차·3차·4차
+- TP1 완료 후 20개의 완결 미국 거래일이 지나면 기존 TP2를 취소하고 평단 +2% 잔여청산 지정가 주문으로 전환
+- 자동 손절 없음
+- 재매수 없음
+- 모든 매수는 2단계 사용자 승인 필수
 
 ## 마지막 완료 작업
 
-- GitHub Actions와 Oracle Cloud 역할 분리 및 표준 연구/개발 흐름을 `docs/infra/DEVELOPMENT_WORKFLOW.md`에 명문화했다.
-- `AGENTS.md`에도 GitHub Actions=연구/검증, Oracle Cloud=24시간 운영 원칙을 반영하여 문서 간 규칙을 통일했다.
-- 현재 활성 브랜치를 `research/jdss-v2-swing-optimization`, 기준 브랜치를 `main`으로 명확히 구분했다.
-- JDSS 2.0 A~F 후보 비교용 연구 브랜치 및 GitHub Actions 백테스트 흐름을 구성했다.
-- 텔레그램 `/bt` 임의 티커 백테스트 기능과 기존 운영 기능은 유지한다.
+- `strategy.yaml`을 `JDSS-2.1.0-FINAL`로 고정했다.
+- `take_profit.remainder_exit` 설정을 정식 config 모델과 검증 규칙에 추가했다.
+- TP1 완료 후 20거래일 경과 판정을 XNYS 거래소 캘린더 기준으로 구현했다.
+- TP1 목표수량 완전체결 시 사이클별 완료시점을 `system_state`에 영속 저장하도록 실거래 포지션 관리에 반영했다.
+- TP2가 취소·거절되어 자동 복구되더라도 TP1 완료 기준의 20거래일 시계가 리셋되지 않도록 구현하고 회귀테스트를 추가했다.
+- TP2를 평단 +2% `REMAINDER_EXIT` 주문으로 안전하게 교체하고 취소/거절 시 자동 복구하도록 실거래 주문 감시에 반영했다.
+- TP2 취소 직전 추가 체결이 있으면 실제 체결수량을 먼저 반영한 뒤 남은 수량만 잔여청산하도록 했다.
+- TP1/TP2/잔여청산의 공통 가격 및 기한 판단을 `core/remainder_exit.py`로 분리하여 FINAL 백테스트와 실거래가 같은 규칙을 사용하도록 했다.
+- 잔여청산 완전체결을 기존 TP2 최종 leg로 회계·상태 반영하도록 했다.
+- 재시작/Reconciliation 상황에서 열린 `REMAINDER_EXIT` 주문이 정상 상태로 인정되는 테스트를 추가했다.
+- FINAL에서는 `rebuy.enabled=false`일 때 실거래 분석 서비스가 재매수 recovery 상태를 불필요하게 arm하지 않도록 했다.
+- SOXL 섹터 벤치마크 조회 실패 또는 완결 거래일 누락 시 경고 이벤트를 기록하도록 보완했다.
+- 일반 CLI 백테스트와 FINAL 연구 백테스트가 `StrategyBacktestEngine`을 사용하도록 맞췄다.
+- FINAL 계약, 추가매수 경계, SOXL 가드, TP 가격, TP1→20거래일→잔여청산, TP2 복구 시계 보존, SAFE_MODE/주문복구를 테스트로 고정했다.
+- 최신 main의 공통 작업규칙 3개 커밋은 동기화용 PR #5로 research 브랜치에 병합했다.
+
+## 최근 검증 결과
+
+- 이전 FINAL 회귀 실행에서 CI와 Research Backtest가 모두 성공했다.
+- FINAL 전체기간 회귀: CAGR 약 +8.73%, MDD 약 -24.68%.
+- 2021~2024 후보 검증: CAGR 약 +12.4%, MDD 약 -19.3%, P95 MAE 약 -20.7%, 최대 전략상 고착 296거래일.
+- SGOV 유휴현금 연구는 핵심 매매엔진과 분리했다. SGOV 상장 이후 유휴현금을 적용한 연구 결과는 장기 CAGR 약 +9.69%, MDD 약 -24.68%였다.
+- 최신 TP1 영속시계/복구 보완 커밋에 대한 최종 CI 및 Research Backtest 상태는 다시 확인해야 한다.
+
+## 알려진 연구 데이터 주의사항
+
+- 전체기간 SOXL 2011년 시작 717거래일 사이클은 오래된 분할조정 가격 데이터 정합성 영향이 있는 기록으로 전략 튜닝 근거에서 제외한다.
+- 실제 전략상 확인된 주요 장기 고착 사례는 TQQQ 2022년 약 296거래일 사이클이다.
+- 백테스트는 T일 신호→T+1 체결 가정이며 실제 승인형 프리/애프터장 주문과 체결시점이 완전히 동일하지 않다.
 
 ## 다음 작업
 
-1. GitHub Actions의 JDSS 2.0 A~F 백테스트 완료 여부 및 산출물을 확인한다.
-2. TQQQ/SOXL별 및 합산 성과를 비교한다.
-3. 2021~2024 검증구간을 우선으로 CAGR, MDD, P95 MAE, 장기 고착, 평균 보유기간, 사이클 수를 평가한다.
-4. 유의미한 개선 후보가 있으면 과최적화 여부를 추가 검증한 뒤 최종 채택안을 결정한다.
-5. 채택된 전략만 PR 검토 후 `main`에 병합하고 필요 시 Oracle Cloud 운영 서버에 배포한다.
+1. 최신 research head의 CI와 FINAL Research Backtest가 모두 green인지 확인한다.
+2. Draft PR #3의 mergeable 상태와 최종 diff를 검토한다.
+3. 실제 브로커 연동 전 Dry Run으로 1차 승인→체결→TP 생성→TP1→TP2 복구→20거래일 잔여청산→재시작 Reconciliation 흐름을 재확인한다.
+4. 필요 시 텔레그램 사용자용 `/backtest` 경로도 FINAL `StrategyBacktestEngine`으로 통일한다.
+5. 사용자가 명시적으로 승인한 뒤에만 PR #3을 `main`에 병합한다.
+6. 병합 후 Oracle Cloud 운영 서버에 배포하고 브로커 잔고/주문/SQLite Reconciliation을 확인한다.
 
 ## 실행 환경 역할
 
@@ -79,8 +103,8 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단기 스윙 전
 
 ### GitHub Actions
 
-- pytest, Ruff, 설정 검증, 전략 A/B 테스트, 장기 백테스트 등 일회성·반복 가능한 연구/검증 작업
-- 가능하면 JSON/Markdown 등의 결과 artifact를 남겨 재검토 가능하게 한다.
+- pytest, Ruff, 설정 검증, 회귀 백테스트 등 반복 가능한 연구/검증 작업
+- JSON/Markdown artifact를 남겨 결과를 재검토한다.
 
 ### Oracle Cloud
 
@@ -91,10 +115,11 @@ TQQQ/SOXL 및 미국주식 변동성을 활용하는 고회전 단기 스윙 전
 ## 마지막 인수인계
 
 - 작성 주체: ChatGPT
-- 상태: JDSS 2.0 전략 최적화 연구 진행 중. 개발/연구/운영 환경 역할과 브랜치 규칙을 AGENTS.md, CURRENT_WORK.md, DEVELOPMENT_WORKFLOW.md에 일관되게 정리 완료.
+- 상태: JDSS 2.1 FINAL 전략 사양 및 research 브랜치 실거래 핵심 로직 반영 완료. TP1 완료시점 영속화와 TP2 복구 시계 보존까지 보완했으며 최신 head 자동검증 확인 단계. 아직 `main` 미병합/운영 미배포.
 - 활성 브랜치: `research/jdss-v2-swing-optimization`
 - 기준 브랜치: `main`
-- 다음 우선순위: A~F GitHub Actions 백테스트 결과 확인 및 전략 후보 평가
+- 기준문서: `docs/JDSS_FINAL_SPEC.md`
+- 다음 우선순위: 최신 CI/Research Backtest 확인 → PR #3 최종 검토 → Dry Run → 사용자 병합 승인 → main/운영 배포
 
 ## 갱신 규칙
 
