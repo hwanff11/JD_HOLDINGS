@@ -28,6 +28,10 @@ HOLDING_BY_ACTION_STAGE = {
 }
 
 
+def tp1_completed_at_key(symbol: str, cycle_id: str) -> str:
+    return f"tp1_completed_at:{symbol.upper()}:{cycle_id}"
+
+
 class PositionManager:
     def __init__(
         self,
@@ -218,6 +222,15 @@ class PositionManager:
             updates=updates,
             expected_version=position.version,
         )
+        if (
+            purpose == "TP1"
+            and new_state == PositionState.PARTIAL_TP_1
+            and position.cycle_id
+        ):
+            self.repository.set_system_value(
+                tp1_completed_at_key(symbol, position.cycle_id),
+                str(order["updated_at"]),
+            )
         if quantity == 0:
             self.repository.deactivate_tp_plan(int(plan["tp_plan_id"]))
         if terminal:
