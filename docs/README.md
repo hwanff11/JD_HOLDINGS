@@ -17,7 +17,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 | 문서 | 역할 | 현재 기준 여부 |
 |---|---|---|
 | [`../CURRENT_WORK.md`](../CURRENT_WORK.md) | 가장 최근 인수인계와 Oracle 운영 상태 | 현재 상태의 최종 기준 |
-| [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md) | JDSS-2.2.0-SGOV 전략·주문·자금관리 계약 | 현재 전략의 최종 기준 |
+| [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md) | JDSS-2.2.1-SGOV 전략·주문·자금관리 계약 | 현재 전략의 최종 기준 |
 | [`TELEGRAM_BOT_GUIDE.md`](TELEGRAM_BOT_GUIDE.md) | Telegram 명령과 출력 해석 | 현재 UI 기준 |
 | [`infra/DEPLOYMENT.md`](infra/DEPLOYMENT.md) | Oracle dry-run 배포·검증·롤백 | 현재 배포 기준 |
 | [`infra/DEVELOPMENT_WORKFLOW.md`](infra/DEVELOPMENT_WORKFLOW.md) | Codex·ChatGPT·Antigravity 협업 절차 | 현재 개발 기준 |
@@ -28,7 +28,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 
 ## 현재 운영 기준
 
-- 개발 전략: `JDSS-2.2.0-SGOV`, 설정·패키지: `2.2.0`
+- 개발 전략: `JDSS-2.2.1-SGOV`, 설정·패키지: `2.2.1`
 - 운영 배포: 이전 `JDSS-2.1.0-FINAL`, Oracle `dry_run`
 - 유휴자금: SGOV 자동 예치·선현금화 구현, 운영 배포 전 검증 중
 - 운영 브랜치: `main`

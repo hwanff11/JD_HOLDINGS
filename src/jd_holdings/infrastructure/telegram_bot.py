@@ -32,6 +32,7 @@ from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import RuntimeSettings
 
 LOGGER = logging.getLogger(__name__)
+IDLE_CASH_COMMANDS = ("sgov",)
 
 
 class BacktestCommandError(ValueError):
@@ -347,7 +348,7 @@ def _guide_cards() -> tuple[str, ...]:
         "매도 체결과 달러 매수가능금액을 확인한 뒤 본 주문을 허용합니다.\n"
         "• SGOV 현금화가 미체결·거절되거나 원장 수량이 맞지 않으면 전략 매수를 차단합니다.\n"
         "• 기존 개인 SGOV는 JDSS 관리분으로 자동 편입하지 않습니다.\n\n"
-        "💡 <i>/cash 명령어로 JDSS 관리 SGOV 수량과 현금화 상태를 확인할 수 있습니다.</i>"
+        "💡 <i>/sgov 명령어로 JDSS 관리 SGOV 수량과 현금화 상태를 확인할 수 있습니다.</i>"
     )
     return card1, card2, card3, card4
 
@@ -676,7 +677,7 @@ class TelegramBotApp:
                 return
             self._send_account()
 
-        @bot.message_handler(commands=["cash", "sgov"])
+        @bot.message_handler(commands=list(IDLE_CASH_COMMANDS))
         def idle_cash(message):
             if not self._authorized_message(message):
                 return
@@ -834,7 +835,7 @@ class TelegramBotApp:
                 "☀️ <b>[JH홀딩스 JDSS 메뉴]</b>\n\n"
                 "• <code>/dashboard</code> : 통합 대시보드\n"
                 "• <code>/account</code> : 💰 토스 계좌 잔고\n"
-                "• <code>/cash</code> : 💵 JDSS SGOV 유휴자금\n"
+                "• <code>/sgov</code> : 💵 JDSS SGOV 유휴자금\n"
                 "• <code>/status</code> : 종목별 상세 포지션\n"
                 "• <code>/score</code> : JDSS 세부 지표 분석\n"
                 "• <code>/signal</code> : 활성 매수 신호\n"
@@ -1202,7 +1203,7 @@ class TelegramBotApp:
             [
                 telebot.types.BotCommand("dashboard", "☀️ 통합 대시보드"),
                 telebot.types.BotCommand("account", "💰 토스 계좌 잔고"),
-                telebot.types.BotCommand("cash", "💵 SGOV 유휴자금"),
+                telebot.types.BotCommand(IDLE_CASH_COMMANDS[0], "💵 SGOV 유휴자금"),
                 telebot.types.BotCommand("status", "✨ 종목별 포지션 상세"),
                 telebot.types.BotCommand("score", "🎯 JDSS 지표 분석"),
                 telebot.types.BotCommand("signal", "🚨 활성 매수 신호"),

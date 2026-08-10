@@ -9,8 +9,8 @@ from jd_holdings.config import ConfigError, PositionConfig, validate_config
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-2.2.0-SGOV"
-    assert config.config_version == "2.2.0"
+    assert config.version == "JDSS-2.2.1-SGOV"
+    assert config.config_version == "2.2.1"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert sum(config.position.stage_weights) == Decimal("1")
     assert config.global_.stop_loss_enabled is False
