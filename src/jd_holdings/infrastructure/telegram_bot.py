@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import telebot
@@ -33,6 +34,7 @@ from jd_holdings.settings import RuntimeSettings
 
 LOGGER = logging.getLogger(__name__)
 IDLE_CASH_COMMANDS = ("sgov",)
+SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 
 class BacktestCommandError(ValueError):
@@ -97,6 +99,10 @@ def parse_backtest_request(
             f"종료일은 최신 완결 거래일 {latest_completed.isoformat()} 이하여야 합니다."
         )
     return TelegramBacktestRequest(symbols=selected, start=start, end=end)
+
+
+def _is_toss_order_maintenance_window(now_kst: datetime) -> bool:
+    return now_kst.hour == 8 and 50 <= now_kst.minute <= 59
 
 
 def _looks_like_iso_date(value: str) -> bool:
@@ -1204,16 +1210,10 @@ class TelegramBotApp:
                     time.monotonic() - self._last_monitor
                     >= self.config.scheduler.order_monitor_interval_seconds
                 )
-                
-                # 토스증권 08:50~09:00 KST 주간거래 전 주문 취소 및 리셋 시간대 예외 처리
-                try:
-                    import pytz
-                    seoul_tz = pytz.timezone("Asia/Seoul")
-                    now_kst = datetime.now(seoul_tz)
-                    if now_kst.hour == 8 and 50 <= now_kst.minute <= 59:
-                        monitor_due = False
-                except ImportError:
-                    pass
+
+                # 토스증권 주간거래 전 주문 취소·리셋 시간에는 주문 상태 갱신을 건너뜁니다.
+                if _is_toss_order_maintenance_window(datetime.now(SEOUL_TZ)):
+                    monitor_due = False
 
                 if monitor_due:
                     for event in self.order_monitor.run_once():
