@@ -1,5 +1,7 @@
 # Oracle 배포 가이드
 
+현재 배포 대상은 `main`의 **JDSS-2.1.0-FINAL**이다. 최초 반영은 반드시 `dry_run`으로 수행하며, 이 단계에서는 실주문 잠금을 해제하지 않는다.
+
 ## 1. 서버 준비
 
 Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요합니다. 기본
@@ -45,6 +47,15 @@ git remote -v
 ./deploy.sh
 ```
 
+권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고, Ruff·pytest·설정 검증·FINAL 버전 검사를 다시 통과한 뒤 서버 `.env`를 아래처럼 강제 잠근다.
+
+```dotenv
+JDSS_TRADING_MODE=dry_run
+JDSS_LIVE_CONFIRMATION=
+```
+
+워크플로 파일: `.github/workflows/deploy-oracle-dry-run.yml`
+
 배포는 테스트와 린트 → GitHub push → commit별 릴리스 업로드 → 의존성 설치 → 설정
 검증 → `current` 심볼릭 링크 교체 → 전용 systemd 서비스 재시작 순서로 수행됩니다.
 DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
@@ -59,6 +70,7 @@ Telegram 백테스트의 yfinance 캐시도
 sudo systemctl status jd_holdings_bot --no-pager
 sudo journalctl -u jd_holdings_bot -n 100 --no-pager
 ls -l /home/ubuntu/JD_HOLDINGS/current
+grep '^JDSS_TRADING_MODE=' /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
 Telegram `/ping`, `/dashboard`, `/account`, `/backtest`를 확인합니다. 인자 없는
@@ -66,6 +78,8 @@ Telegram `/ping`, `/dashboard`, `/account`, `/backtest`를 확인합니다. 인�
 종목당 최근 15건까지 표시되는지 확인합니다. `/account`는 미국주식과
 수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서
 `jdss toss-smoke`를 실행해 조회 전용 인증을 확인합니다.
+
+배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 포지션과 주문 상태를 Reconciliation한다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. `dry_run` 관찰과 운영자 확인이 끝나기 전에는 `JDSS_TRADING_MODE=live` 또는 실주문 확인 문자열을 설정하지 않는다.
 
 ## 4. 롤백
 

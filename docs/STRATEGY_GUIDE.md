@@ -1,10 +1,20 @@
 # JDSS Strategy Guide & History
 
-이 문서는 JDSS 봇의 **주력 전략(V2.0 Swing)** 및 과거 전략(V1.x)의 발전 내역을 단일 문서로 통합 관리하기 위해 작성되었습니다.
+이 문서는 JDSS 전략의 발전 이력을 보존합니다. 현재 운영 계약은 **JDSS-2.1.0-FINAL**이며, 정확한 수치와 실행 규칙은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)와 루트 `strategy.yaml`을 기준으로 합니다.
+
+## 현재 주력: JDSS-2.1.0-FINAL
+
+- 모든 매수 단계 Score 55 이상, Reversal Score 5 이상, `Regime != RED`
+- 40% / 30% / 20% / 10% 분할, 최초 체결가 대비 -2% / -5% / -7% 추가매수
+- TP1 +4%, TP2 +6%
+- TP1 완전체결 후 20개 완결 거래일이 지나면 잔량을 평단 +2% `REMAINDER_EXIT`로 전환
+- SOXL 섹터 가드, 모든 매수 2단계 승인, 자동손절·재매수 없음
+
+아래 JDSS 2.0 이하 내용은 후보 선정 과정과 과거 운영 기록이며 현재 설정이 아닙니다.
 
 ---
 
-## 🔥 [현재 주력] JDSS v2.0.0 High-Turnover Swing Strategy (A안)
+## Archive: JDSS v2.0.0 High-Turnover Swing Strategy (A안)
 
 # 🚀 JDSS v2.0.0 High-Turnover Swing Strategy (A안)
 

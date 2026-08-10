@@ -1,10 +1,24 @@
 # JDSS Backtest Reports & History
 
-이 문서는 JDSS 봇의 **현재 백테스트 시뮬레이션 리포트(V2.0)** 및 과거 백테스트 기록을 통합 관리합니다.
+이 문서는 JDSS의 백테스트와 후보 연구 기록을 보존합니다. 현재 운영 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)의 **JDSS-2.1.0-FINAL**입니다.
+
+## 현재 FINAL 회귀검증 요약
+
+| 구간 | CAGR | MDD | 비고 |
+|---|---:|---:|---|
+| 전체 연구구간 | 약 +8.7% | 약 -24.7% | FINAL 단독 전략 |
+| 2021~2024 검증구간 | 약 +12.4% | 약 -19.3% | 후보 검증 기준 |
+
+- TQQQ 2022년 주요 최장 고착은 약 296거래일로 확인됐다.
+- 과거 SOXL 717거래일 기록은 분할조정 데이터 정합성 영향이 있어 튜닝 근거에서 제외했다.
+- SGOV 유휴현금 연구는 핵심 매매 전략 및 이번 운영 배포 범위와 분리한다.
+- 정확한 재현 조건과 제한은 FINAL 사양 및 생성된 테스트·artifact를 함께 확인한다.
+
+아래 V2.0 이하 보고서는 전략 발전 과정의 역사적 결과이며 현재 운영 파라미터가 아닙니다.
 
 ---
 
-## 📊 [현재 백테스트 리포트] JDSS v2.0 High-Return Grid Search 백테스트 종합 보고서
+## Archive: JDSS v2.0 High-Return Grid Search 백테스트 종합 보고서
 
 # 📊 JDSS v2.0 High-Return Grid Search 백테스트 종합 보고서
 
@@ -217,4 +231,3 @@ jdss backtest --symbol ALL --start 2011-01-01 --refresh \
 
 
 ---
-

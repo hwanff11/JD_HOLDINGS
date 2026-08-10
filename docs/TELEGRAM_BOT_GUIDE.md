@@ -1,4 +1,4 @@
-# JDSS 2.0 Telegram Bot 운영 명세 및 가이드
+# JDSS 2.1 FINAL Telegram Bot 운영 명세 및 가이드
 
 ## 목적
 
@@ -8,7 +8,7 @@
 
 1. `/dashboard` (`/d`): 통합 대시보드 (전체 요약 & 포지션 이모티콘 🟢🟡🟠🔴/☕ 표시)
 2. `/account` (`/acct`): 토스 증권 실제 보유 종목 및 평가손익 조회
-3. `/score` (`/sc` [종목]): JDSS 2.0 점수 및 4단계 진입 가드 상세
+3. `/score` (`/sc` [종목]): JDSS 2.1 FINAL 점수 및 4단계 진입 가드 상세
 4. `/signal` (`/sg`): 활성 매매 신호 조회
 5. `/status` (`/st` [종목]): 포지션 상태 및 매수단계 확인
 6. `/indicator` (`/i` [종목]): 주요 기술적 지표 (CCI, RSI, EMA, BB, ATR)
