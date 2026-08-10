@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -46,6 +47,39 @@ def test_watch_grade_with_one_reversal_condition_can_enter(config):
     assert decision.allowed
     assert decision.cycle_exposure_cap == Decimal("10000.00")
     assert decision.planned_budget == Decimal("4000.00")
+
+
+def test_soxl_sector_guard_does_not_block_first_entry_by_default(config):
+    decision = evaluate_entry(
+        make_snapshot(symbol="SOXL", close=Decimal("90")),
+        make_score(89),
+        PositionSnapshot(symbol="SOXL", cash_remaining=Decimal("10000")),
+        config,
+        sector_benchmarks={
+            "SOXX": make_snapshot(symbol="SOXX", close=Decimal("490"), ema60=500.0)
+        },
+    )
+    assert decision.allowed
+
+
+def test_soxl_sector_guard_can_block_first_entry_when_stage1_configured(config):
+    guard = dict(config.market_regime["soxl_sector_guard"])
+    guard["blocked_stages"] = [1, 3, 4]
+    guarded = replace(
+        config,
+        market_regime={**config.market_regime, "soxl_sector_guard": guard},
+    )
+    decision = evaluate_entry(
+        make_snapshot(symbol="SOXL", close=Decimal("90")),
+        make_score(89),
+        PositionSnapshot(symbol="SOXL", cash_remaining=Decimal("10000")),
+        guarded,
+        sector_benchmarks={
+            "SOXX": make_snapshot(symbol="SOXX", close=Decimal("490"), ema60=500.0)
+        },
+    )
+    assert not decision.allowed
+    assert "SOXL_SECTOR_GUARD" in decision.reason_codes
 
 
 def test_additional_entry_cap_expansion_example(config):
