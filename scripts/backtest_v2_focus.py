@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -18,13 +17,12 @@ from typing import Any
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
-
 from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
 from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
 from jd_holdings.config import AdditionalEntryConfig, StageRule, load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
+
+ROOT = Path(__file__).resolve().parent.parent
 
 SYMBOLS = ("TQQQ", "SOXL")
 BENCHMARKS = ("SPY", "QQQ", "SOXX", "SMH")
@@ -162,8 +160,9 @@ def markdown_summary(report: dict[str, Any]) -> str:
             "## Decision rule",
             "",
             "Prefer higher validation CAGR when MDD, P95 MAE and long-lockup risk stay similar. "
-            "Reject a higher-return candidate if the improvement is mainly bought with materially worse tail risk "
-            "or much longer capital lockup. Do not tune further from the recent-only segment.",
+            "Reject a higher-return candidate if the improvement is mainly bought with materially "
+            "worse tail risk or much longer capital lockup. Do not tune further from the recent-only "
+            "segment.",
         ]
     )
     return "\n".join(lines) + "\n"
