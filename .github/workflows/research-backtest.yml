@@ -3,15 +3,9 @@ name: Research Backtest
 on:
   pull_request:
     paths:
-      - "scripts/backtest_v2_focus.py"
-      - "scripts/backtest_v2_audit.py"
-      - "scripts/backtest_v2_tp2_decay.py"
-      - "scripts/backtest_v2_remainder_exit.py"
-      - "scripts/backtest_v2_deep_stage_guard.py"
-      - "scripts/backtest_v2_worst_cycle_trace.py"
-      - "scripts/backtest_v2_stale_recovery.py"
-      - "scripts/backtest_v2_momentum_guard.py"
       - "scripts/backtest_v2_final_stress.py"
+      - "scripts/backtest_v2_remainder_exit.py"
+      - "scripts/backtest_v2_focus.py"
       - "src/jd_holdings/backtest/**"
       - "src/jd_holdings/core/**"
       - "strategy.yaml"
@@ -21,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  focused-backtest:
+  final-stress:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,34 +26,10 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: python scripts/backtest_v2_focus.py --output reports/v2_focused_backtest.json
-      - run: python scripts/backtest_v2_audit.py --output reports/v2_backtest_audit.json
-      - run: python scripts/backtest_v2_tp2_decay.py --output reports/v2_tp2_decay.json
-      - run: python scripts/backtest_v2_remainder_exit.py --output reports/v2_remainder_exit.json
-      - run: python scripts/backtest_v2_deep_stage_guard.py --output reports/v2_deep_stage_guard.json
-      - run: python scripts/backtest_v2_worst_cycle_trace.py --output reports/v2_worst_cycle_trace.json
-      - run: python scripts/backtest_v2_stale_recovery.py --output reports/v2_stale_recovery.json
-      - run: python scripts/backtest_v2_momentum_guard.py --output reports/v2_momentum_guard.json
       - run: python scripts/backtest_v2_final_stress.py --output reports/v2_final_stress.json
       - uses: actions/upload-artifact@v4
         with:
-          name: jdss-v2-focused-backtest
+          name: jdss-v2-final-stress
           path: |
-            reports/v2_focused_backtest.json
-            reports/v2_focused_backtest.md
-            reports/v2_backtest_audit.json
-            reports/v2_backtest_audit.md
-            reports/v2_tp2_decay.json
-            reports/v2_tp2_decay.md
-            reports/v2_remainder_exit.json
-            reports/v2_remainder_exit.md
-            reports/v2_deep_stage_guard.json
-            reports/v2_deep_stage_guard.md
-            reports/v2_worst_cycle_trace.json
-            reports/v2_worst_cycle_trace.md
-            reports/v2_stale_recovery.json
-            reports/v2_stale_recovery.md
-            reports/v2_momentum_guard.json
-            reports/v2_momentum_guard.md
             reports/v2_final_stress.json
             reports/v2_final_stress.md
