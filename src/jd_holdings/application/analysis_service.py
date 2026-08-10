@@ -82,6 +82,64 @@ class AnalysisService:
         self.repository.set_system_value("last_analysis_at", current.astimezone(UTC).isoformat())
         return results
 
+    def score_history(
+        self,
+        symbol: str,
+        trading_days: int = 7,
+        now: datetime | None = None,
+    ) -> list[dict[str, object]]:
+        """Recalculate recent completed-session scores without changing trading state."""
+        if symbol not in self.config.enabled_symbols:
+            raise ValueError(f"지원하지 않는 종목입니다: {symbol}")
+        if not 1 <= trading_days <= 90:
+            raise ValueError("조회 기간은 1~90 거래일이어야 합니다.")
+
+        current = now or datetime.now(UTC)
+        completed = self.market_clock.latest_completed_session(
+            current, delay_minutes=self.config.scheduler.signal_delay_minutes
+        )
+        lookback = max(500, trading_days * 2 + 30)
+        start = completed - timedelta(days=lookback)
+        spy = calculate_indicators(
+            self.data_source.daily("SPY", start, completed, refresh=False), self.config
+        )
+        qqq = calculate_indicators(
+            self.data_source.daily("QQQ", start, completed, refresh=False), self.config
+        )
+        target = calculate_indicators(
+            self.data_source.daily(symbol, start, completed, refresh=False), self.config
+        )
+        sessions = self.market_clock.calendar.sessions_in_range(start, completed)[-trading_days:]
+        history: list[dict[str, object]] = []
+        for session in sessions:
+            trade_date = session.date()
+            timestamp = next(
+                (
+                    index
+                    for index in target.index
+                    if index.date() == trade_date
+                    and index in spy.index
+                    and index in qqq.index
+                ),
+                None,
+            )
+            if timestamp is None:
+                continue
+            snapshot = snapshot_from_row(symbol, timestamp, target.loc[timestamp])
+            spy_snapshot = snapshot_from_row("SPY", timestamp, spy.loc[timestamp])
+            qqq_snapshot = snapshot_from_row("QQQ", timestamp, qqq.loc[timestamp])
+            regime = evaluate_regime(spy_snapshot, qqq_snapshot)
+            score = calculate_score(snapshot, regime, self.config)
+            history.append(
+                {
+                    "trade_date": trade_date,
+                    "score": score.total,
+                    "grade": score.grade.value,
+                    "regime": score.regime.value,
+                }
+            )
+        return history
+
     def _analyze(self, symbol, completed, target, spy, qqq, sector_frames=None) -> AnalysisResult:
         timestamp = next(
             (
