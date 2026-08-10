@@ -8,6 +8,7 @@ import json
 from collections import Counter
 from dataclasses import replace
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +24,23 @@ START = "2021-01-01"
 END = "2024-12-31"
 
 
+def _with_tp(base, tp1: str, tp2: str):
+    return replace(
+        base,
+        take_profit=replace(
+            base.take_profit,
+            tp1_base=Decimal(tp1),
+            tp2_base=Decimal(tp2),
+        ),
+    )
+
+
 def _candidate_configs(base):
     return {
         "A_entry50": base,
         "B_entry55": replace(base, global_=replace(base.global_, entry_score=55)),
+        "G_full_exit_tp44": _with_tp(base, "0.04", "0.04"),
+        "H_full_exit_tp33": _with_tp(base, "0.03", "0.03"),
     }
 
 
@@ -61,6 +75,8 @@ def _open_cycle_details(result: BacktestResult) -> dict[str, Any] | None:
     return {
         "cycle_id": cycle_id,
         "start_date": first["date"],
+        "first_entry_score": int(first.get("score", 0)),
+        "first_entry_price": float(first["price"]),
         "holding_days": int(result.open_position["holding_days"]),
         "state": result.open_position["state"],
         "quantity": int(result.open_position["quantity"]),
@@ -80,6 +96,23 @@ def _open_cycle_details(result: BacktestResult) -> dict[str, Any] | None:
     }
 
 
+def _closed_cycle_details(result: BacktestResult) -> list[dict[str, Any]]:
+    first_buy_by_cycle = {
+        str(trade["cycle_id"]): trade
+        for trade in result.trades
+        if trade["side"] == "BUY"
+        and trade["purpose"] == DecisionType.FIRST_ENTRY_CANDIDATE.value
+    }
+    details = []
+    for cycle in result.closed_cycles:
+        item = dict(cycle)
+        first = first_buy_by_cycle.get(str(cycle["cycle_id"]))
+        item["first_entry_score"] = int(first.get("score", 0)) if first else 0
+        item["first_entry_price"] = float(first["price"]) if first else 0.0
+        details.append(item)
+    return sorted(details, key=lambda cycle: int(cycle["holding_days"]), reverse=True)[:5]
+
+
 def _audit_result(result: BacktestResult) -> dict[str, Any]:
     signal_actions = _counter(signal["action"] for signal in result.signals)
     buy_purposes = _counter(
@@ -95,11 +128,7 @@ def _audit_result(result: BacktestResult) -> dict[str, Any]:
     add_signal_count = signal_actions.get(DecisionType.ADD_ENTRY_CANDIDATE.value, 0)
     add_buy_count = buy_purposes.get(DecisionType.ADD_ENTRY_CANDIDATE.value, 0)
 
-    longest_cycles = sorted(
-        result.closed_cycles,
-        key=lambda cycle: int(cycle["holding_days"]),
-        reverse=True,
-    )[:5]
+    longest_cycles = _closed_cycle_details(result)
     open_cycle = _open_cycle_details(result)
     closed_holding_days = [int(cycle["holding_days"]) for cycle in result.closed_cycles]
     holding_days_including_open = list(closed_holding_days)
@@ -190,14 +219,16 @@ def _markdown(report: dict[str, Any]) -> str:
             for cycle in cycles:
                 lines.append(
                     f"- {cycle['cycle_id']}: {cycle['start_date']} → {cycle['end_date']}, "
-                    f"{cycle['holding_days']} trading days, PnL ${cycle['pnl']}, "
-                    f"entries={cycle['entry_count']}, MAE={cycle['mae'] * 100:.2f}%"
+                    f"{cycle['holding_days']} trading days, entry-score={cycle['first_entry_score']}, "
+                    f"PnL ${cycle['pnl']}, entries={cycle['entry_count']}, "
+                    f"MAE={cycle['mae'] * 100:.2f}%"
                 )
             open_cycle = audit["open_cycle"]
             if open_cycle:
                 lines.append(
                     f"- OPEN {open_cycle['cycle_id']}: start={open_cycle['start_date']}, "
-                    f"state={open_cycle['state']}, holding={open_cycle['holding_days']}d, "
+                    f"entry-score={open_cycle['first_entry_score']}, state={open_cycle['state']}, "
+                    f"holding={open_cycle['holding_days']}d, "
                     f"price-vs-avg={open_cycle['price_vs_average_pct']:.2f}%, "
                     f"account-MAE={open_cycle['account_mae_pct']:.2f}%, "
                     f"buys={open_cycle['buy_count']}, sells={open_cycle['sell_count']}"
