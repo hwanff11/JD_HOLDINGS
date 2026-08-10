@@ -11,6 +11,7 @@ on:
       - "scripts/backtest_v2_worst_cycle_trace.py"
       - "scripts/backtest_v2_stale_recovery.py"
       - "scripts/backtest_v2_momentum_guard.py"
+      - "scripts/backtest_v2_final_stress.py"
       - "src/jd_holdings/backtest/**"
       - "src/jd_holdings/core/**"
       - "strategy.yaml"
@@ -39,6 +40,7 @@ jobs:
       - run: python scripts/backtest_v2_worst_cycle_trace.py --output reports/v2_worst_cycle_trace.json
       - run: python scripts/backtest_v2_stale_recovery.py --output reports/v2_stale_recovery.json
       - run: python scripts/backtest_v2_momentum_guard.py --output reports/v2_momentum_guard.json
+      - run: python scripts/backtest_v2_final_stress.py --output reports/v2_final_stress.json
       - uses: actions/upload-artifact@v4
         with:
           name: jdss-v2-focused-backtest
@@ -59,3 +61,5 @@ jobs:
             reports/v2_stale_recovery.md
             reports/v2_momentum_guard.json
             reports/v2_momentum_guard.md
+            reports/v2_final_stress.json
+            reports/v2_final_stress.md
