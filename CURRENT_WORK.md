@@ -5,8 +5,9 @@
 ## 현재 작업 구조
 
 - 운영 안정 기준선: `main`
-- 현재 활성 브랜치: `codex/jdss-2.2.1-sgov-command`
-- 작업 기준 커밋: `main` / `ac1e49b`
+- 현재 활성 브랜치: `main`
+- 작업 기준 커밋: `main` / `3de66d1`
+- JDSS 2.2.1 PR #11: `main` 병합 및 Oracle 배포 완료 (`3de66d1`)
 - JDSS 2.2 SGOV PR #8: `main` 병합 완료 (`c86ca23`)
 - FINAL 기능 PR #4: `main` 병합 완료 (`b871413`)
 - Oracle dry-run 워크플로 원본: `ops/oracle-dry-run-deploy`
@@ -44,7 +45,7 @@
 - SGOV 관리 테스트를 추가했고 전체 pytest 89개가 통과했다.
 - 2011-01-01~2026-08-04 장기 회귀: 포트폴리오 `+322.58%`, CAGR `+9.69%`, MDD `-24.68%`, SGOV 기여 `$10,810.54`.
 - 구현 커밋 `aaab561`을 PR #8로 검증해 `main`에 병합했고 Oracle에 `c86ca23`을 배포했다.
-- Oracle 운영은 2.2.1 배포 전까지 JDSS 2.2.0이며 `dry_run` 잠금과 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
+- Oracle 운영은 JDSS 2.2.1이며 `dry_run` 잠금과 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
 - Telegram `/signal`이 DB의 `ACTIVE` 플래그만 신뢰하던 결함을 수정해, 표시·승인 전에 현재 버전과 점수·반등·RED 국면 게이트를 재검증하고 부적격 레코드를 `INVALID` 처리한다.
 
 ## 2.1 기준선 완료 상태
@@ -78,7 +79,7 @@
 
 ## 운영 배포 상태와 남은 게이트
 
-1. JDSS 2.2.0 Oracle dry-run 최종 릴리스는 `598a550`이며 2.2.1 배포를 준비한다.
+1. JDSS 2.2.1 Oracle dry-run 릴리스 `3de66d1` 배포를 완료했다.
 2. 당분간 Telegram `/bt`, `/sgov` 등 조회·검증 중심으로 운용한다.
 3. JDSS SQLite의 TQQQ/SOXL은 `qty=0`, `EMPTY`, JDSS 미체결 주문 0건을 유지한다.
 4. 향후 live 검토 시 기존 운영 자산과 JDSS 상태의 관계를 먼저 결정하고 Reconciliation을 재실행한다.
@@ -101,9 +102,11 @@
 - 백테스트 전용 운영 커밋: `f48b118` (`docs: set dry-run backtest-only operations`)
 - Telegram 지표 설명 커밋: `b9dd21c` (`feat: clarify Telegram score indicators`)
 - 문서 인수인계 정리 커밋: `20e3315` (`docs: finalize cross-environment handoff`)
-- GitHub CI: PR #8의 CI run `31391947578` 및 JDSS 2.2 Dry Run `31391947705` 성공
-- Oracle dry-run 배포: `c86ca23ed1e2b7782697f11976906a6a4d69d9d6` 배포 완료
-- 배포 후 검증: `jd_holdings_bot` 배포 완료, 패키지 2.2.0, 전략 `JDSS-2.2.0-SGOV`, config 2.2.0, `dry_run` 잠금 유지
+- 신호 DB 수정: PR #10, main `ac1e49b`
+- JDSS 2.2.1 릴리스: PR #11, main `3de66d1`
+- GitHub CI: PR #11의 CI run `31393309673` 및 JDSS 2.2 Dry Run `31393309624` 성공
+- Oracle dry-run 배포: `3de66d1a0decee79c78de74498b117f218ebc521` 배포 완료
+- 배포 후 검증: `jd_holdings_bot` 배포 완료, 패키지 2.2.1, 전략 `JDSS-2.2.1-SGOV`, config 2.2.1, `dry_run` 잠금 유지
 - JDSS SQLite 확인: TQQQ/SOXL `qty=0`, `EMPTY`, JDSS 미체결 주문 0건
 - 문서 검증: Git 추적 Markdown 18개, 깨진 로컬 링크 0개, FINAL/Archive 경계 확인
 - 운영 방침: Telegram `/bt`, `/sgov` 조회·검증 중심, `dry_run` 유지. 실제 계좌 상태를 JDSS에 자동 인수하거나 주문을 변경하지 않음.
