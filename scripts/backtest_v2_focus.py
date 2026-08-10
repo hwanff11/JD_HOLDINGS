@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JDSS 2.0 dual-track TP 4/6 vs 4/8 first-entry exploration."""
+"""JDSS 2.0 TP 4/6 vs 4/8 structural lockup exploration."""
 
 from __future__ import annotations
 
@@ -49,16 +49,30 @@ def _with_stage1_guard(base, rule="any_benchmark_below_ema60"):
     )
 
 
+def _with_trend_guard(base, symbols=("TQQQ", "SOXL")):
+    guard = {
+        "enabled": True,
+        "symbols": list(symbols),
+        "rule": "price_below_ema60_and_ema20_below_ema60",
+    }
+    return replace(
+        base,
+        market_regime={**base.market_regime, "first_entry_trend_guard": guard},
+    )
+
+
 def build_candidates(base):
     out = {}
     for label, tp2 in (("TP46", "0.06"), ("TP48", "0.08")):
         track = _with_tp(base, tp2)
+        entry55 = _with_entry_score(track, 55)
+        entry55_sector = _with_stage1_guard(entry55)
         out[f"{label}_F0_baseline"] = track
-        out[f"{label}_F1_entry55"] = _with_entry_score(track, 55)
-        out[f"{label}_F2_entry60"] = _with_entry_score(track, 60)
-        out[f"{label}_F3_soxl_stage1_guard"] = _with_stage1_guard(track)
-        out[f"{label}_F4_entry55_guard"] = _with_stage1_guard(
-            _with_entry_score(track, 55)
+        out[f"{label}_F4_entry55_sector"] = entry55_sector
+        out[f"{label}_F5_entry55_trend"] = _with_trend_guard(entry55)
+        out[f"{label}_F6_entry55_sector_trend"] = _with_trend_guard(entry55_sector)
+        out[f"{label}_F7_entry55_tqqq_trend_sector"] = _with_trend_guard(
+            entry55_sector, symbols=("TQQQ",)
         )
     return out
 
@@ -86,10 +100,7 @@ def combined_metrics(results, annualization_days):
     ).sum(axis=1)
     initial = float(equity.iloc[0])
     final = float(equity.iloc[-1])
-    years = max(
-        (equity.index[-1] - equity.index[0]).days / 365.2425,
-        1 / 365.2425,
-    )
+    years = max((equity.index[-1] - equity.index[0]).days / 365.2425, 1 / 365.2425)
     sharpe, sortino = risk_adjusted_metrics(equity, annualization_days)
     all_days = [day for result in results.values() for day in _days(result)]
     lockup_rates = []
@@ -108,16 +119,13 @@ def combined_metrics(results, annualization_days):
         "mdd_pct": round(maximum_drawdown(equity) * 100, 2),
         "sharpe": round(sharpe, 3),
         "sortino": round(sortino, 3),
-        "closed_cycles": sum(
-            int(result.metrics["closed_cycles"]) for result in results.values()
-        ),
-        "signals": sum(int(result.metrics["signals"]) for result in results.values()),
-        "avg_holding_days_including_open": (
-            round(sum(all_days) / len(all_days), 2) if all_days else 0.0
-        ),
+        "closed_cycles": sum(int(r.metrics["closed_cycles"]) for r in results.values()),
+        "signals": sum(int(r.metrics["signals"]) for r in results.values()),
+        "avg_holding_days_including_open": round(sum(all_days) / len(all_days), 2)
+        if all_days
+        else 0.0,
         "max_holding_days_worst_symbol_including_open": max(
-            (max(_days(result), default=0) for result in results.values()),
-            default=0,
+            (max(_days(result), default=0) for result in results.values()), default=0
         ),
         "mae_p95_worst_symbol_pct": min(
             float(result.metrics["mae_p95_pct"]) for result in results.values()
@@ -127,56 +135,43 @@ def combined_metrics(results, annualization_days):
         ),
         "lockup_over_40_days_worst_symbol_pct": round(max(lockup_rates), 2),
         "open_price_drawdown_worst_symbol_pct": round(
-            min(_open_dd(result) for result in results.values()),
-            2,
+            min(_open_dd(result) for result in results.values()), 2
         ),
     }
 
 
 def settings(config):
-    guard = config.market_regime.get("soxl_sector_guard", {})
+    sector = config.market_regime.get("soxl_sector_guard", {})
+    trend = config.market_regime.get("first_entry_trend_guard", {})
     return {
         "entry_score": config.global_.entry_score,
-        "tp": [
-            float(config.take_profit.tp1_base),
-            float(config.take_profit.tp2_base),
-        ],
-        "soxl_guard_stages": list(guard.get("blocked_stages", [])),
-        "soxl_guard_rule": guard.get("rule"),
+        "tp": [float(config.take_profit.tp1_base), float(config.take_profit.tp2_base)],
+        "soxl_guard_stages": list(sector.get("blocked_stages", [])),
+        "trend_guard_enabled": bool(trend.get("enabled", False)),
+        "trend_guard_symbols": list(trend.get("symbols", [])),
+        "trend_guard_rule": trend.get("rule"),
     }
 
 
 def markdown_summary(report):
     lines = [
-        "# JDSS 2.0 Dual-Track Filter Search",
+        "# JDSS 2.0 Structural Lockup Search",
         "",
-        "TP 4/6 and TP 4/8 are evaluated independently with the same "
-        "confirmation/guard candidates.",
+        "TP 4/6 and TP 4/8 are evaluated independently. The new trend guard blocks only first entry when price is below EMA60 and EMA20 is also below EMA60.",
         "",
-        "| Candidate | CAGR | MDD | P95 MAE | >40d lockup | Max hold | "
-        "Open DD | Cycles | Avg hold |",
+        "| Candidate | CAGR | MDD | P95 MAE | >40d lockup | Max hold | Open DD | Cycles | Avg hold |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for name, candidate in report["candidates"].items():
         metrics = candidate["segments"]["validation_2021_2024"]["combined"]
         lines.append(
-            f"| {name} | {metrics['cagr_pct']:+.2f}% | "
-            f"{metrics['mdd_pct']:.2f}% | "
+            f"| {name} | {metrics['cagr_pct']:+.2f}% | {metrics['mdd_pct']:.2f}% | "
             f"{metrics['mae_p95_worst_symbol_pct']:.2f}% | "
             f"{metrics['lockup_over_40_days_worst_symbol_pct']:.2f}% | "
             f"{metrics['max_holding_days_worst_symbol_including_open']}d | "
             f"{metrics['open_price_drawdown_worst_symbol_pct']:.2f}% | "
-            f"{metrics['closed_cycles']} | "
-            f"{metrics['avg_holding_days_including_open']:.1f}d |"
+            f"{metrics['closed_cycles']} | {metrics['avg_holding_days_including_open']:.1f}d |"
         )
-    lines += [
-        "",
-        "## Selection rule",
-        "",
-        "Pick the best filter inside each TP track first; then compare the two "
-        "track winners. Reject candidates that leave the multi-year lockup "
-        "unresolved unless they materially improve the risk/return profile.",
-    ]
     return "\n".join(lines) + "\n"
 
 
@@ -184,9 +179,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--end", default=datetime.now(UTC).date().isoformat())
     parser.add_argument(
-        "--output",
-        type=Path,
-        default=ROOT / "reports" / "v2_focused_backtest.json",
+        "--output", type=Path, default=ROOT / "reports" / "v2_focused_backtest.json"
     )
     args = parser.parse_args()
     base = load_config(ROOT / "strategy.yaml")
@@ -231,21 +224,13 @@ def main():
                     sector_data=sector_data,
                 )
             candidate["segments"][segment_name] = {
-                "combined": combined_metrics(
-                    results,
-                    config.backtest.annualization_days,
-                ),
-                "symbols": {
-                    symbol: result.metrics for symbol, result in results.items()
-                },
+                "combined": combined_metrics(results, config.backtest.annualization_days),
+                "symbols": {symbol: result.metrics for symbol, result in results.items()},
             }
         report["candidates"][name] = candidate
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     markdown_path = args.output.with_suffix(".md")
     markdown_path.write_text(markdown_summary(report), encoding="utf-8")
     print(markdown_path.read_text(encoding="utf-8"))
