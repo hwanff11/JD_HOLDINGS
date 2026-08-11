@@ -590,6 +590,86 @@ def _combined(
     return combined_metrics
 
 
+def _completed_trade_cycles(result: SimResult) -> list[dict[str, Any]]:
+    """Pair rotation fills into closed cycles with fee-inclusive realized P&L."""
+    cycles: list[dict[str, Any]] = []
+    entry: dict[str, Any] | None = None
+    trades = list(result.trades)
+    for offset, trade in enumerate(trades):
+        if trade["side"] == "BUY":
+            entry = trade
+            continue
+        if trade["side"] != "SELL" or entry is None:
+            continue
+
+        entry_timestamp = pd.Timestamp(entry["date"])
+        exit_timestamp = pd.Timestamp(trade["date"])
+        entry_value = float(entry["quantity"]) * float(entry["price"]) + float(entry["fee"])
+        exit_value = float(trade["quantity"]) * float(trade["price"]) - float(trade["fee"])
+        net_pnl = exit_value - entry_value
+        next_trade = trades[offset + 1] if offset + 1 < len(trades) else None
+        destination = (
+            str(next_trade["symbol"])
+            if next_trade is not None
+            and next_trade["side"] == "BUY"
+            and next_trade["date"] == trade["date"]
+            else "SGOV"
+        )
+        holding_sessions = int(
+            ((result.equity.index > entry_timestamp) & (result.equity.index <= exit_timestamp)).sum()
+        )
+        cycles.append(
+            {
+                "entry_date": entry["date"],
+                "exit_date": trade["date"],
+                "symbol": entry["symbol"],
+                "quantity": entry["quantity"],
+                "entry_price": entry["price"],
+                "exit_price": trade["price"],
+                "holding_sessions": holding_sessions,
+                "holding_calendar_days": (exit_timestamp - entry_timestamp).days,
+                "net_pnl": round(net_pnl, 2),
+                "net_return_pct": round(net_pnl / entry_value * 100, 2),
+                "exit_destination": destination,
+            }
+        )
+        entry = None
+    return cycles
+
+
+def _trade_analysis(result: SimResult) -> dict[str, Any]:
+    cycles = _completed_trade_cycles(result)
+    by_symbol: dict[str, Any] = {}
+    for symbol in SYMBOLS:
+        symbol_cycles = [cycle for cycle in cycles if cycle["symbol"] == symbol]
+        by_symbol[symbol] = {
+            "completed_cycles": len(symbol_cycles),
+            "wins": sum(cycle["net_pnl"] > 0 for cycle in symbol_cycles),
+            "losses": sum(cycle["net_pnl"] <= 0 for cycle in symbol_cycles),
+            "win_rate_pct": round(
+                sum(cycle["net_pnl"] > 0 for cycle in symbol_cycles)
+                / len(symbol_cycles)
+                * 100,
+                2,
+            )
+            if symbol_cycles
+            else 0.0,
+            "realized_net_pnl": round(sum(cycle["net_pnl"] for cycle in symbol_cycles), 2),
+            "average_net_return_pct": round(
+                sum(cycle["net_return_pct"] for cycle in symbol_cycles) / len(symbol_cycles),
+                2,
+            )
+            if symbol_cycles
+            else 0.0,
+        }
+    return {
+        "completed_cycles": len(cycles),
+        "by_symbol": by_symbol,
+        "recent_10_completed": cycles[-10:],
+        "open_position": result.open_position,
+    }
+
+
 def _markdown(report: dict[str, Any]) -> str:
     lines = [
         "# JDSS 단순 대안 전략 연구",
@@ -634,6 +714,26 @@ def _markdown(report: dict[str, Any]) -> str:
             "운영 설정과 주문 로직은 변경하지 않습니다.",
         ]
     )
+    trade_analysis = report["candidates"].get("N_ROTATION_TREND_CAP40", {}).get(
+        "trade_analysis"
+    )
+    if trade_analysis:
+        lines.extend(
+            [
+                "",
+                "## N 전략 최근 10개 완료 거래 (2023~현재)",
+                "",
+                "| 매수일 | 매도일 | 종목 | 보유 세션 | 매수가 | 매도가 | 순손익 | 순수익률 | 매도 후 |",
+                "|---|---|---|---:|---:|---:|---:|---:|---|",
+            ]
+        )
+        for cycle in trade_analysis["recent_10_completed"]:
+            lines.append(
+                f"| {cycle['entry_date']} | {cycle['exit_date']} | {cycle['symbol']} | "
+                f"{cycle['holding_sessions']} | ${cycle['entry_price']:.4f} | "
+                f"${cycle['exit_price']:.4f} | ${cycle['net_pnl']:+,.2f} | "
+                f"{cycle['net_return_pct']:+.2f}% | {cycle['exit_destination']} |"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -735,6 +835,11 @@ def main() -> int:
             results = factory(start, end)
             metrics = _combined(results, config)
             candidate_data["segments"][segment] = metrics
+            if candidate == "N_ROTATION_TREND_CAP40" and segment == "test_2023_present":
+                rotation_result = results["portfolio"]
+                if not isinstance(rotation_result, SimResult):
+                    raise TypeError("N rotation research result must be SimResult")
+                candidate_data["trade_analysis"] = _trade_analysis(rotation_result)
         report["candidates"][candidate] = candidate_data
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
