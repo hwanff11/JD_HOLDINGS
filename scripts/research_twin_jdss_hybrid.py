@@ -171,9 +171,12 @@ def _simulate_hybrid(
         )
 
         core_changed = False
-        booster_changed = False
+        booster_regime_changed = False
+        changed_symbols: set[str] = set()
         if pending_core is not None:
-            core_active = {symbol: pending_core[symbol] > 0 for symbol in SYMBOLS}
+            next_active = {symbol: pending_core[symbol] > 0 for symbol in SYMBOLS}
+            booster_regime_changed = next_active != core_active
+            core_active = next_active
             core_targets = {
                 ("core", symbol): pending_core[symbol] for symbol in SYMBOLS
             }
@@ -194,16 +197,17 @@ def _simulate_hybrid(
                     else -int(event["quantity"])
                 )
                 reference_qty[symbol] = max(0, reference_qty[symbol] + signed)
-            booster_changed = True
+                changed_symbols.add(symbol)
 
-        if core_changed or booster_changed:
+        if booster_regime_changed or changed_symbols:
             open_equity = cash + sum(
                 quantities[component][symbol] * opens[symbol]
                 for component in quantities
                 for symbol in SYMBOLS
             )
             booster_targets: dict[tuple[str, str], float] = {}
-            for symbol in SYMBOLS:
+            target_symbols = SYMBOLS if booster_regime_changed else tuple(changed_symbols)
+            for symbol in target_symbols:
                 utilization = min(
                     1.0,
                     reference_qty[symbol] * opens[symbol]
