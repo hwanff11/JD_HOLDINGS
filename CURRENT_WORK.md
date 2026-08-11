@@ -6,6 +6,8 @@
 
 - 운영 안정 기준선: `main`
 - PR #22 병합 반영 기준 SHA: `065cd0c22a4313d809b91174b4215ac0b1435d82`
+- PR #24 병합: GitHub Actions 백테스트·보안검사 자동화 (`8f1e970bb77fc6901bcbbea8bae36f735d3d4e44`)
+- PR #25 병합: Telegram 최근 점수 이력 조회 (`5e9090ee803030be8a713bd2486ce56b4f83e944`)
 - 활성 작업 브랜치: `main`
 - 작업 목표: 동작 보존형 코드 정리, 보안 점검·강화, Markdown 중복 제거와 역할 명확화
 - 전략 변경: 없음
@@ -25,6 +27,8 @@
 - PR #18: dry-run SGOV 알림을 `🧪 모의체결`·`🧪 모의처리`로 구분
 - PR #20: ChatOps 배포 결과에 Actions run ID와 링크 추가
 - PR #18과 #20의 변경은 `main`에 병합됐으나 Oracle에는 미배포
+- PR #24: 수동 JDSS 백테스트(입력·Artifact·Issue 댓글)와 Security(CodeQL·Gitleaks·pip-audit·Bandit) 자동화
+- PR #25: `/history`, `/h` 최근 1~90거래일 점수 조회 추가. 기존 도움말 별칭은 `/menu`로 변경
 
 ## Oracle ChatOps 상태
 
@@ -49,10 +53,12 @@
 - Telegram 취소 콜백의 권한 거부와 미지원 유형을 fail-closed로 처리
 - 로컬 SSH·개인키 형식을 `.gitignore`에 추가
 - Markdown 링크·문서 역할·변동 상태 단일 기준·레거시 설정 경계를 계약 테스트로 고정
+- GitHub Actions PR 검증 121개 테스트 통과, JDSS Dry Run 성공
+- `/history` 점수 이력 입력·출력 테스트 추가
 
 ## 검증 상태
 
-- PR #22: `main` 병합 완료 (`065cd0c22a4313d809b91174b4215ac0b1435d82`)
+- PR #22·#24·#25: `main` 병합 완료
 - CI run `31439294132`: Ruff 통과, pytest 114개 통과, 전체 커버리지 69%, 설정 검증 통과
 - JDSS 2.2 Dry Run run `31439294213`: 성공
 - Markdown 링크·문서 역할·변동 상태 단일 기준·레거시 설정 경계 테스트 통과
