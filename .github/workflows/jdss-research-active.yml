@@ -1,0 +1,41 @@
+name: JDSS V3 Active Research
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    if: startsWith(github.head_ref, 'research/v3-active-')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline_6m, stage_10, stage_7_5]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Run research variant
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: python scripts/research_active.py --variant "$VARIANT" --output "result-$VARIANT.json"
+      - name: Publish summary
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          echo "## $VARIANT" >> "$GITHUB_STEP_SUMMARY"
+          python scripts/research_active.py --summarize "result-$VARIANT.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: active-${{ matrix.variant }}-${{ github.run_id }}
+          path: result-${{ matrix.variant }}.json
