@@ -45,6 +45,13 @@ class PendingOrder:
 
 
 @dataclass(frozen=True)
+class RotationOrder:
+    selected: str | None
+    budget: float
+    sessions_remaining: int
+
+
+@dataclass(frozen=True)
 class SimResult:
     equity: pd.Series
     metrics: dict[str, Any]
@@ -400,7 +407,10 @@ def _simulate_rotation(
     start: str,
     end: str,
     slippage: float,
+    execution_delay_sessions: int = 1,
 ) -> SimResult:
+    if execution_delay_sessions < 1:
+        raise ValueError("execution_delay_sessions must be at least 1")
     index = frames["TQQQ"].index
     for symbol in ("SOXL", "QQQ", "SOXX"):
         index = index.intersection(frames[symbol].index)
@@ -417,7 +427,7 @@ def _simulate_rotation(
     initial_capital = float(config.global_.capital_per_symbol) * len(SYMBOLS)
     account = Account(initial_capital, initial_capital)
     held_symbol: str | None = None
-    pending_choice: tuple[str | None, float] | None = None
+    pending_choice: RotationOrder | None = None
     trades: list[dict[str, Any]] = []
     equity_values: list[float] = []
     exposure: list[float] = []
@@ -434,32 +444,39 @@ def _simulate_rotation(
         account.idle_cash_income += income
 
         if pending_choice is not None:
-            selected, budget = pending_choice
-            if account.quantity > 0 and held_symbol is not None:
-                _sell_all(
-                    account,
-                    timestamp=timestamp,
-                    symbol=held_symbol,
-                    open_price=float(frames[held_symbol].loc[timestamp, "open"]),
-                    fee=fee_sell,
-                    slippage=slippage,
-                    trades=trades,
+            if pending_choice.sessions_remaining > 1:
+                pending_choice = RotationOrder(
+                    pending_choice.selected,
+                    pending_choice.budget,
+                    pending_choice.sessions_remaining - 1,
                 )
-                held_symbol = None
-            if selected is not None:
-                _buy(
-                    account,
-                    timestamp=timestamp,
-                    symbol=selected,
-                    open_price=float(frames[selected].loc[timestamp, "open"]),
-                    budget=budget,
-                    fee=fee_buy,
-                    slippage=slippage,
-                    trades=trades,
-                )
-                if account.quantity > 0:
-                    held_symbol = selected
-            pending_choice = None
+            else:
+                selected = pending_choice.selected
+                if account.quantity > 0 and held_symbol is not None:
+                    _sell_all(
+                        account,
+                        timestamp=timestamp,
+                        symbol=held_symbol,
+                        open_price=float(frames[held_symbol].loc[timestamp, "open"]),
+                        fee=fee_sell,
+                        slippage=slippage,
+                        trades=trades,
+                    )
+                    held_symbol = None
+                if selected is not None:
+                    _buy(
+                        account,
+                        timestamp=timestamp,
+                        symbol=selected,
+                        open_price=float(frames[selected].loc[timestamp, "open"]),
+                        budget=pending_choice.budget,
+                        fee=fee_buy,
+                        slippage=slippage,
+                        trades=trades,
+                    )
+                    if account.quantity > 0:
+                        held_symbol = selected
+                pending_choice = None
 
         if timestamp in weekly_dates:
             selected = _rotation_choice(
@@ -478,7 +495,11 @@ def _simulate_rotation(
                     if selected is not None
                     else 0.0
                 )
-                pending_choice = (selected, budget)
+                pending_choice = RotationOrder(
+                    selected,
+                    budget,
+                    execution_delay_sessions,
+                )
 
         position_value = 0.0
         if account.quantity > 0 and held_symbol is not None:
