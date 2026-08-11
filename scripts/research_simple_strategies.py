@@ -349,6 +349,8 @@ def _last_session_of_week(index: pd.DatetimeIndex) -> set[pd.Timestamp]:
 def _rotation_choice(
     timestamp: pd.Timestamp,
     underlying_frames: dict[str, pd.DataFrame],
+    *,
+    require_rising_long_trend: bool = False,
 ) -> str | None:
     ranked: list[tuple[float, str]] = []
     for symbol, underlying_symbol in UNDERLYING.items():
@@ -357,7 +359,12 @@ def _rotation_choice(
             pd.isna(row["return63"])
             or pd.isna(row["vol20"])
             or pd.isna(row["sma200_r"])
+            or (require_rising_long_trend and pd.isna(row["sma50_r"]))
             or float(row["close"]) <= float(row["sma200_r"])
+            or (
+                require_rising_long_trend
+                and float(row["sma50_r"]) <= float(row["sma200_r"])
+            )
             or float(row["return63"]) <= 0
             or float(row["vol20"]) <= 0
         ):
@@ -373,9 +380,9 @@ def _rotation_budget(
     timestamp: pd.Timestamp,
     initial_capital: float,
 ) -> float:
-    if name == "I_ROTATION_CAP50":
+    if name in {"I_ROTATION_CAP50", "L_ROTATION_TREND_CAP50"}:
         return initial_capital * 0.5
-    if name == "J_ROTATION_FULL":
+    if name in {"J_ROTATION_FULL", "M_ROTATION_TREND_FULL"}:
         return initial_capital
     selected_vol = float(frames[selected].loc[timestamp, "vol20"])
     target_weight = min(1.0, 0.25 / selected_vol) if selected_vol > 0 else 0.0
@@ -454,7 +461,10 @@ def _simulate_rotation(
 
         if timestamp in weekly_dates:
             selected = _rotation_choice(
-                timestamp, {"QQQ": frames["QQQ"], "SOXX": frames["SOXX"]}
+                timestamp,
+                {"QQQ": frames["QQQ"], "SOXX": frames["SOXX"]},
+                require_rising_long_trend=name
+                in {"L_ROTATION_TREND_CAP50", "M_ROTATION_TREND_FULL"},
             )
             if selected != held_symbol:
                 budget = (
@@ -589,6 +599,8 @@ def _markdown(report: dict[str, Any]) -> str:
             "- I_ROTATION_CAP50: 주간 QQQ/SOXX 위험조정 63일 모멘텀 1위에 총자금 50% 투자",
             "- J_ROTATION_FULL: I와 같되 총자금 100% 집중",
             "- K_ROTATION_VOL25: I와 같되 선택 ETF의 20일 변동성으로 포트폴리오 목표변동성 25% 비중 결정",
+            "- L_ROTATION_TREND_CAP50: I에 기초자산 50일선>200일선 확인을 추가",
+            "- M_ROTATION_TREND_FULL: L과 같되 총자금 100% 집중",
             "",
             "> 연구 전용 결과입니다. 모든 신호가 승인되었다고 가정하며 "
             "운영 설정과 주문 로직은 변경하지 않습니다.",
@@ -670,7 +682,13 @@ def main() -> int:
                     slippage=args.slippage,
                 )
             }
-            for name in ("I_ROTATION_CAP50", "J_ROTATION_FULL", "K_ROTATION_VOL25")
+            for name in (
+                "I_ROTATION_CAP50",
+                "J_ROTATION_FULL",
+                "K_ROTATION_VOL25",
+                "L_ROTATION_TREND_CAP50",
+                "M_ROTATION_TREND_FULL",
+            )
         },
     }
 
