@@ -1,16 +1,13 @@
 name: JDSS V3 Trend Research
 
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   trend-research:
-    if: github.actor == github.repository_owner && startsWith(github.event.issue.title, '[research-v3-trend]')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -40,26 +37,31 @@ jobs:
           TREND_MONTHS: ${{ matrix.trend_months }}
       - name: Run backtest
         run: jdss --config strategy.research.yaml backtest --symbol ALL --start 2011-01-01 --slippage 0.0010 --output result.json
-      - name: Comment compact result
+      - name: Create summary
         env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
           TREND_MONTHS: ${{ matrix.trend_months }}
         run: |
-          python - <<'PY' > comment.md
+          python - <<'PY'
           import json, os
+          from pathlib import Path
           r=json.load(open('result.json'))
           m=r['v3_portfolio']['metrics']
           half=m.get('half_year_returns_pct', {})
-          print(f"## Trend {os.environ['TREND_MONTHS']}개월")
-          print(f"- Total Return: {m['total_return_pct']:+.2f}%")
-          print(f"- CAGR: {m['cagr_pct']:+.2f}%")
-          print(f"- MDD: {m['mdd_pct']:.2f}%")
-          print(f"- Sharpe: {m['sharpe']:.3f}")
-          print(f"- 평균 노출: {m['average_exposure_pct']:.2f}%")
-          print('\n| 반기 | 수익률 |')
-          print('|---|---:|')
-          for p,v in half.items():
-              if p >= '2022-H1': print(f'| {p} | {v:+.2f}% |')
+          lines=[f"## Trend {os.environ['TREND_MONTHS']}개월",
+                 f"- Total Return: {m['total_return_pct']:+.2f}%",
+                 f"- CAGR: {m['cagr_pct']:+.2f}%",
+                 f"- MDD: {m['mdd_pct']:.2f}%",
+                 f"- Sharpe: {m['sharpe']:.3f}",
+                 f"- 평균 노출: {m['average_exposure_pct']:.2f}%",
+                 '', '| 반기 | 수익률 |', '|---|---:|']
+          lines += [f'| {p} | {v:+.2f}% |' for p,v in half.items() if p >= '2022-H1']
+          Path('summary.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+          Path(os.environ['GITHUB_STEP_SUMMARY']).write_text('\n'.join(lines)+'\n', encoding='utf-8')
           PY
-          gh issue comment "$ISSUE_NUMBER" --body-file comment.md
+      - name: Upload research result
+        uses: actions/upload-artifact@v6
+        with:
+          name: trend-${{ matrix.trend_months }}m-${{ github.run_id }}
+          path: |
+            result.json
+            summary.md
