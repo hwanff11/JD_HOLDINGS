@@ -3,8 +3,6 @@ name: JDSS V3 Whipsaw Research
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'scripts/research_whipsaw.py'
 
 permissions:
   contents: read
