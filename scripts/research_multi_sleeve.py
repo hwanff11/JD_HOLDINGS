@@ -16,12 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from research_simple_strategies import ROOT, _idle_return, _research_indicators
 
 from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
-
-from research_simple_strategies import ROOT, _idle_return, _research_indicators
 
 SYMBOLS = ("TQQQ", "SOXL")
 UNDERLYING = {"TQQQ": "QQQ", "SOXL": "SOXX"}
