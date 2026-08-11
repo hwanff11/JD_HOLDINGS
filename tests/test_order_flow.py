@@ -241,6 +241,11 @@ def test_tp2_recovery_does_not_reset_tp1_remainder_clock(tmp_path, config):
     quote, premarket = create_approved_entry(repository, trading, config)
     trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     fill_tp1_completely(repository, broker, monitor)
+    position = repository.get_position("TQQQ")
+    repository.set_system_value(
+        tp1_completed_at_key("TQQQ", position.cycle_id),
+        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
+    )
 
     tp2_local = next(
         order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2"

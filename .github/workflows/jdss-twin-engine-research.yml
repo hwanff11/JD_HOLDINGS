@@ -1,0 +1,61 @@
+name: JDSS Twin Engine Research
+
+on:
+  push:
+    branches: [research/jdss-simple-strategies]
+    paths:
+      - scripts/research_twin_engine.py
+      - .github/workflows/jdss-twin-engine-research.yml
+  pull_request:
+    paths:
+      - scripts/research_twin_engine.py
+      - .github/workflows/jdss-twin-engine-research.yml
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: Last completed U.S. trading session (YYYY-MM-DD)
+        required: true
+        default: "2026-08-10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jdss-twin-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        slippage: ["0.0005", "0.001", "0.002"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      - run: ruff check scripts/research_twin_engine.py
+      - name: Run twin-engine research
+        env:
+          END_DATE: ${{ inputs.end_date || '2026-08-10' }}
+          SLIPPAGE: ${{ matrix.slippage }}
+        run: |
+          python scripts/research_twin_engine.py \
+            --end "$END_DATE" \
+            --slippage "$SLIPPAGE" \
+            --output reports/twin_engine.json \
+            --markdown reports/twin_engine.md
+      - run: cat reports/twin_engine.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: jdss-twin-engine-${{ github.run_id }}-${{ matrix.slippage }}
+          path: |
+            reports/twin_engine.json
+            reports/twin_engine.md
+          retention-days: 30

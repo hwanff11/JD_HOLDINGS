@@ -123,6 +123,10 @@ def test_final_production_flow_end_to_end_with_restart(tmp_path, config):
         datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
     )
     assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
+    repository.set_system_value(
+        tp1_completed_at_key("TQQQ", position.cycle_id),
+        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
+    )
 
     # 3) Simulate a TP2 cancellation/recovery before the 20-session deadline.
     old_tp2 = next(order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2")

@@ -22,6 +22,8 @@
 - 기존 개인 SGOV는 자동 편입하지 않음
 - Telegram `/sgov`에서 관리 수량·평가액·목표액·비관리 수량·SAFE_MODE 확인
 
+PR #27에서 월간 쌍발 코어와 JDSS 부스터 등 대안 전략을 연구했지만 최종 승격 기준을 통과하지 못했다. 해당 연구 스크립트와 보고서는 비교 재현용이며 위 운영 규칙을 대체하지 않는다. 판정 근거는 [`research/PR27_SIMPLE_STRATEGY_RESEARCH.md`](research/PR27_SIMPLE_STRATEGY_RESEARCH.md)에 기록한다.
+
 아래 JDSS 2.0 이하 내용은 후보 선정 과정과 과거 운영 기록이며 현재 설정이 아닙니다. 현재 수치와 충돌하는 것은 의도된 역사 기록입니다.
 
 ---
