@@ -8,8 +8,8 @@
 - PR #22 병합 반영 기준 SHA: `065cd0c22a4313d809b91174b4215ac0b1435d82`
 - PR #24 병합: GitHub Actions 백테스트·보안검사 자동화 (`8f1e970bb77fc6901bcbbea8bae36f735d3d4e44`)
 - PR #25 병합: Telegram 최근 점수 이력 조회 (`5e9090ee803030be8a713bd2486ce56b4f83e944`)
-- 활성 작업 브랜치: `research/jdss-simple-strategies`
-- 작업 목표: PR #27 대안 전략 연구를 재검증하고 연구 자동화·판정 문서를 `main`에 반영
+- 활성 작업 브랜치: `main`
+- 작업 목표: PR #27 대안 전략 연구 자동화와 승격 보류 판정을 기준선에 보존
 - 전략 변경: 없음
 - 실거래 승격: 금지
 
@@ -61,6 +61,11 @@
 
 ## 검증 상태
 
+- PR #27 최신 브랜치: pytest 125개, Ruff, 설정, Bash, workflow YAML, 연구 스크립트 문법검사 통과
+- 최종 후보를 슬리피지 0.05%·0.10%·0.20%로 재실행했으며 세 조건 모두 승격 보류
+- GitHub Actions는 코드 실행 전 계정 결제 실패 또는 spending limit 오류로 전체 job이 차단됨
+- 운영 전략·설정·주문 로직 변경 없음
+
 - PR #22·#24·#25: `main` 병합 완료
 - CI run `31439294132`: Ruff 통과, pytest 114개 통과, 전체 커버리지 69%, 설정 검증 통과
 - JDSS 2.2 Dry Run run `31439294213`: 성공
@@ -70,8 +75,8 @@
 
 ## 다음 작업
 
-1. PR #27 전체 CI와 연구 matrix 성공 후 `main` 병합
-2. 최신 `main`을 Oracle에 강제 dry-run 배포하고 서비스 active·Toss smoke 확인
+1. GitHub Billing & plans에서 Actions 결제 또는 spending limit을 복구
+2. 복구 후 PR #27 연구 matrix를 필요 시 재실행하되, 새 사전 기준 없이는 운영 전략으로 승격하지 않음
 
 ## 작업 종료 갱신 규칙
 
