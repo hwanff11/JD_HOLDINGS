@@ -382,6 +382,8 @@ def _rotation_budget(
 ) -> float:
     if name in {"I_ROTATION_CAP50", "L_ROTATION_TREND_CAP50"}:
         return initial_capital * 0.5
+    if name == "N_ROTATION_TREND_CAP40":
+        return initial_capital * 0.4
     if name in {"J_ROTATION_FULL", "M_ROTATION_TREND_FULL"}:
         return initial_capital
     selected_vol = float(frames[selected].loc[timestamp, "vol20"])
@@ -464,7 +466,11 @@ def _simulate_rotation(
                 timestamp,
                 {"QQQ": frames["QQQ"], "SOXX": frames["SOXX"]},
                 require_rising_long_trend=name
-                in {"L_ROTATION_TREND_CAP50", "M_ROTATION_TREND_FULL"},
+                in {
+                    "L_ROTATION_TREND_CAP50",
+                    "M_ROTATION_TREND_FULL",
+                    "N_ROTATION_TREND_CAP40",
+                },
             )
             if selected != held_symbol:
                 budget = (
@@ -601,6 +607,7 @@ def _markdown(report: dict[str, Any]) -> str:
             "- K_ROTATION_VOL25: I와 같되 선택 ETF의 20일 변동성으로 포트폴리오 목표변동성 25% 비중 결정",
             "- L_ROTATION_TREND_CAP50: I에 기초자산 50일선>200일선 확인을 추가",
             "- M_ROTATION_TREND_FULL: L과 같되 총자금 100% 집중",
+            "- N_ROTATION_TREND_CAP40: L과 같되 개발구간 위험매칭을 위해 총자금 40% 배정",
             "",
             "> 연구 전용 결과입니다. 모든 신호가 승인되었다고 가정하며 "
             "운영 설정과 주문 로직은 변경하지 않습니다.",
@@ -688,6 +695,7 @@ def main() -> int:
                 "K_ROTATION_VOL25",
                 "L_ROTATION_TREND_CAP50",
                 "M_ROTATION_TREND_FULL",
+                "N_ROTATION_TREND_CAP40",
             )
         },
     }
