@@ -34,6 +34,7 @@ jobs:
       fail-fast: false
       matrix:
         slippage: ["0.0005", "0.001", "0.002"]
+        candidate: ["N_ROTATION_TREND_CAP40", "P_ROTATION_TREND_CAP30"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -51,17 +52,19 @@ jobs:
         env:
           END_DATE: ${{ inputs.end_date || '2026-08-10' }}
           SLIPPAGE: ${{ matrix.slippage }}
+          CANDIDATE: ${{ matrix.candidate }}
         run: |
           python scripts/research_rotation_robustness.py \
             --end "$END_DATE" \
             --slippage "$SLIPPAGE" \
+            --candidate "$CANDIDATE" \
             --output reports/rotation_robustness.json \
             --markdown reports/rotation_robustness.md
       - name: Publish job summary
         run: cat reports/rotation_robustness.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
-          name: jdss-rotation-robustness-${{ github.run_id }}-${{ matrix.slippage }}
+          name: jdss-rotation-robustness-${{ github.run_id }}-${{ matrix.candidate }}-${{ matrix.slippage }}
           path: |
             reports/rotation_robustness.json
             reports/rotation_robustness.md
