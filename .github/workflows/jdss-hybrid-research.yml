@@ -16,10 +16,6 @@ on:
         description: Last completed U.S. trading session (YYYY-MM-DD)
         required: true
         default: "2026-08-10"
-      slippage:
-        description: One-way execution slippage
-        required: true
-        default: "0.001"
 
 permissions:
   contents: read
@@ -32,6 +28,10 @@ jobs:
   compare:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        slippage: ["0.0005", "0.001", "0.002"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -44,7 +44,7 @@ jobs:
       - name: Run A-B-C comparison
         env:
           END_DATE: ${{ inputs.end_date || '2026-08-10' }}
-          SLIPPAGE: ${{ inputs.slippage || '0.001' }}
+          SLIPPAGE: ${{ matrix.slippage }}
         run: |
           python scripts/research_hybrid_jdss.py \
             --end "$END_DATE" \
@@ -55,7 +55,7 @@ jobs:
         run: cat reports/hybrid_research.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
-          name: jdss-hybrid-research-${{ github.run_id }}
+          name: jdss-hybrid-research-${{ github.run_id }}-${{ matrix.slippage }}
           path: |
             reports/hybrid_research.json
             reports/hybrid_research.md
