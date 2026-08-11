@@ -54,6 +54,7 @@ def _simulate(
     enabled: tuple[str, ...] = SYMBOLS,
     slippage: float = 0.001,
     monthly_rebalance: bool = True,
+    include_details: bool = False,
 ) -> tuple[pd.Series, dict[str, Any]]:
     full_index = raw["TQQQ"].index
     for symbol in ("SOXL", "QQQ", "SOXX"):
@@ -107,13 +108,13 @@ def _simulate(
                         fee = quantity * buy_price * buy_fee
                         cash -= quantity * buy_price + fee
                         quantities[symbol] += quantity
-                        trades.append({"date": str(timestamp.date()), "symbol": symbol, "side": "BUY", "quantity": quantity})
+                        trades.append({"date": str(timestamp.date()), "symbol": symbol, "side": "BUY", "quantity": quantity, "price": round(buy_price, 6), "fee": round(fee, 6), "target_weight": target_weight})
                 elif difference < 0:
                     quantity = -difference
                     fee = quantity * sell_price * sell_fee
                     cash += quantity * sell_price - fee
                     quantities[symbol] -= quantity
-                    trades.append({"date": str(timestamp.date()), "symbol": symbol, "side": "SELL", "quantity": quantity})
+                    trades.append({"date": str(timestamp.date()), "symbol": symbol, "side": "SELL", "quantity": quantity, "price": round(sell_price, 6), "fee": round(fee, 6), "target_weight": target_weight})
 
         if timestamp in month_ends:
             targets = {
@@ -142,6 +143,10 @@ def _simulate(
     metrics = _metrics(
         equity, exposure_values, trades, idle_income, config.backtest.annualization_days
     )
+    if include_details:
+        metrics["_trades"] = trades
+        metrics["_open_positions"] = quantities
+        metrics["_final_cash"] = round(cash, 2)
     return equity, metrics
 
 
