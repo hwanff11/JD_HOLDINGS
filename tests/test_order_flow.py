@@ -91,6 +91,12 @@ def fill_tp1_completely(repository, broker, monitor):
     tp1["execution"]["averageFilledPrice"] = tp1["price"]
     broker._apply_fill(tp1)
     events = monitor.run_once(now=datetime(2026, 8, 10, 22, 0, tzinfo=UTC))
+    position = repository.get_position("TQQQ")
+    assert position.cycle_id is not None
+    repository.set_system_value(
+        tp1_completed_at_key("TQQQ", position.cycle_id),
+        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
+    )
     return events
 
 

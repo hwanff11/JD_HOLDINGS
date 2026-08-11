@@ -49,7 +49,7 @@ git remote -v
 env -u GITHUB_TOKEN ./deploy.sh
 ```
 
-권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 배포 커밋이 `main` 계보인지 확인하고 Ruff·pytest·설정·버전을 한 번 검증한 뒤, `deploy.sh`에 이미 검증했음을 알려 중복 실행만 생략한다.
+권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 실행 시점의 최신 `main`을 직접 체크아웃하고 원격 `main`과 정확히 일치하는지 확인한 뒤 Ruff·pytest·설정·버전을 한 번 검증한다. 이후 `deploy.sh`에 이미 검증했음을 알려 중복 실행만 생략한다.
 
 ```dotenv
 JDSS_TRADING_MODE=dry_run
@@ -62,17 +62,11 @@ JDSS_LIVE_CONFIRMATION=
 
 ChatGPT의 GitHub 연결에서 수동 Actions dispatch가 직접 제공되지 않는 환경은 GitHub 이슈를 배포 요청으로 사용한다. ChatGPT는 다음을 순서대로 수행한다.
 
-1. 대상 PR의 필수 CI와 JDSS Dry Run이 성공했는지 확인한다.
-2. PR을 `main`에 병합하고 최신 40자리 `main` SHA를 확인한다.
-3. 저장소 소유자 계정으로 제목이 `[deploy-oracle-dry-run] JDSS <SHA>`인 이슈를 생성한다.
-4. 이슈 본문에 아래 형식을 정확히 넣는다.
-
-```text
-ref: 0123456789abcdef0123456789abcdef01234567
-```
-
-5. Actions는 이슈 작성자가 저장소 소유자인지, SHA가 40자리인지, SHA가 `main` 계보인지 검증한다.
-6. 검증 후 pytest·Ruff·설정·버전 게이트와 Oracle dry-run 배포·Toss smoke test를 실행하고, 성공 또는 실패 결과를 같은 이슈에 댓글로 남긴다.
+1. 대상 PR의 필수 CI와 JDSS Dry Run이 성공했는지 확인하고 PR을 `main`에 병합한다.
+2. 저장소 소유자 계정으로 제목이 `[deploy-oracle-dry-run]`으로 시작하는 이슈를 생성한다. SHA와 특별한 본문은 필요하지 않다.
+3. Actions는 이슈 작성자가 저장소 소유자인지 확인하고 실행 시점의 최신 `main`을 직접 체크아웃한다.
+4. 체크아웃한 HEAD가 원격 `main`과 정확히 같은지 검증한다. 실행 중 `main`이 바뀌면 오래된 커밋을 배포하지 않고 안전하게 실패한다.
+5. 검증 후 pytest·Ruff·설정·버전 게이트와 Oracle dry-run 배포·Toss smoke test를 실행하고, 실제 배포 SHA와 성공 또는 실패 결과를 같은 이슈에 댓글로 남긴다.
 
 ChatGPT는 서버 SSH 키나 Toss 비밀값을 직접 취급하지 않는다. 비밀값은 GitHub Environment `oracle-dry-run`과 Oracle shared `.env`에만 유지한다. 이 ChatOps 경로도 `dry_run`만 허용하며 live 전환에는 사용하지 않는다.
 

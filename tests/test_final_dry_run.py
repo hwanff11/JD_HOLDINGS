@@ -117,6 +117,11 @@ def test_final_production_flow_end_to_end_with_restart(tmp_path, config):
     position = repository.get_position("TQQQ")
     assert position.state == PositionState.PARTIAL_TP_1
     assert position.quantity > 0
+    assert position.cycle_id is not None
+    repository.set_system_value(
+        tp1_completed_at_key("TQQQ", position.cycle_id),
+        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
+    )
     assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
     repository.set_system_value(
         tp1_completed_at_key("TQQQ", position.cycle_id),
