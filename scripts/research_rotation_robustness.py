@@ -10,7 +10,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
 from research_simple_strategies import (
     DOWNLOAD_SYMBOLS,
     ROOT,
