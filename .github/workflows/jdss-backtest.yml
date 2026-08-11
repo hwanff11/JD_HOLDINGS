@@ -1,4 +1,4 @@
-name: JDSS Backtest
+name: JDSS V3 Backtest
 
 on:
   workflow_dispatch:
@@ -32,6 +32,8 @@ on:
         required: false
         default: ""
         type: string
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -39,6 +41,11 @@ permissions:
 
 jobs:
   backtest:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.issue.title, '[backtest-v3]'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,10 +64,10 @@ jobs:
 
       - name: Run backtest
         env:
-          INPUT_SYMBOL: ${{ inputs.symbol }}
-          INPUT_START: ${{ inputs.start }}
+          INPUT_SYMBOL: ${{ inputs.symbol || 'ALL' }}
+          INPUT_START: ${{ inputs.start || '2011-01-01' }}
           INPUT_END: ${{ inputs.end }}
-          INPUT_SLIPPAGE: ${{ inputs.slippage }}
+          INPUT_SLIPPAGE: ${{ inputs.slippage || '0.0010' }}
         run: |
           set -Eeuo pipefail
           mkdir -p reports
@@ -70,12 +77,12 @@ jobs:
           fi
           jdss "${args[@]}"
 
-      - name: Create summary
+      - name: Create V3 summary
         env:
-          INPUT_SYMBOL: ${{ inputs.symbol }}
-          INPUT_START: ${{ inputs.start }}
+          INPUT_SYMBOL: ${{ inputs.symbol || 'ALL' }}
+          INPUT_START: ${{ inputs.start || '2011-01-01' }}
           INPUT_END: ${{ inputs.end }}
-          INPUT_SLIPPAGE: ${{ inputs.slippage }}
+          INPUT_SLIPPAGE: ${{ inputs.slippage || '0.0010' }}
         run: |
           python - <<'PY'
           import json
@@ -84,7 +91,7 @@ jobs:
 
           report = json.loads(Path("reports/backtest.json").read_text(encoding="utf-8"))
           lines = [
-              "# JDSS 백테스트 결과",
+              "# JDSS V3 백테스트 결과",
               "",
               f"- 종목: {os.environ['INPUT_SYMBOL']}",
               f"- 기간: {os.environ['INPUT_START']} ~ {os.environ['INPUT_END'] or '최신 완결 거래일'}",
@@ -111,21 +118,29 @@ jobs:
                   f"- CAGR: {portfolio['cagr_pct']:+.2f}%",
                   f"- MDD: {portfolio['mdd_pct']:.2f}%",
               ])
+          v3 = report.get("v3_portfolio", {}).get("metrics", {})
+          if v3:
+              lines.extend([
+                  f"- Sharpe: {v3['sharpe']:.3f}",
+                  f"- 평균 노출: {v3['average_exposure_pct']:.2f}%",
+                  f"- 코어 체결: {v3['component_fills']['core']}",
+                  f"- 부스터 체결: {v3['component_fills']['booster']}",
+              ])
           summary = "\n".join(lines) + "\n"
           Path("reports/backtest.md").write_text(summary, encoding="utf-8")
           Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(summary, encoding="utf-8")
           PY
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jdss-backtest-${{ github.run_id }}
           path: reports/backtest.*
 
       - name: Comment result on Issue
-        if: ${{ inputs.issue_number != '' }}
+        if: ${{ github.event_name == 'issues' || inputs.issue_number != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ inputs.issue_number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           gh issue comment "$ISSUE_NUMBER" --body-file reports/backtest.md

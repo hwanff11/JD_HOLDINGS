@@ -12,6 +12,7 @@ from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.idle_cash_manager import IdleCashManager
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
+from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
@@ -32,13 +33,17 @@ def restore_dry_run_holdings(
     used_capital = Decimal("0")
     for symbol in repository.config.enabled_symbols:
         position = repository.get_position(symbol)
-        if position.quantity <= 0:
+        core = repository.get_core_position(symbol)
+        total_quantity = position.quantity + int(core["qty"])
+        if total_quantity <= 0:
             continue
         broker.holdings[symbol] = {
-            "quantity": position.quantity,
-            "averagePurchasePrice": position.average_price,
+            "quantity": total_quantity,
+            "averagePurchasePrice": position.average_price
+            if position.quantity > 0
+            else Decimal(str(core["avg_price"])),
         }
-        used_capital += position.current_cost_basis
+        used_capital += position.current_cost_basis + Decimal(str(core["cost_basis"]))
     if repository.config.idle_cash.enabled:
         cash_state = repository.get_idle_cash_state()
         if cash_state.managed_quantity > 0:
@@ -47,9 +52,7 @@ def restore_dry_run_holdings(
                 "averagePurchasePrice": cash_state.average_price,
             }
             used_capital += cash_state.average_price * cash_state.managed_quantity
-    allocated = repository.config.global_.capital_per_symbol * len(
-        repository.config.enabled_symbols
-    )
+    allocated = repository.config.total_strategy_capital
     broker.buying_power = max(Decimal("0"), allocated - used_capital)
 
 
@@ -74,13 +77,15 @@ def main() -> None:
     repository = SQLiteRepository(settings.database_path, config)
     data_source = YFinanceDataSource(settings.cache_path)
     market_clock = MarketClock()
+    if config.portfolio.enabled and settings.trading_mode == "live":
+        raise RuntimeError("JDSS V3.0.0은 검증 단계이므로 전체 live 모드가 잠겨 있습니다")
     if settings.trading_mode == "live":
         settings.require_live_trading()
         broker = TossClient()
     else:
         broker = MarketDataDryRunBroker(
             data_source,
-            buying_power=config.global_.capital_per_symbol * len(config.enabled_symbols),
+            buying_power=config.total_strategy_capital,
         )
         restore_dry_run_holdings(repository, broker)
     account_client = (
@@ -118,6 +123,15 @@ def main() -> None:
     if mismatches:
         logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
     analysis_service = AnalysisService(config, repository, data_source, market_clock)
+    portfolio_service = PortfolioService(
+        config,
+        repository,
+        broker,
+        order_manager,
+        data_source,
+        market_clock,
+        trading_mode=settings.trading_mode,
+    )
     FinalTelegramBotApp(
         config,
         settings,
@@ -130,6 +144,7 @@ def main() -> None:
         market_clock,
         account_client,
         idle_cash_manager,
+        portfolio_service,
     ).run()
 
 

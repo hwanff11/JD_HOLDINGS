@@ -1,8 +1,8 @@
 # Oracle 배포 가이드
 
-현재 Oracle 운영본은 **JDSS-2.2.2-SGOV**이다. `dry_run`으로 배포됐으며 SGOV를 포함한 실주문 잠금은 해제하지 않는다.
+Oracle 배포 대상은 **JDSS-3.0.0-TWIN-H05**다. 이 버전은 `dry_run` 전용이며 설정과 애플리케이션 코드가 live 시작을 모두 거부한다.
 
-현재 운영 스냅샷은 서비스 active, 패키지·설정 `2.2.2`, 거래 모드 `dry_run`, 빈 `JDSS_LIVE_CONFIRMATION`이다. TQQQ·SOXL·SGOV 시세와 미국장 캘린더 조회 smoke test를 통과했다. 운영 SHA는 문서에 반복 기록하지 않고 `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 출력을 실시간 기준으로 사용한다.
+현재 실제 배포 SHA와 성공 여부는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md), `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 Actions 출력을 기준으로 한다. 배포 smoke test는 TQQQ·SOXL·SGOV 시세와 미국장 캘린더를 조회할 뿐 주문하지 않는다.
 
 ## 1. 서버 준비
 
@@ -11,7 +11,7 @@ Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필
 
 과거 확인된 기존 서버 기본 Python은 3.8.10이므로 그대로는 배포할 수 없습니다.
 Python 3.12와 해당 버전의 `venv` 모듈을 먼저 설치하고, 로컬 배포 설정에 실제 실행파일을
-지정합니다.
+지정합니다. V2 SQLite 파일은 첫 V3 시작 때 `core_positions`와 `core_fill_progress`를 비파괴적으로 추가한다.
 
 서버 공인 IP를 Toss Securities OpenAPI 허용 IP에 등록합니다. 첫 배포 전에 서버에서
 다음 파일을 직접 만들고 권한을 제한합니다.
@@ -100,13 +100,12 @@ ls -l /home/ubuntu/JD_HOLDINGS/current
 grep '^JDSS_TRADING_MODE=' /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
-Telegram `/ping`, `/dashboard`, `/account`, `/sgov`, `/backtest`를 확인합니다. `/sgov`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. 2.2.2에서는 현금화 의도 DB 마이그레이션, SGOV 현금화 후 최종 승인 자동 재개, 활성 의도 중 재예치 차단, 60초 미체결 재가격을 추가로 확인합니다. 인자 없는
-`/backtest`는 SOXL 최근 300거래일을 실행하며, 신호·매수·미체결·TP1·TP2 내역이
-종목당 최근 15건까지 표시되는지 확인합니다. `/account`는 미국주식과
+Telegram `/ping`, `/portfolio`, `/dashboard`, `/account`, `/sgov`, `/bt`를 확인합니다. `/portfolio`는 QQQ·SOXX 월간 추세, 코어·부스터 분리수량과 live 잠금을 표시해야 합니다. `/sgov`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. SGOV 현금화 후 최종 승인 자동 재개, 활성 의도 중 재예치 차단, 60초 미체결 재가격도 확인합니다. 인자 없는
+`/bt`는 V3 전체 포트폴리오 최근 300거래일을 실행하며 코어·부스터 체결과 통합 성과를 표시해야 합니다. `/account`는 미국주식과
 수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서
 `jdss toss-smoke`를 실행해 TQQQ·SOXL·SGOV 시세와 조회 전용 인증을 확인합니다.
 
-배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 포지션과 주문 상태 및 SGOV 관리 원장을 Reconciliation한다. 2.1 DB에서 처음 생성되는 SGOV 관리 수량은 0이며 기존 계좌 SGOV를 자동 인수하지 않는다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. `dry_run` 관찰과 운영자 확인이 끝나기 전에는 `JDSS_TRADING_MODE=live` 또는 실주문 확인 문자열을 설정하지 않는다.
+배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 코어/부스터 원장·주문 상태·SGOV 관리 원장을 Reconciliation한다. 브로커 TQQQ·SOXL 기대수량은 코어와 부스터의 합이다. 기존 계좌 SGOV를 자동 인수하지 않는다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. V3.0.0에서는 `JDSS_TRADING_MODE=live`를 설정하지 않는다.
 
 ## 4. 롤백
 

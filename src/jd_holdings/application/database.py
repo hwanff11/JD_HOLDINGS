@@ -242,6 +242,25 @@ class SQLiteRepository:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS core_positions (
+                    symbol TEXT PRIMARY KEY,
+                    underlying TEXT NOT NULL,
+                    qty INTEGER NOT NULL DEFAULT 0 CHECK(qty >= 0),
+                    avg_price TEXT NOT NULL DEFAULT '0',
+                    cost_basis TEXT NOT NULL DEFAULT '0',
+                    target_weight TEXT NOT NULL DEFAULT '0',
+                    trend_active INTEGER NOT NULL DEFAULT 0,
+                    signal_trade_date TEXT,
+                    version INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS core_fill_progress (
+                    client_order_id TEXT PRIMARY KEY REFERENCES orders(client_order_id),
+                    applied_filled_qty INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_signals_active
                     ON signals(status, symbol, trade_date);
                 CREATE INDEX IF NOT EXISTS idx_orders_status
@@ -253,6 +272,15 @@ class SQLiteRepository:
                 """
             )
             now = utc_now().isoformat()
+            for symbol, underlying in self.config.portfolio.core_underlyings.items():
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO core_positions(
+                        symbol, underlying, target_weight, updated_at
+                    ) VALUES (?, ?, '0', ?)
+                    """,
+                    (symbol, underlying, now),
+                )
             tp_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(tp_plans)").fetchall()
             }
@@ -398,10 +426,17 @@ class SQLiteRepository:
 
     def strategy_invested_capital(self) -> Decimal:
         with self._connect() as connection:
-            rows = connection.execute(
+            booster_rows = connection.execute(
                 "SELECT current_cost_basis FROM positions"
             ).fetchall()
-        return sum((_decimal(row["current_cost_basis"]) for row in rows), Decimal("0"))
+            core_rows = connection.execute(
+                "SELECT cost_basis FROM core_positions"
+            ).fetchall()
+        booster = sum(
+            (_decimal(row["current_cost_basis"]) for row in booster_rows), Decimal("0")
+        )
+        core = sum((_decimal(row["cost_basis"]) for row in core_rows), Decimal("0"))
+        return booster + core
 
     def has_active_approvals(self) -> bool:
         with self._connect() as connection:
@@ -1146,3 +1181,168 @@ class SQLiteRepository:
                     "SELECT * FROM event_logs ORDER BY event_id DESC LIMIT ?", (limit,)
                 ).fetchall()
             ]
+
+    def get_core_position(self, symbol: str) -> dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM core_positions WHERE symbol = ?", (symbol.upper(),)
+            ).fetchone()
+        if row is None:
+            raise KeyError(symbol)
+        return dict(row)
+
+    def core_positions(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT * FROM core_positions ORDER BY symbol"
+                ).fetchall()
+            ]
+
+    def set_core_target(
+        self,
+        symbol: str,
+        *,
+        active: bool,
+        target_weight: Decimal,
+        signal_trade_date: date,
+    ) -> None:
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE core_positions
+                SET trend_active = ?, target_weight = ?, signal_trade_date = ?,
+                    version = version + 1, updated_at = ?
+                WHERE symbol = ?
+                """,
+                (
+                    int(active),
+                    str(target_weight),
+                    signal_trade_date.isoformat(),
+                    utc_now().isoformat(),
+                    symbol.upper(),
+                ),
+            )
+
+    def create_core_buy_signal(
+        self,
+        *,
+        symbol: str,
+        trade_date: date,
+        signal_close: Decimal,
+        planned_budget: Decimal,
+        valid_until: datetime,
+        code_version: str,
+    ) -> tuple[int, bool]:
+        now = utc_now().isoformat()
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO signals(
+                    cycle_id, symbol, trade_date, score, grade, regime,
+                    score_detail_json, atr_pct, action, target_stage,
+                    signal_close, stage_trigger_price, max_chase_price,
+                    planned_budget, cycle_exposure_cap, valid_until,
+                    strategy_version, config_version, code_version,
+                    created_at, updated_at
+                ) VALUES (
+                    NULL, ?, ?, 0, 'NO_TRADE', 'YELLOW', '{}', '0',
+                    'CORE_REBALANCE_BUY', NULL, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                """,
+                (
+                    symbol.upper(),
+                    trade_date.isoformat(),
+                    str(signal_close),
+                    str(
+                        signal_close
+                        * (Decimal("1") + self.config.global_.entry_max_chase_pct)
+                    ),
+                    str(planned_budget),
+                    str(planned_budget),
+                    valid_until.isoformat(),
+                    self.config.version,
+                    self.config.config_version,
+                    code_version,
+                    now,
+                    now,
+                ),
+            )
+            if cursor.rowcount:
+                return int(cursor.lastrowid), True
+            row = connection.execute(
+                """
+                SELECT signal_id FROM signals
+                WHERE symbol = ? AND trade_date = ? AND strategy_version = ?
+                  AND config_version = ? AND action = 'CORE_REBALANCE_BUY'
+                """,
+                (
+                    symbol.upper(),
+                    trade_date.isoformat(),
+                    self.config.version,
+                    self.config.config_version,
+                ),
+            ).fetchone()
+            if row is None:
+                raise StateConflictError("코어 리밸런싱 신호 생성에 실패했습니다")
+            return int(row["signal_id"]), False
+
+    def apply_core_fill(self, client_order_id: str) -> None:
+        with self.transaction() as connection:
+            order = connection.execute(
+                "SELECT * FROM orders WHERE client_order_id = ?", (client_order_id,)
+            ).fetchone()
+            if order is None:
+                raise KeyError(client_order_id)
+            filled = int(order["filled_qty"])
+            progress = connection.execute(
+                "SELECT applied_filled_qty FROM core_fill_progress WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+            applied = int(progress["applied_filled_qty"]) if progress else 0
+            delta = filled - applied
+            if delta <= 0:
+                return
+            row = connection.execute(
+                "SELECT * FROM core_positions WHERE symbol = ?", (order["symbol"],)
+            ).fetchone()
+            if row is None:
+                raise KeyError(order["symbol"])
+            current_qty = int(row["qty"])
+            avg = _decimal(row["avg_price"])
+            price = _decimal(order["average_fill_price"] or order["price"])
+            if order["side"] == "BUY":
+                next_qty = current_qty + delta
+                next_cost = avg * current_qty + price * delta
+                next_avg = next_cost / next_qty if next_qty else Decimal("0")
+            else:
+                if delta > current_qty:
+                    raise StateConflictError("코어 보유수량보다 많은 매도 체결입니다")
+                next_qty = current_qty - delta
+                next_avg = avg if next_qty else Decimal("0")
+                next_cost = next_avg * next_qty
+            connection.execute(
+                """
+                UPDATE core_positions
+                SET qty = ?, avg_price = ?, cost_basis = ?, version = version + 1,
+                    updated_at = ? WHERE symbol = ?
+                """,
+                (
+                    next_qty,
+                    str(next_avg),
+                    str(next_cost),
+                    utc_now().isoformat(),
+                    order["symbol"],
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO core_fill_progress(client_order_id, applied_filled_qty, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(client_order_id) DO UPDATE SET
+                    applied_filled_qty = excluded.applied_filled_qty,
+                    updated_at = excluded.updated_at
+                """,
+                (client_order_id, filled, utc_now().isoformat()),
+            )

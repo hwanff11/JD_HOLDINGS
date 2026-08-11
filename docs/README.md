@@ -1,6 +1,6 @@
 # JD_HOLDINGS 문서 안내
 
-이 디렉터리는 JDSS 2.2 SGOV의 개발·운영 문서와 과거 연구 기록을 함께 보관한다. 다른 환경의 Codex, ChatGPT, Antigravity는 아래 순서로 읽어야 한다.
+이 디렉터리는 JDSS V3 MONTHLY_H05의 개발·운영 문서와 과거 연구 기록을 함께 보관한다. 다른 환경의 Codex, ChatGPT, Antigravity는 아래 순서로 읽어야 한다.
 
 ## 작업 시작 순서
 
@@ -17,7 +17,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 | 문서 | 역할 | 현재 기준 여부 |
 |---|---|---|
 | [`../CURRENT_WORK.md`](../CURRENT_WORK.md) | 가장 최근 인수인계와 Oracle 운영 상태 | 현재 상태의 최종 기준 |
-| [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md) | JDSS-2.2.2-SGOV 전략·주문·자금관리 계약 | 현재 전략의 최종 기준 |
+| [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md) | JDSS-3.0.0-TWIN-H05 전략·주문·자금관리 계약 | 현재 전략의 최종 기준 |
 | [`TELEGRAM_BOT_GUIDE.md`](TELEGRAM_BOT_GUIDE.md) | Telegram 명령과 출력 해석 | 현재 UI 기준 |
 | [`infra/DEPLOYMENT.md`](infra/DEPLOYMENT.md) | Oracle dry-run 배포·검증·롤백 | 현재 배포 기준 |
 | [`infra/DEVELOPMENT_WORKFLOW.md`](infra/DEVELOPMENT_WORKFLOW.md) | Codex·ChatGPT·Antigravity 협업 절차 | 현재 개발 기준 |
@@ -25,7 +25,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 | [`infra/DECISIONS.md`](infra/DECISIONS.md) | 구현 결정과 변경 이유 | 누적 기록, 최신 결정 우선 |
 | [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md) | 현재 전략 요약과 과거 전략 발전사 | 첫 부분만 현재, Archive는 과거 |
 | [`BACKTEST_REPORT.md`](BACKTEST_REPORT.md) | 현재 회귀 요약과 과거 백테스트 기록 | 첫 부분만 현재, Archive는 과거 |
-| [`research/PR27_SIMPLE_STRATEGY_RESEARCH.md`](research/PR27_SIMPLE_STRATEGY_RESEARCH.md) | PR #27 대안 전략군과 최종 승격 보류 근거 | 연구 기록, 운영 설정 아님 |
+| [`research/PR27_SIMPLE_STRATEGY_RESEARCH.md`](research/PR27_SIMPLE_STRATEGY_RESEARCH.md) | PR #27 후보 비교와 V3에서 월간 H05를 채택한 근거 | 연구·승격 근거 |
 | [`archive/spec_v1/`](archive/spec_v1/) | v1 계열 명세 보존 | 현재 구현에 사용 금지 |
 | [`../configs/strategy_v1.1.2.yaml`](../configs/strategy_v1.1.2.yaml) | v1.1.2 연구 재현용 설정 | Archive 전용, 현재 구현에 사용 금지 |
 

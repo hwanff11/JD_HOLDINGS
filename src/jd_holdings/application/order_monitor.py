@@ -56,6 +56,11 @@ class OrderMonitor:
             receipt = self.order_manager.refresh_order(local["client_order_id"])
             purpose = str(local["purpose"])
             symbol = str(local["symbol"])
+            if purpose in {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}:
+                if receipt.filled_quantity > 0:
+                    self.repository.apply_core_fill(str(local["client_order_id"]))
+                    events.append(f"{symbol} {purpose} 체결 반영")
+                continue
             if purpose in BASE_STATE_BY_PURPOSE:
                 created = datetime.fromisoformat(local["created_at"])
                 elapsed = (current - created).total_seconds()

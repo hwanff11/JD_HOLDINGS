@@ -9,8 +9,8 @@ from jd_holdings.config import ConfigError, PositionConfig, validate_config
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-2.2.2-SGOV"
-    assert config.config_version == "2.2.2"
+    assert config.version == "JDSS-3.0.0-TWIN-H05"
+    assert config.config_version == "3.0.0"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert sum(config.position.stage_weights) == Decimal("1")
     assert config.global_.stop_loss_enabled is False
@@ -40,6 +40,14 @@ def test_default_config_is_valid_and_complete(config):
     assert config.idle_cash.orderbook_limit_offset == Decimal("0.01")
     assert config.idle_cash.reprice_after_seconds == 60
     assert config.idle_cash.require_sale_fill_before_entry is True
+    assert config.portfolio.enabled is True
+    assert config.portfolio.total_capital == Decimal("20000")
+    assert config.portfolio.core_target_weight == Decimal("0.15")
+    assert config.portfolio.booster_max_weight == Decimal("0.05")
+    assert config.portfolio.trend_months == 10
+    assert config.portfolio.core_underlyings == {"TQQQ": "QQQ", "SOXL": "SOXX"}
+    assert config.portfolio.live_enabled is False
+    assert config.global_.capital_per_symbol == Decimal("1000")
 
 
 def test_invalid_stage_weights_are_rejected(config):
@@ -67,3 +75,10 @@ def test_invalid_calibration_exponent_is_rejected(config):
     }
     with pytest.raises(ConfigError, match="volume 보정 지수"):
         validate_config(replace(config, scoring=scoring))
+
+
+def test_v3_live_flag_is_rejected(config):
+    with pytest.raises(ConfigError, match="live_enabled"):
+        validate_config(
+            replace(config, portfolio=replace(config.portfolio, live_enabled=True))
+        )

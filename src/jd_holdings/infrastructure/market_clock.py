@@ -49,6 +49,25 @@ class MarketClock:
         close = self.calendar.session_close(next_session)
         return close.to_pydatetime().astimezone(UTC)
 
+    def is_month_end_session(self, session_date: date) -> bool:
+        """Return whether the next exchange session belongs to a new month."""
+        session = self.calendar.date_to_session(
+            pd.Timestamp(session_date), direction="none"
+        )
+        next_session = self.calendar.next_session(session)
+        return pd.Timestamp(next_session).month != session_date.month
+
+    def month_end_session_on_or_before(self, session_date: date) -> date:
+        """Find the latest completed monthly signal session for restart recovery."""
+        sessions = self.calendar.sessions_in_range(
+            session_date - timedelta(days=45), session_date
+        )
+        for session in reversed(sessions):
+            value = pd.Timestamp(session).date()
+            if self.is_month_end_session(value):
+                return value
+        raise RuntimeError("최근 월말 미국 거래일을 찾을 수 없습니다")
+
     def classify_session(self, now: datetime | None = None) -> str:
         current = now or datetime.now(UTC)
         if current.tzinfo is None:

@@ -28,12 +28,14 @@ class ReconciliationService:
             position = self.repository.get_position(symbol)
             holding = broker_holdings.get(symbol)
             broker_qty = int(Decimal(str(holding["quantity"]))) if holding else 0
+            core_qty = int(self.repository.get_core_position(symbol)["qty"])
+            expected_total = position.quantity + core_qty
             issues: list[str] = []
-            if position.quantity != broker_qty:
-                issues.append(f"BROKER_DB_QTY_MISMATCH:{broker_qty}!={position.quantity}")
-            if position.state == PositionState.EMPTY and broker_qty > 0:
+            if expected_total != broker_qty:
+                issues.append(f"BROKER_DB_QTY_MISMATCH:{broker_qty}!={expected_total}")
+            if position.state == PositionState.EMPTY and core_qty == 0 and broker_qty > 0:
                 issues.append("DB_EMPTY_BROKER_POSITION")
-            if position.state != PositionState.EMPTY and broker_qty == 0:
+            if (position.state != PositionState.EMPTY or core_qty > 0) and broker_qty == 0:
                 issues.append("DB_POSITION_BROKER_EMPTY")
             plan = self.repository.active_tp_plan(symbol)
             if broker_qty > 0 and plan:
@@ -43,8 +45,10 @@ class ReconciliationService:
                     + int(plan["tp2_target_qty"])
                     - int(plan["tp2_filled_qty"])
                 )
-                if expected_tp != broker_qty:
-                    issues.append(f"TP_PLAN_QTY_MISMATCH:{expected_tp}!={broker_qty}")
+                if expected_tp != position.quantity:
+                    issues.append(
+                        f"TP_PLAN_QTY_MISMATCH:{expected_tp}!={position.quantity}"
+                    )
             local_orders = self.repository.open_orders(symbol)
             if any(
                 order["status"] == "UNKNOWN" and not order.get("broker_order_id")

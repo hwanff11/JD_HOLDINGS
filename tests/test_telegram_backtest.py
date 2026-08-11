@@ -25,6 +25,7 @@ from jd_holdings.infrastructure.telegram_bot import (
     parse_backtest_request,
     parse_history_request,
 )
+from jd_holdings.infrastructure.telegram_bot_final import FinalTelegramBotApp
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
@@ -81,7 +82,7 @@ def test_score_history_format_lists_date_score_grade_and_regime():
 
 def test_backtest_command_defaults_to_soxl_and_300_trading_days():
     request = parse_backtest_request("/bt", SYMBOLS, "2011-01-01", LATEST)
-    assert request.symbols == ("SOXL",)
+    assert request.symbols == SYMBOLS
     calendar = MarketClock().calendar
     assert len(calendar.sessions_in_range(request.start, request.end)) == 300
     assert request.end == LATEST
@@ -222,9 +223,16 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "2.2.2"
+    assert __version__ == "3.0.0"
     assert project["version"] == __version__
     assert config.config_version == __version__
+
+
+def test_final_bot_uses_v3_portfolio_backtest_path():
+    assert (
+        FinalTelegramBotApp._run_backtest_and_send
+        is TelegramBotApp._run_backtest_and_send
+    )
 
 
 def test_sgov_is_the_only_idle_cash_command():
@@ -234,11 +242,25 @@ def test_sgov_is_the_only_idle_cash_command():
 def test_telegram_guide_matches_final_contract():
     cards = _guide_cards()
     guide = "\n".join(cards)
-    for expected in ("2.2", "55점", "-2%", "-5%", "-7%", "+4%", "+6%", "+2%", "SGOV", "/sgov"):
+    for expected in (
+        "V3.0",
+        "10개월",
+        "15%",
+        "5%",
+        "55점",
+        "-2%",
+        "-5%",
+        "-7%",
+        "+4%",
+        "+6%",
+        "+2%",
+        "SGOV",
+        "/sgov",
+    ):
         assert expected in guide
     for expected in ("CCI 5 / 10", "RSI 5 / 14", "EMA 5 / 20 / 60", "볼린저 하단", "ATR 비율", "종가 위치"):
         assert expected in guide
-    assert len(cards) == 4
+    assert len(cards) == 5
     assert all(len(card) < 4096 for card in cards)
     assert "50점" not in guide
     assert "-4% 하락" not in guide

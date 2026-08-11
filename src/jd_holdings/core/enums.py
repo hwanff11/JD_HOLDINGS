@@ -23,6 +23,7 @@ class DecisionType(StrEnum):
     ADD_ENTRY_CANDIDATE = "ADD_ENTRY_CANDIDATE"
     REBUY_CANDIDATE = "REBUY_CANDIDATE"
     RISK_REVIEW = "RISK_REVIEW"
+    CORE_REBALANCE_BUY = "CORE_REBALANCE_BUY"
 
 
 class PositionState(StrEnum):
@@ -56,6 +57,8 @@ class OrderPurpose(StrEnum):
     TP1 = "TP1"
     TP2 = "TP2"
     PANIC = "PANIC"
+    CORE_REBALANCE_BUY = "CORE_REBALANCE_BUY"
+    CORE_REBALANCE_SELL = "CORE_REBALANCE_SELL"
 
 
 class OrderStatus(StrEnum):

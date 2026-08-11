@@ -1,29 +1,32 @@
 # JD_HOLDINGS
 
-JDSS(JH Dynamic Score Swing Strategy)는 TQQQ와 SOXL의 일봉 과매도·반등을 이용하고 유휴 전략자금을 SGOV로 운용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 개발 기준은 **JDSS-2.2.2-SGOV**이다.
+JDSS V3는 QQQ·SOXX의 월간 추세를 따르는 TQQQ·SOXL 코어와 기존 과매도·반등 JDSS 부스터를 결합하고, 나머지 자금을 SGOV로 운용하는 Telegram 승인형 반자동 매매 봇입니다. 현재 개발 기준은 **JDSS-3.0.0-TWIN-H05**입니다.
 
 > 현재 브랜치·Oracle 배포·검증 상태는 [`CURRENT_WORK.md`](CURRENT_WORK.md)에서만 관리한다. 실거래 승격은 별도 승인 전까지 금지한다.
 
-## JDSS 2.2 전략 요약
+## JDSS V3 전략 요약
 
-- 대상: TQQQ, SOXL / 종목당 전략자금 $10,000
-- 모든 매수 단계: Score 55 이상, Reversal Score 5 이상, `Regime != RED`
+- 총 전략자금 `$20,000`; TQQQ·SOXL 월간 코어는 각각 총 평가액의 목표 15%
+- 완료된 월말 QQQ·SOXX 종가가 각 10개월 이동평균 위일 때 다음 거래일 대응 코어 활성화
+- 기존 JDSS는 종목당 `$1,000`(초기 총자금의 최대 5%) 부스터로 축소
+- 부스터 매수: Score 55 이상, Reversal Score 5 이상, `Regime != RED`
 - 분할매수: 40% / 30% / 20% / 10%, 최초 체결가 대비 0% / -2% / -5% / -7%
 - 익절: 평단 +4%에서 약 50%, +6%에서 잔량
 - TP1 완전체결 후 20개 완결 거래일 동안 TP2 미체결 시 잔량을 평단 +2% 주문으로 전환
 - SOXL 섹터 가드: SOXX/SMH EMA60 기준으로 1·3·4차 차단
-- 자동손절·재매수 없음, 모든 매수는 2단계 사용자 승인 필수
+- 자동손절·재매수 없음; 코어·부스터 매수는 2단계 사용자 승인, 코어 위험축소 매도는 자동
 - TQQQ/SOXL에 쓰지 않은 배정금은 SGOV로 운용하고 계좌에 최소 `$250`를 남김
 - 전략 매수 전 필요한 SGOV 관리분을 먼저 매도하고, 체결 후 `/signal` 재실행 없이 TQQQ/SOXL 최종 승인 버튼을 자동 재개
 - SGOV는 매수 최우선 매도호가 `+$0.01`, 매도 최우선 매수호가 `-$0.01`의 시장가성 지정가를 사용하고 60초 미체결 시 취소·재가격
 - 기존 개인 SGOV는 JDSS 관리분으로 자동 편입하거나 매도하지 않음
 
-처음 저장소를 인수하는 환경은 [문서 안내](docs/README.md)와 [현재 작업 상태](CURRENT_WORK.md)를 먼저 읽으세요. 정식 계약은 [JDSS 2.2 사양](docs/JDSS_FINAL_SPEC.md), 운영 이력은 [전략 가이드](docs/STRATEGY_GUIDE.md), 검증 기록은 [백테스트 보고서](docs/BACKTEST_REPORT.md), 협업 절차는 [개발 워크플로](docs/infra/DEVELOPMENT_WORKFLOW.md), 보안 기준은 [보안 기준](docs/infra/SECURITY.md)을 참고합니다.
+처음 저장소를 인수하는 환경은 [문서 안내](docs/README.md)와 [현재 작업 상태](CURRENT_WORK.md)를 먼저 읽으세요. 정식 계약은 [JDSS V3 사양](docs/JDSS_FINAL_SPEC.md), 운영 이력은 [전략 가이드](docs/STRATEGY_GUIDE.md), 검증 기록은 [백테스트 보고서](docs/BACKTEST_REPORT.md), 협업 절차는 [개발 워크플로](docs/infra/DEVELOPMENT_WORKFLOW.md), 보안 기준은 [보안 기준](docs/infra/SECURITY.md)을 참고합니다.
 
 ## 구현 범위
 
 - 완결 미국 거래일 검증과 yfinance 수정주가 일봉 분석
-- 노룩어헤드 백테스트와 실거래 공용 JDSS 2.2 전략 규칙
+- 완료 월말·다음 거래일 원칙을 적용한 V3 통합 계좌 백테스트
+- 코어·부스터 분리 SQLite 원장과 합산 Reconciliation
 - SQLite WAL, 상태 전이, 낙관적 잠금, 신호·주문 멱등성
 - Telegram 관리자 1명 제한과 검토 → 최종 실행의 2단계 매수 승인
 - Toss Securities OAuth2/OpenAPI 어댑터와 실주문 이중 잠금
@@ -53,11 +56,11 @@ chmod 600 .env
 .venv/bin/jdss-bot
 ```
 
-Telegram에서는 `/bt NVDA 100`, `/bt TSLA`, `/bt ALL 250`처럼 실제 주문 없이 임의 티커 백테스트를 실행할 수 있습니다.
+Telegram의 `/bt`는 V3 전체 포트폴리오 최근 300거래일을 실행합니다. `/bt TQQQ 100`처럼 단일 종목 부스터 백테스트도 가능합니다.
 
 ## 주문 안전장치
 
-기본값인 `JDSS_TRADING_MODE=dry_run`에서는 Toss 주문 API를 호출하지 않습니다. 실주문은 다음 두 값을 모두 정확히 설정해야만 열립니다.
+V3.0.0은 `portfolio.live_enabled: false`와 애플리케이션 시작 잠금으로 전체 live 모드를 거부합니다. 아래 과거 이중 잠금 값이 모두 설정되어도 V3 코드에서는 실주문이 열리지 않습니다.
 
 ```dotenv
 JDSS_TRADING_MODE=live

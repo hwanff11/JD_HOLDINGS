@@ -65,13 +65,13 @@ def test_legacy_strategy_config_is_clearly_archived():
     assert "저장소 루트 strategy.yaml만 사용" in legacy
 
 
-def test_pr27_research_does_not_claim_operating_strategy_promotion():
+def test_pr27_research_preserves_rejected_candidate_and_v3_followup():
     report = (ROOT / "docs/research/PR27_SIMPLE_STRATEGY_RESEARCH.md").read_text(
         encoding="utf-8"
     )
     guide = (ROOT / "docs/STRATEGY_GUIDE.md").read_text(encoding="utf-8")
 
-    assert "승격하지 않는다" in report
-    assert "strategy.yaml" in report
+    assert "PR #27 당시 결론" in report
     assert "SEMIMONTHLY_BAND_H05" in report
-    assert "운영 규칙을 대체하지 않는다" in guide
+    assert "MONTHLY_H05" in report
+    assert "JDSS-3.0.0-TWIN-H05" in guide
