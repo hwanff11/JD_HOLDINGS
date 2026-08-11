@@ -1,4 +1,4 @@
-name: CI
+name: CI - Quality Gate
 
 on:
   push:
@@ -9,16 +9,29 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  quality-gate:
+    name: Quality Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e '.[dev]'
-      - run: ruff check .
-      - run: pytest --cov=jd_holdings --cov-report=term-missing
-      - run: jdss validate-config
+
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Lint - Ruff
+        run: ruff check .
+
+      - name: Unit tests - Pytest
+        run: pytest --cov=jd_holdings --cov-report=term-missing
+
+      - name: Config validation - JDSS
+        run: jdss validate-config
