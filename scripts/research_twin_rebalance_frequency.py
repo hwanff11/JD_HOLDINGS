@@ -1,0 +1,285 @@
+"""Research-only cadence search for the twin core and JDSS booster."""
+
+# ruff: noqa: E501, I001
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from research_simple_strategies import ROOT, SYMBOLS, _combined, _idle_return
+from research_twin_engine import _metrics, _month_end_sessions
+from research_twin_engine_robustness import STRESS, WINDOWS, _slice_metrics, _trend
+from research_twin_jdss_hybrid import UNDERLYING, _baseline_results
+from jd_holdings.backtest.engine import BacktestResult
+from jd_holdings.config import load_config
+from jd_holdings.core.indicators import calculate_indicators
+from jd_holdings.infrastructure.market_data import YFinanceDataSource
+
+
+CADENCES = {
+    "MONTHLY": {"kind": "monthly"},
+    "BIWEEKLY_A": {"kind": "biweekly", "phase": 0},
+    "BIWEEKLY_B": {"kind": "biweekly", "phase": 1},
+    "WEEKLY": {"kind": "weekly"},
+    "BIWEEKLY_BAND_A": {"kind": "band", "phase": 0, "lower": 0.12, "upper": 0.18},
+    "BIWEEKLY_BAND_B": {"kind": "band", "phase": 1, "lower": 0.12, "upper": 0.18},
+}
+
+
+def _week_end_sessions(index: pd.DatetimeIndex) -> list[pd.Timestamp]:
+    values = pd.Series(index=index, data=index)
+    return values.groupby(index.to_period("W-FRI")).last().tolist()
+
+
+def _cadence_sessions(index: pd.DatetimeIndex, spec: dict[str, Any]) -> set[pd.Timestamp]:
+    if spec["kind"] == "monthly":
+        return set()
+    week_ends = _week_end_sessions(index)
+    if spec["kind"] == "weekly":
+        return set(week_ends)
+    phase = int(spec["phase"])
+    return {timestamp for position, timestamp in enumerate(week_ends) if position % 2 == phase}
+
+
+def _trade_targets(
+    targets: dict[tuple[str, str], float],
+    quantities: dict[str, dict[str, int]],
+    prices: dict[str, float],
+    *,
+    timestamp: pd.Timestamp,
+    cash: float,
+    equity: float,
+    buy_fee: float,
+    sell_fee: float,
+    slippage: float,
+    trades: list[dict[str, Any]],
+) -> float:
+    differences: dict[tuple[str, str], tuple[int, float, float]] = {}
+    for (component, symbol), weight in targets.items():
+        buy_price = prices[symbol] * (1 + slippage)
+        sell_price = prices[symbol] * (1 - slippage)
+        target_qty = math.floor(weight * equity / (buy_price * (1 + buy_fee)))
+        differences[(component, symbol)] = (target_qty - quantities[component][symbol], buy_price, sell_price)
+    for (component, symbol), (difference, _, sell_price) in differences.items():
+        if difference >= 0:
+            continue
+        quantity = -difference
+        fee = quantity * sell_price * sell_fee
+        cash += quantity * sell_price - fee
+        quantities[component][symbol] -= quantity
+        trades.append({"date": str(timestamp.date()), "component": component, "symbol": symbol, "side": "SELL", "quantity": quantity, "price": round(sell_price, 6), "fee": round(fee, 6), "target_weight": targets[(component, symbol)]})
+    for (component, symbol), (difference, buy_price, _) in differences.items():
+        if difference <= 0:
+            continue
+        affordable = math.floor(cash / (buy_price * (1 + buy_fee)))
+        quantity = min(difference, affordable)
+        if quantity <= 0:
+            continue
+        fee = quantity * buy_price * buy_fee
+        cash -= quantity * buy_price + fee
+        quantities[component][symbol] += quantity
+        trades.append({"date": str(timestamp.date()), "component": component, "symbol": symbol, "side": "BUY", "quantity": quantity, "price": round(buy_price, 6), "fee": round(fee, 6), "target_weight": targets[(component, symbol)]})
+    return cash
+
+
+def _simulate(
+    raw: dict[str, pd.DataFrame],
+    config: Any,
+    baseline: dict[str, BacktestResult],
+    *,
+    start: str,
+    end: str,
+    cadence: str,
+    booster_cap: float,
+    slippage: float,
+) -> tuple[pd.Series, dict[str, Any]]:
+    spec = CADENCES[cadence]
+    index = raw["TQQQ"].index
+    for symbol in ("SOXL", "QQQ", "SOXX", "SPY"):
+        index = index.intersection(raw[symbol].index)
+    index = index[(index >= pd.Timestamp(start)) & (index <= pd.Timestamp(end))]
+    month_ends = _month_end_sessions(index)
+    cadence_dates = _cadence_sessions(index, spec)
+    signals = {
+        symbol: _trend(raw[UNDERLYING[symbol]], raw[symbol].index.intersection(raw[UNDERLYING[symbol]].index), 10).reindex(index).fillna(False)
+        for symbol in SYMBOLS
+    }
+    baseline_events: dict[pd.Timestamp, list[dict[str, Any]]] = defaultdict(list)
+    for symbol, result in baseline.items():
+        for trade in result.trades:
+            event = dict(trade)
+            event["symbol"] = symbol
+            baseline_events[pd.Timestamp(event["date"])].append(event)
+
+    initial = float(config.global_.capital_per_symbol) * len(SYMBOLS)
+    cash = initial
+    quantities = {"core": {symbol: 0 for symbol in SYMBOLS}, "booster": {symbol: 0 for symbol in SYMBOLS}}
+    reference_qty = {symbol: 0 for symbol in SYMBOLS}
+    active = {symbol: False for symbol in SYMBOLS}
+    pending_core: dict[str, float] | None = None
+    trades: list[dict[str, Any]] = []
+    equity_values: list[float] = []
+    exposure_values: list[float] = []
+    idle_income = 0.0
+    idle_returns = _idle_return(raw[config.idle_cash.symbol], index)
+    buy_fee = float(config.global_.buy_fee)
+    sell_fee = float(config.global_.sell_fee)
+
+    for timestamp in index:
+        opens = {symbol: float(raw[symbol].loc[timestamp, "open"]) for symbol in SYMBOLS}
+        closes = {symbol: float(raw[symbol].loc[timestamp, "close"]) for symbol in SYMBOLS}
+        income = max(0.0, cash - float(config.idle_cash.cash_buffer)) * float(idle_returns.loc[timestamp])
+        cash += income
+        idle_income += income
+        open_equity = cash + sum(quantities[component][symbol] * opens[symbol] for component in quantities for symbol in SYMBOLS)
+
+        regime_changed = False
+        if pending_core is not None:
+            next_active = {symbol: pending_core[symbol] > 0 for symbol in SYMBOLS}
+            regime_changed = next_active != active
+            active = next_active
+            cash = _trade_targets(
+                {("core", symbol): pending_core[symbol] for symbol in SYMBOLS}, quantities, opens,
+                timestamp=timestamp, cash=cash, equity=open_equity, buy_fee=buy_fee,
+                sell_fee=sell_fee, slippage=slippage, trades=trades,
+            )
+            pending_core = None
+
+        changed_symbols: set[str] = set()
+        if timestamp in baseline_events:
+            for event in baseline_events[timestamp]:
+                symbol = event["symbol"]
+                signed = int(event["quantity"]) if event["side"] == "BUY" else -int(event["quantity"])
+                reference_qty[symbol] = max(0, reference_qty[symbol] + signed)
+                changed_symbols.add(symbol)
+        if booster_cap > 0 and (regime_changed or changed_symbols):
+            open_equity = cash + sum(quantities[component][symbol] * opens[symbol] for component in quantities for symbol in SYMBOLS)
+            target_symbols = SYMBOLS if regime_changed else tuple(changed_symbols)
+            targets = {}
+            for symbol in target_symbols:
+                utilization = min(1.0, reference_qty[symbol] * opens[symbol] / float(config.global_.capital_per_symbol))
+                effective_cap = booster_cap if active[symbol] else min(0.05, booster_cap)
+                targets[("booster", symbol)] = effective_cap * utilization
+            cash = _trade_targets(
+                targets, quantities, opens, timestamp=timestamp, cash=cash, equity=open_equity,
+                buy_fee=buy_fee, sell_fee=sell_fee, slippage=slippage, trades=trades,
+            )
+
+        close_equity = cash + sum(quantities[component][symbol] * closes[symbol] for component in quantities for symbol in SYMBOLS)
+        if timestamp in month_ends:
+            pending_core = {symbol: 0.15 if bool(signals[symbol].loc[timestamp]) else 0.0 for symbol in SYMBOLS}
+        elif timestamp in cadence_dates:
+            desired = {symbol: 0.15 if active[symbol] else 0.0 for symbol in SYMBOLS}
+            if spec["kind"] == "band":
+                weights = {symbol: quantities["core"][symbol] * closes[symbol] / close_equity for symbol in SYMBOLS}
+                if not any(active[symbol] and (weights[symbol] < spec["lower"] or weights[symbol] > spec["upper"]) for symbol in SYMBOLS):
+                    desired = None
+            pending_core = desired
+
+        liquidation = sum(quantities[component][symbol] * closes[symbol] * (1 - sell_fee) for component in quantities for symbol in SYMBOLS)
+        equity = cash + liquidation
+        equity_values.append(equity)
+        exposure_values.append(liquidation / equity if equity > 0 else 0.0)
+
+    equity = pd.Series(equity_values, index=index)
+    metrics = _metrics(equity, exposure_values, trades, idle_income, config.backtest.annualization_days)
+    metrics["component_fills"] = {component: sum(trade["component"] == component for trade in trades) for component in quantities}
+    return equity, metrics
+
+
+def _candidate_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {key: metrics[key] for key in ("total_return_pct", "cagr_pct", "mdd_pct", "sharpe", "trade_fills", "average_exposure_pct", "annual_returns_pct", "component_fills")}
+
+
+def _markdown(report: dict[str, Any]) -> str:
+    lines = [
+        "# 쌍발엔진 조정 주기·결합 탐색", "",
+        "| 후보 | 전체 누적 | CAGR | MDD | Sharpe | 체결 | 5년 흑자 |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name, data in report["candidates"].items():
+        m = data["full"]
+        lines.append(f"| {name} | {m['total_return_pct']:+.2f}% | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | {m['sharpe']:.3f} | {m['trade_fills']} | {data['positive_rolling_5y']}/{len(WINDOWS)} |")
+    lines.extend([
+        "", f"- MDD -30% 이내 최고 CAGR 후보: {report['selection']['best_under_30pct_mdd']}",
+        f"- 격주 위상 A/B 모두 월간보다 높은 후보: {', '.join(report['selection']['phase_robust']) or '없음'}",
+        "", "> 월말 추세 신호는 유지하고 비중 복원 주기만 변경했습니다.",
+        "> 연구 전용이며 운영 코드·설정·Oracle·실주문을 변경하지 않습니다.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--end", default="2026-08-10")
+    parser.add_argument("--slippage", type=float, default=0.001)
+    parser.add_argument("--output", type=Path, default=ROOT / "reports" / "twin_rebalance_frequency.json")
+    parser.add_argument("--markdown", type=Path, default=ROOT / "reports" / "twin_rebalance_frequency.md")
+    args = parser.parse_args()
+    config = load_config(ROOT / "strategy.yaml")
+    source = YFinanceDataSource(ROOT / "data" / "cache")
+    warmup = (datetime.fromisoformat("2011-01-01").date() - timedelta(days=800)).isoformat()
+    symbols = ("TQQQ", "SOXL", "SPY", "QQQ", "SOXX", "SMH", config.idle_cash.symbol)
+    raw = {symbol: source.daily(symbol, warmup, args.end) for symbol in symbols}
+    frames = {symbol: calculate_indicators(frame, config) for symbol, frame in raw.items()}
+    baseline = _baseline_results(frames, raw, config, start="2011-01-01", end=args.end, slippage=args.slippage)
+
+    definitions = {name: (name, 0.0) for name in CADENCES}
+    definitions.update({
+        "BIWEEKLY_A_H05": ("BIWEEKLY_A", 0.05), "BIWEEKLY_B_H05": ("BIWEEKLY_B", 0.05),
+        "BIWEEKLY_A_H10": ("BIWEEKLY_A", 0.10), "BIWEEKLY_B_H10": ("BIWEEKLY_B", 0.10),
+        "BAND_A_H05": ("BIWEEKLY_BAND_A", 0.05), "BAND_B_H05": ("BIWEEKLY_BAND_B", 0.05),
+    })
+    report: dict[str, Any] = {
+        "generated_at": datetime.now(UTC).isoformat(), "end_date": args.end,
+        "slippage": args.slippage, "jdss_baseline": _combined(baseline, config), "candidates": {},
+    }
+    equities: dict[str, pd.Series] = {}
+    for name, (cadence, cap) in definitions.items():
+        equity, metrics = _simulate(raw, config, baseline, start="2011-01-01", end=args.end, cadence=cadence, booster_cap=cap, slippage=args.slippage)
+        equities[name] = equity
+        rolling = {}
+        for start_year, end_year in WINDOWS:
+            section = equity[(equity.index >= pd.Timestamp(f"{start_year}-01-01")) & (equity.index <= pd.Timestamp(f"{end_year}-12-31"))]
+            rolling[f"{start_year}_{end_year}"] = _slice_metrics(section, config.backtest.annualization_days)
+        stress = {}
+        for label, (start, end) in STRESS.items():
+            section = equity[(equity.index >= pd.Timestamp(start)) & (equity.index <= pd.Timestamp(end))]
+            stress[label] = _slice_metrics(section, config.backtest.annualization_days)
+        recent = equity[equity.index >= pd.Timestamp("2023-01-01")]
+        report["candidates"][name] = {
+            "full": _candidate_summary(metrics),
+            "recent": _slice_metrics(recent, config.backtest.annualization_days),
+            "rolling_5y": rolling, "positive_rolling_5y": sum(m.get("total_return_pct", 0) > 0 for m in rolling.values()),
+            "stress": stress,
+        }
+
+    eligible = {name: data for name, data in report["candidates"].items() if data["full"]["mdd_pct"] >= -30.0}
+    best = max(eligible, key=lambda name: eligible[name]["full"]["cagr_pct"])
+    monthly_return = report["candidates"]["MONTHLY"]["full"]["total_return_pct"]
+    phase_pairs = {
+        "BIWEEKLY": ("BIWEEKLY_A", "BIWEEKLY_B"),
+        "BIWEEKLY_H05": ("BIWEEKLY_A_H05", "BIWEEKLY_B_H05"),
+        "BIWEEKLY_H10": ("BIWEEKLY_A_H10", "BIWEEKLY_B_H10"),
+        "BAND_H05": ("BAND_A_H05", "BAND_B_H05"),
+    }
+    phase_robust = [label for label, pair in phase_pairs.items() if all(report["candidates"][name]["full"]["total_return_pct"] > monthly_return for name in pair)]
+    report["selection"] = {"best_under_30pct_mdd": best, "phase_robust": phase_robust}
+    markdown = _markdown(report)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    args.markdown.write_text(markdown, encoding="utf-8")
+    print(markdown)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
