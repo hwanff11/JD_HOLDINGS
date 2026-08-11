@@ -176,8 +176,20 @@ def _simulate(
                     s.quantity * float(prices[s.symbol]["open"])
                     for s in sleeves.values()
                 )
+                symbol_sleeves = sum(
+                    sleeve.symbol == order.symbol for sleeve in sleeves.values()
+                )
+                if name in {
+                    "T_WINNER_PYRAMID",
+                    "U_RELATIVE_PYRAMID",
+                    "V_CRASH_RECLAIM_PYRAMID",
+                }:
+                    pyramid_weights = (0.10, 0.10, 0.15, 0.15)
+                    slot_pct = pyramid_weights[min(symbol_sleeves, 3)]
+                else:
+                    slot_pct = 0.15
                 budget = min(
-                    equity_now * 0.15,
+                    equity_now * slot_pct,
                     max(0.0, equity_now * 0.60 - symbol_value),
                     max(0.0, equity_now * 0.75 - total_value),
                     cash - cash_buffer,
@@ -268,11 +280,49 @@ def _simulate(
             )
             pullback = trend and float(row["rsi2"]) <= 10 and float(row["close"]) > float(row["open"])
             breakout = trend and float(base["close"]) > float(base["previous_high20"])
+            open_for_symbol = [
+                sleeve for sleeve in sleeves.values() if sleeve.symbol == symbol
+            ]
+            latest_entry = max(
+                (sleeve.entry_price for sleeve in open_for_symbol), default=0.0
+            )
+            pyramid = bool(open_for_symbol) and float(row["close"]) >= latest_entry * 1.04
+            reclaim = bool(base.get("reclaim20", False))
+            eligible_scores = {
+                candidate: (
+                    float(bases[candidate]["return63"])
+                    / max(float(bases[candidate]["vol20"]), 0.01)
+                )
+                for candidate in SYMBOLS
+                if not pd.isna(bases[candidate]["return63"])
+                and not pd.isna(bases[candidate]["vol20"])
+                and float(bases[candidate]["close"])
+                > float(bases[candidate]["sma200_r"])
+                and float(bases[candidate]["sma50_r"])
+                > float(bases[candidate]["sma200_r"])
+            }
+            relative_winner = (
+                max(eligible_scores, key=eligible_scores.get)
+                if eligible_scores
+                else None
+            )
             signal = ""
             if name in {"Q_PULLBACK_SLEEVES", "S_COMBINED_SLEEVES"} and pullback:
                 signal = "PULLBACK"
             elif name in {"R_BREAKOUT_SLEEVES", "S_COMBINED_SLEEVES"} and breakout:
                 signal = "BREAKOUT"
+            elif name == "T_WINNER_PYRAMID" and (
+                (not open_for_symbol and breakout) or pyramid
+            ):
+                signal = "INITIAL_BREAKOUT" if not open_for_symbol else "PYRAMID"
+            elif name == "U_RELATIVE_PYRAMID" and symbol == relative_winner and (
+                (not open_for_symbol and breakout) or pyramid
+            ):
+                signal = "RELATIVE_INITIAL" if not open_for_symbol else "PYRAMID"
+            elif name == "V_CRASH_RECLAIM_PYRAMID" and (
+                (not open_for_symbol and reclaim) or pyramid
+            ):
+                signal = "CRASH_RECLAIM" if not open_for_symbol else "PYRAMID"
             duplicate = any(
                 p.action == "BUY" and p.symbol == symbol for p in pending
             )
@@ -311,7 +361,8 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- 생성시각: {report['generated_at']}",
         f"- 데이터 종료일: {report['end_date']}",
         "- 총 초기자금: $20,000",
-        "- 고정 종목별 한도 없음; 단일 종목 60%, 전체 위험자산 75%, 슬롯 15%",
+        "- 고정 종목별 한도 없음; 단일 종목 60%, 전체 위험자산 75%",
+        "- 일반 슬롯 15%; 피라미딩은 10%→10%→15%→15%",
         "",
         "| 후보 | 구간 | 누적수익 | CAGR | MDD | Sharpe | 완료슬롯 | "
         "최고거래 제외 손익 | 최고거래 기여도 |",
@@ -329,6 +380,12 @@ def _markdown(report: dict[str, Any]) -> str:
             )
     lines.extend(
         [
+            "",
+            "## 피라미딩 후보",
+            "",
+            "- T: 각 기초자산 20일 돌파 후 수익 구간에서만 증액",
+            "- U: QQQ·SOXX 위험조정 63일 모멘텀 1위만 진입·증액",
+            "- V: 126일 고점 대비 12% 조정 후 20일선 회복 시 진입·증액",
             "",
             "> 연구 전용입니다. 운영 코드·strategy.yaml·Oracle·실주문을 "
             "변경하지 않습니다.",
@@ -352,13 +409,31 @@ def main() -> int:
         for symbol in (*SYMBOLS, "QQQ", "SOXX", config.idle_cash.symbol)
     }
     frames = {symbol: _research_indicators(frame) for symbol, frame in raw.items()}
+    for symbol in ("QQQ", "SOXX"):
+        frame = frames[symbol]
+        frame["sma20_r"] = frame["close"].rolling(20, min_periods=20).mean()
+        frame["high126_r"] = frame["close"].rolling(126, min_periods=126).max()
+        drawdown = frame["close"] / frame["high126_r"] - 1
+        frame["reclaim20"] = (
+            (drawdown <= -0.12)
+            & (frame["close"] > frame["sma20_r"])
+            & (frame["close"].shift(1) <= frame["sma20_r"].shift(1))
+            & (frame["sma50_r"] > frame["sma200_r"])
+        )
     report: dict[str, Any] = {
         "generated_at": datetime.now(UTC).isoformat(),
         "end_date": args.end,
         "slippage": args.slippage,
         "candidates": {},
     }
-    for name in ("Q_PULLBACK_SLEEVES", "R_BREAKOUT_SLEEVES", "S_COMBINED_SLEEVES"):
+    for name in (
+        "Q_PULLBACK_SLEEVES",
+        "R_BREAKOUT_SLEEVES",
+        "S_COMBINED_SLEEVES",
+        "T_WINNER_PYRAMID",
+        "U_RELATIVE_PYRAMID",
+        "V_CRASH_RECLAIM_PYRAMID",
+    ):
         report["candidates"][name] = {}
         for segment, (start, configured_end) in SEGMENTS.items():
             report["candidates"][name][segment] = _simulate(
