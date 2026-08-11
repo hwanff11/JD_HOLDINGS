@@ -53,6 +53,7 @@ def _simulate(
     delay: int,
     enabled: tuple[str, ...] = SYMBOLS,
     slippage: float = 0.001,
+    monthly_rebalance: bool = True,
 ) -> tuple[pd.Series, dict[str, Any]]:
     full_index = raw["TQQQ"].index
     for symbol in ("SOXL", "QQQ", "SOXX"):
@@ -69,6 +70,7 @@ def _simulate(
     cash = initial
     quantities = {symbol: 0 for symbol in SYMBOLS}
     scheduled: dict[int, dict[str, float]] = {}
+    previous_targets = {symbol: 0.0 for symbol in SYMBOLS}
     equity_values: list[float] = []
     exposure_values: list[float] = []
     trades: list[dict[str, Any]] = []
@@ -114,12 +116,20 @@ def _simulate(
                     trades.append({"date": str(timestamp.date()), "symbol": symbol, "side": "SELL", "quantity": quantity})
 
         if timestamp in month_ends:
+            targets = {
+                symbol: (
+                    0.15
+                    if symbol in enabled and signals[symbol].loc[timestamp]
+                    else 0.0
+                )
+                for symbol in SYMBOLS
+            }
             due = position + 1 + delay
-            if due < len(index):
-                scheduled[due] = {
-                    symbol: 0.15 if symbol in enabled and signals[symbol].loc[timestamp] else 0.0
-                    for symbol in SYMBOLS
-                }
+            if due < len(index) and (
+                monthly_rebalance or targets != previous_targets
+            ):
+                scheduled[due] = targets
+            previous_targets = targets
 
         liquidation = sum(
             quantities[s] * closes[s] * (1 - sell_fee) for s in SYMBOLS
