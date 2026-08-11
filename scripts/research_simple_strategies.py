@@ -358,6 +358,7 @@ def _rotation_choice(
     underlying_frames: dict[str, pd.DataFrame],
     *,
     require_rising_long_trend: bool = False,
+    require_above_medium_trend: bool = False,
 ) -> str | None:
     ranked: list[tuple[float, str]] = []
     for symbol, underlying_symbol in UNDERLYING.items():
@@ -366,8 +367,15 @@ def _rotation_choice(
             pd.isna(row["return63"])
             or pd.isna(row["vol20"])
             or pd.isna(row["sma200_r"])
-            or (require_rising_long_trend and pd.isna(row["sma50_r"]))
+            or (
+                (require_rising_long_trend or require_above_medium_trend)
+                and pd.isna(row["sma50_r"])
+            )
             or float(row["close"]) <= float(row["sma200_r"])
+            or (
+                require_above_medium_trend
+                and float(row["close"]) <= float(row["sma50_r"])
+            )
             or (
                 require_rising_long_trend
                 and float(row["sma50_r"]) <= float(row["sma200_r"])
@@ -389,7 +397,7 @@ def _rotation_budget(
 ) -> float:
     if name in {"I_ROTATION_CAP50", "L_ROTATION_TREND_CAP50"}:
         return initial_capital * 0.5
-    if name == "N_ROTATION_TREND_CAP40":
+    if name in {"N_ROTATION_TREND_CAP40", "O_ROTATION_TREND_SMA50_CAP40"}:
         return initial_capital * 0.4
     if name in {"J_ROTATION_FULL", "M_ROTATION_TREND_FULL"}:
         return initial_capital
@@ -487,7 +495,9 @@ def _simulate_rotation(
                     "L_ROTATION_TREND_CAP50",
                     "M_ROTATION_TREND_FULL",
                     "N_ROTATION_TREND_CAP40",
+                    "O_ROTATION_TREND_SMA50_CAP40",
                 },
+                require_above_medium_trend=name == "O_ROTATION_TREND_SMA50_CAP40",
             )
             if selected != held_symbol:
                 budget = (
@@ -736,19 +746,23 @@ def _markdown(report: dict[str, Any]) -> str:
             "- L_ROTATION_TREND_CAP50: I에 기초자산 50일선>200일선 확인을 추가",
             "- M_ROTATION_TREND_FULL: L과 같되 총자금 100% 집중",
             "- N_ROTATION_TREND_CAP40: L과 같되 개발구간 위험매칭을 위해 총자금 40% 배정",
+            "- O_ROTATION_TREND_SMA50_CAP40: N에 기초자산 종가>SMA50 조건을 추가한 N-Guard",
             "",
             "> 연구 전용 결과입니다. 모든 신호가 승인되었다고 가정하며 "
             "운영 설정과 주문 로직은 변경하지 않습니다.",
         ]
     )
-    trade_analysis = report["candidates"].get("N_ROTATION_TREND_CAP40", {}).get(
-        "trade_analysis"
-    )
-    if trade_analysis:
+    for candidate, heading in (
+        ("N_ROTATION_TREND_CAP40", "N 원본"),
+        ("O_ROTATION_TREND_SMA50_CAP40", "N-Guard SMA50"),
+    ):
+        trade_analysis = report["candidates"].get(candidate, {}).get("trade_analysis")
+        if not trade_analysis:
+            continue
         lines.extend(
             [
                 "",
-                "## N 전략 최근 10개 완료 거래 (2023~현재)",
+                f"## {heading} 최근 10개 완료 거래 (2023~현재)",
                 "",
                 "| 매수일 | 매도일 | 종목 | 보유 세션 | 매수가 | 매도가 | 순손익 | 순수익률 | 매도 후 |",
                 "|---|---|---|---:|---:|---:|---:|---:|---|",
@@ -844,6 +858,7 @@ def main() -> int:
                 "L_ROTATION_TREND_CAP50",
                 "M_ROTATION_TREND_FULL",
                 "N_ROTATION_TREND_CAP40",
+                "O_ROTATION_TREND_SMA50_CAP40",
             )
         },
     }
@@ -862,7 +877,10 @@ def main() -> int:
             results = factory(start, end)
             metrics = _combined(results, config)
             candidate_data["segments"][segment] = metrics
-            if candidate == "N_ROTATION_TREND_CAP40" and segment == "test_2023_present":
+            if candidate in {
+                "N_ROTATION_TREND_CAP40",
+                "O_ROTATION_TREND_SMA50_CAP40",
+            } and segment == "test_2023_present":
                 rotation_result = results["portfolio"]
                 if not isinstance(rotation_result, SimResult):
                     raise TypeError("N rotation research result must be SimResult")
