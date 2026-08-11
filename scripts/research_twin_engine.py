@@ -154,7 +154,10 @@ def _simulate(
     idle_returns = _idle_return(raw[config.idle_cash.symbol], index)
     buy_fee = float(config.global_.buy_fee)
     sell_fee = float(config.global_.sell_fee)
-    target = 0.20 if name == "W_TWIN_ENGINE_20" else 0.25
+    target = {
+        "V_TWIN_ENGINE_15": 0.15,
+        "W_TWIN_ENGINE_20": 0.20,
+    }.get(name, 0.25)
 
     for timestamp in index:
         open_prices = {
@@ -276,6 +279,7 @@ def _markdown(report: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "- V: 조건 충족 종목당 15% 월간 리밸런싱",
             "- W: 조건 충족 종목당 20% 월간 리밸런싱",
             "- X: 조건 충족 종목당 25% 월간 리밸런싱",
             "- Y: X에 일중 비중 18%·32% 밴드 리밸런싱 추가",
@@ -312,7 +316,12 @@ def main() -> int:
         "slippage": args.slippage,
         "candidates": {},
     }
-    for name in ("W_TWIN_ENGINE_20", "X_TWIN_ENGINE_25", "Y_TWIN_ENGINE_BAND25"):
+    for name in (
+        "V_TWIN_ENGINE_15",
+        "W_TWIN_ENGINE_20",
+        "X_TWIN_ENGINE_25",
+        "Y_TWIN_ENGINE_BAND25",
+    ):
         report["candidates"][name] = {}
         for segment, (start, configured_end) in SEGMENTS.items():
             report["candidates"][name][segment] = _simulate(
