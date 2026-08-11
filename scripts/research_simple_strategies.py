@@ -399,6 +399,8 @@ def _rotation_budget(
         return initial_capital * 0.5
     if name in {"N_ROTATION_TREND_CAP40", "O_ROTATION_TREND_SMA50_CAP40"}:
         return initial_capital * 0.4
+    if name == "P_ROTATION_TREND_CAP30":
+        return initial_capital * 0.3
     if name in {"J_ROTATION_FULL", "M_ROTATION_TREND_FULL"}:
         return initial_capital
     selected_vol = float(frames[selected].loc[timestamp, "vol20"])
@@ -496,6 +498,7 @@ def _simulate_rotation(
                     "M_ROTATION_TREND_FULL",
                     "N_ROTATION_TREND_CAP40",
                     "O_ROTATION_TREND_SMA50_CAP40",
+                    "P_ROTATION_TREND_CAP30",
                 },
                 require_above_medium_trend=name == "O_ROTATION_TREND_SMA50_CAP40",
             )
@@ -747,6 +750,7 @@ def _markdown(report: dict[str, Any]) -> str:
             "- M_ROTATION_TREND_FULL: L과 같되 총자금 100% 집중",
             "- N_ROTATION_TREND_CAP40: L과 같되 개발구간 위험매칭을 위해 총자금 40% 배정",
             "- O_ROTATION_TREND_SMA50_CAP40: N에 기초자산 종가>SMA50 조건을 추가한 N-Guard",
+            "- P_ROTATION_TREND_CAP30: N과 동일한 신호에 총자금 30%만 배정",
             "",
             "> 연구 전용 결과입니다. 모든 신호가 승인되었다고 가정하며 "
             "운영 설정과 주문 로직은 변경하지 않습니다.",
@@ -755,6 +759,7 @@ def _markdown(report: dict[str, Any]) -> str:
     for candidate, heading in (
         ("N_ROTATION_TREND_CAP40", "N 원본"),
         ("O_ROTATION_TREND_SMA50_CAP40", "N-Guard SMA50"),
+        ("P_ROTATION_TREND_CAP30", "N 30% 배정"),
     ):
         trade_analysis = report["candidates"].get(candidate, {}).get("trade_analysis")
         if not trade_analysis:
@@ -859,6 +864,7 @@ def main() -> int:
                 "M_ROTATION_TREND_FULL",
                 "N_ROTATION_TREND_CAP40",
                 "O_ROTATION_TREND_SMA50_CAP40",
+                "P_ROTATION_TREND_CAP30",
             )
         },
     }
@@ -880,6 +886,7 @@ def main() -> int:
             if candidate in {
                 "N_ROTATION_TREND_CAP40",
                 "O_ROTATION_TREND_SMA50_CAP40",
+                "P_ROTATION_TREND_CAP30",
             } and segment == "test_2023_present":
                 rotation_result = results["portfolio"]
                 if not isinstance(rotation_result, SimResult):
