@@ -662,11 +662,38 @@ def _trade_analysis(result: SimResult) -> dict[str, Any]:
             if symbol_cycles
             else 0.0,
         }
+    realized_net_pnl = sum(cycle["net_pnl"] for cycle in cycles)
+    open_trade = next(
+        (trade for trade in reversed(result.trades) if trade["side"] == "BUY"),
+        None,
+    )
+    open_position = dict(result.open_position)
+    if open_position.get("quantity", 0) and open_trade is not None:
+        open_cost = (
+            float(open_trade["quantity"]) * float(open_trade["price"])
+            + float(open_trade["fee"])
+        )
+        unrealized_net_pnl = (
+            float(result.metrics["final_equity"])
+            - float(result.metrics["initial_equity"])
+            - float(result.metrics["idle_cash_income"])
+            - realized_net_pnl
+        )
+        open_position.update(
+            {
+                "entry_date": open_trade["date"],
+                "entry_cost_including_fee": round(open_cost, 2),
+                "unrealized_net_pnl": round(unrealized_net_pnl, 2),
+                "unrealized_net_return_pct": round(
+                    unrealized_net_pnl / open_cost * 100, 2
+                ),
+            }
+        )
     return {
         "completed_cycles": len(cycles),
         "by_symbol": by_symbol,
         "recent_10_completed": cycles[-10:],
-        "open_position": result.open_position,
+        "open_position": open_position,
     }
 
 
