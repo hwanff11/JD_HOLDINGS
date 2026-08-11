@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
 from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
 from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
 from jd_holdings.config import StrategyConfig, load_config
@@ -498,7 +499,12 @@ def _combined(
     results: dict[str, SimResult | BacktestResult], config: StrategyConfig
 ) -> dict[str, Any]:
     equity = pd.concat(
-        [result.equity_curve.rename(symbol) if isinstance(result, BacktestResult) else result.equity.rename(symbol) for symbol, result in results.items()],
+        [
+            result.equity_curve.rename(symbol)
+            if isinstance(result, BacktestResult)
+            else result.equity.rename(symbol)
+            for symbol, result in results.items()
+        ],
         axis=1,
         join="inner",
     ).sum(axis=1)
@@ -576,13 +582,16 @@ def _markdown(report: dict[str, Any]) -> str:
             "## 후보 정의",
             "",
             "- A_BASELINE: 운영 중인 JDSS-2.2.2-SGOV",
-            "- G_RSI2_REVERSION: 기초자산 50/200일 상승추세에서 RSI2<=10, 50%+3% 하락 시 50%, EMA5/RSI2/200일선 회복·이탈 청산",
-            "- H_BREAKOUT_20_10: 기초자산 상승추세에서 20일 신고가 진입, 10일 저가 또는 기초자산 200일선 이탈 청산",
+            "- G_RSI2_REVERSION: 기초자산 50/200일 상승추세에서 RSI2<=10, "
+            "50%+3% 하락 시 50%, EMA5/RSI2/200일선 회복·이탈 청산",
+            "- H_BREAKOUT_20_10: 기초자산 상승추세에서 20일 신고가 진입, "
+            "10일 저가 또는 기초자산 200일선 이탈 청산",
             "- I_ROTATION_CAP50: 주간 QQQ/SOXX 위험조정 63일 모멘텀 1위에 총자금 50% 투자",
             "- J_ROTATION_FULL: I와 같되 총자금 100% 집중",
             "- K_ROTATION_VOL25: I와 같되 선택 ETF의 20일 변동성으로 포트폴리오 목표변동성 25% 비중 결정",
             "",
-            "> 연구 전용 결과입니다. 모든 신호가 승인되었다고 가정하며 운영 설정과 주문 로직은 변경하지 않습니다.",
+            "> 연구 전용 결과입니다. 모든 신호가 승인되었다고 가정하며 "
+            "운영 설정과 주문 로직은 변경하지 않습니다.",
         ]
     )
     return "\n".join(lines) + "\n"
