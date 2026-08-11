@@ -27,7 +27,11 @@ from jd_holdings.backtest.engine import (
 from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
 from jd_holdings.config import StrategyConfig, load_config
 from jd_holdings.core.enums import DecisionType, MarketRegime, PositionState
-from jd_holdings.core.indicators import calculate_indicators, snapshot_from_row
+from jd_holdings.core.indicators import (
+    MarketDataError,
+    calculate_indicators,
+    snapshot_from_row,
+)
 from jd_holdings.core.models import (
     IndicatorSnapshot,
     PositionSnapshot,
@@ -56,10 +60,13 @@ SEGMENTS = {
 def _snapshot_map(
     symbol: str, frame: pd.DataFrame
 ) -> dict[pd.Timestamp, IndicatorSnapshot]:
-    return {
-        timestamp: snapshot_from_row(symbol, timestamp, row)
-        for timestamp, row in frame.iterrows()
-    }
+    snapshots: dict[pd.Timestamp, IndicatorSnapshot] = {}
+    for timestamp, row in frame.iterrows():
+        try:
+            snapshots[timestamp] = snapshot_from_row(symbol, timestamp, row)
+        except MarketDataError:
+            continue
+    return snapshots
 
 
 def _strong_benchmark(frame: pd.DataFrame) -> pd.Series:
