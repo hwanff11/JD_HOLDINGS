@@ -66,7 +66,7 @@ jobs:
           args=(backtest --symbol "$INPUT_SYMBOL" --start "$INPUT_START" --slippage "$INPUT_SLIPPAGE" --output reports/backtest.json)
           if [[ -n "$INPUT_END" ]]; then args+=(--end "$INPUT_END"); fi
           jdss "${args[@]}"
-      - name: Create V3 summary
+      - name: Print and publish V3 summary
         env:
           INPUT_SYMBOL: ${{ inputs.symbol || 'ALL' }}
           INPUT_START: ${{ inputs.start || '2011-01-01' }}
@@ -98,9 +98,12 @@ jobs:
                   lines += [f"| {period} | {value:+.2f}% |" for period, value in half.items()]
           summary = "\n".join(lines) + "\n"
           Path("reports/backtest.md").write_text(summary, encoding="utf-8")
-          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(summary, encoding="utf-8")
+          print("===== JDSS BACKTEST RESULT =====")
+          print(summary)
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as f:
+              f.write(summary)
           PY
-      - name: Upload report artifact
+      - name: Upload detailed report archive
         uses: actions/upload-artifact@v6
         with:
           name: jdss-backtest-${{ github.run_id }}
