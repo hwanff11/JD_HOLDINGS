@@ -6,7 +6,7 @@ on:
     paths:
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
-      - scripts/research_twin_engine_audit.py scripts/research_twin_engine_ledger.py
+      - scripts/research_twin_engine_audit.py
       - scripts/research_twin_engine_ledger.py
       - .github/workflows/jdss-twin-engine-robustness.yml
   pull_request:
@@ -46,7 +46,7 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: ruff check scripts/research_twin_engine_robustness.py scripts/research_twin_engine_audit.py
+      - run: ruff check scripts/research_twin_engine_robustness.py scripts/research_twin_engine_audit.py scripts/research_twin_engine_ledger.py
       - name: Run twin-engine robustness
         env:
           END_DATE: ${{ inputs.end_date || '2026-08-10' }}
