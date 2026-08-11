@@ -23,7 +23,7 @@ def patch_staged_core(variant: str) -> None:
         streaks = getattr(self, "_research_core_streaks", None)
         if streaks is None:
             streaks = {symbol: 0 for symbol in self.config.enabled_symbols}
-            setattr(self, "_research_core_streaks", streaks)
+            self._research_core_streaks = streaks
         adjusted = {}
         for symbol, target in targets.items():
             if float(target) <= 0:
