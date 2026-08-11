@@ -7,12 +7,14 @@ on:
       - scripts/research_twin_jdss_hybrid.py
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
+      - scripts/research_twin_rebalance_frequency.py
       - .github/workflows/jdss-twin-core-hybrid.yml
   pull_request:
     paths:
       - scripts/research_twin_jdss_hybrid.py
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
+      - scripts/research_twin_rebalance_frequency.py
       - .github/workflows/jdss-twin-core-hybrid.yml
   workflow_dispatch:
     inputs:
@@ -44,7 +46,7 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: ruff check scripts/research_twin_jdss_hybrid.py
+      - run: ruff check scripts/research_twin_jdss_hybrid.py scripts/research_twin_rebalance_frequency.py
       - name: Run unified hybrid research
         env:
           END_DATE: ${{ inputs.end_date || '2026-08-10' }}
@@ -55,11 +57,25 @@ jobs:
             --slippage "$SLIPPAGE" \
             --output reports/twin_jdss_hybrid.json \
             --markdown reports/twin_jdss_hybrid.md
-      - run: cat reports/twin_jdss_hybrid.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Run rebalance cadence research
+        env:
+          END_DATE: ${{ inputs.end_date || '2026-08-10' }}
+          SLIPPAGE: ${{ matrix.slippage }}
+        run: |
+          python scripts/research_twin_rebalance_frequency.py \
+            --end "$END_DATE" \
+            --slippage "$SLIPPAGE" \
+            --output reports/twin_rebalance_frequency.json \
+            --markdown reports/twin_rebalance_frequency.md
+      - run: |
+          cat reports/twin_jdss_hybrid.md >> "$GITHUB_STEP_SUMMARY"
+          cat reports/twin_rebalance_frequency.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
           name: jdss-twin-core-hybrid-${{ github.run_id }}-${{ matrix.slippage }}
           path: |
             reports/twin_jdss_hybrid.json
             reports/twin_jdss_hybrid.md
+            reports/twin_rebalance_frequency.json
+            reports/twin_rebalance_frequency.md
           retention-days: 30
