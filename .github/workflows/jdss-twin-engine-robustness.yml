@@ -6,13 +6,15 @@ on:
     paths:
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
-      - scripts/research_twin_engine_audit.py
+      - scripts/research_twin_engine_audit.py scripts/research_twin_engine_ledger.py
+      - scripts/research_twin_engine_ledger.py
       - .github/workflows/jdss-twin-engine-robustness.yml
   pull_request:
     paths:
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
       - scripts/research_twin_engine_audit.py
+      - scripts/research_twin_engine_ledger.py
       - .github/workflows/jdss-twin-engine-robustness.yml
   workflow_dispatch:
     inputs:
@@ -65,7 +67,17 @@ jobs:
             --slippage "$SLIPPAGE" \
             --output reports/twin_engine_audit.json \
             --markdown reports/twin_engine_audit.md
-      - run: cat reports/twin_engine_robustness.md reports/twin_engine_audit.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate twin-engine execution ledger
+        env:
+          END_DATE: ${{ inputs.end_date || '2026-08-10' }}
+          SLIPPAGE: ${{ matrix.slippage }}
+        run: |
+          python scripts/research_twin_engine_ledger.py \
+            --end "$END_DATE" \
+            --slippage "$SLIPPAGE" \
+            --output reports/twin_engine_ledger.json \
+            --markdown reports/twin_engine_ledger.md
+      - run: cat reports/twin_engine_robustness.md reports/twin_engine_audit.md reports/twin_engine_ledger.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
           name: jdss-twin-engine-robustness-${{ github.run_id }}-${{ matrix.slippage }}
@@ -74,4 +86,6 @@ jobs:
             reports/twin_engine_robustness.md
             reports/twin_engine_audit.json
             reports/twin_engine_audit.md
+            reports/twin_engine_ledger.json
+            reports/twin_engine_ledger.md
           retention-days: 30
