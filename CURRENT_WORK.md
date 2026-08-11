@@ -4,10 +4,10 @@
 
 ## 현재 작업
 
-- 기준 브랜치: `main` (`9c84a0ee40ddd98c358bbac2087d522ceeba9dbf`)
-- 활성 작업 브랜치: `agent/v3-release-record`
-- 작업 목표: PR #27의 보수적 기준선 `MONTHLY_H05`를 `JDSS-3.0.0-TWIN-H05`로 승격
-- 범위: 코드·DB·Telegram·백테스트·문서·Oracle dry-run 배포
+- 기준 브랜치: `main`
+- 릴리스·Oracle 실행 코드: `df640d16c485b770d9c57c570f5a13b3bdb4e2de`
+- 현재 작업: V3 승격·릴리스·dry-run 배포 완료 상태 기록
+- 완료 범위: 코드·DB·Telegram·백테스트·문서·GitHub Release·Oracle dry-run 배포
 - 제외: live 적용. V3는 설정과 코드 양쪽에서 전체 live 모드를 거부한다.
 
 ## 전략·운영 기준
@@ -38,20 +38,23 @@
 - PR #35 CI run `31503897001`, V3 Dry Run `31503897011`, Security `31503897007` 성공
 - V3 Backtest run `31504080666` 성공: +676.17%, CAGR 14.04%, MDD -28.29%, Sharpe 0.834
 - 연도별 수익률과 전체 지표는 `docs/BACKTEST_REPORT.md`, 원본은 Issue #36과 Artifact `jdss-backtest-31504080666`
-- Oracle 배포 결과는 완료 후 이 문서에 확정 기록한다.
+- GitHub Release workflow run `31505042401` 성공, `v3.0.0` 릴리스 완료
+- Oracle Deploy run `31505089368` 성공: main 계보·CI·설정 검증, 강제 dry-run 잠금, 서비스 active, Toss read-only smoke 통과
 
 ## 배포 상태
 
-- 현재 Oracle 마지막 확인본은 기존 V2 dry-run이다.
-- V3 코드는 PR #35로 `main` 병합됐고 릴리스·Oracle 배포 전이다.
+- GitHub Release: `v3.0.0`, target `df640d16c485b770d9c57c570f5a13b3bdb4e2de`
+- Oracle 배포 SHA: `df640d16c485b770d9c57c570f5a13b3bdb4e2de`
+- `jd_holdings_bot` 서비스가 V3 코드로 재시작돼 Telegram bot도 최신화됐다.
 - 배포는 GitHub Actions `Deploy Oracle Dry Run` 한 경로만 사용하며 서버 `.env`를 강제로 `dry_run`과 빈 `JDSS_LIVE_CONFIRMATION`으로 유지한다.
 - 운영 SHA의 최종 확인 기준은 Oracle `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 Actions 결과다.
+- 이 상태 기록은 문서 전용이므로 병합 후 서버 재배포는 필요하지 않다.
 
 ## 다음 작업
 
-1. 최종 결과 기록 PR을 병합한다.
-2. `v3.0.0` 태그·릴리스를 만들고 Oracle dry-run을 배포한다.
-3. Telegram `/ping`, `/portfolio`, `/dashboard`, `/bt`, `/sgov`를 배포 환경에서 확인한다.
+1. Oracle dry-run 로그와 주문 승인 흐름을 관찰한다.
+2. Telegram에서 `/ping`, `/portfolio`, `/dashboard`, `/bt`, `/sgov` 응답을 사용자 계정으로 확인한다.
+3. live는 계속 금지하며, 별도의 승인·운영 검증 전에는 활성화하지 않는다.
 
 ## 작업 종료 갱신 규칙
 
