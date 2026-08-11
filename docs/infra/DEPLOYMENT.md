@@ -107,7 +107,11 @@ Telegram `/ping`, `/portfolio`, `/dashboard`, `/account`, `/sgov`, `/bt`를 확�
 
 배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 코어/부스터 원장·주문 상태·SGOV 관리 원장을 Reconciliation한다. 브로커 TQQQ·SOXL 기대수량은 코어와 부스터의 합이다. 기존 계좌 SGOV를 자동 인수하지 않는다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. V3.0.0에서는 `JDSS_TRADING_MODE=live`를 설정하지 않는다.
 
-## 4. 롤백
+## 4. GitHub 릴리스
+
+GitHub API 연결에서 Release 생성이 지원되지 않는 환경은 owner 전용 ChatOps를 사용한다. 제목이 `[release-v3.0.0]`으로 시작하는 이슈를 만들면 `Release V3` workflow가 최신 원격 `main`, 패키지·설정 3.0.0, `live_enabled: false`를 확인하고 `v3.0.0` 태그와 Release를 만든다. 이미 같은 Release가 있으면 변경하지 않고 기존 URL을 보고한다. 릴리스 성공을 확인한 뒤 `[deploy-oracle-dry-run]` 이슈를 별도로 생성한다.
+
+## 5. 롤백
 
 이전 commit 릴리스로 `current` 링크를 되돌린 뒤 전용 서비스만 재시작합니다.
 
