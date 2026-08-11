@@ -63,7 +63,8 @@ def test_workflows_use_node24_actions():
         "ci.yml",
         "final-dry-run.yml",
         "deploy-oracle-dry-run.yml",
-        "release-v3.yml",
+        "jdss-backtest.yml",
+        "security.yml",
     ):
         workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
         assert "actions/checkout@v7" in workflow
@@ -72,11 +73,7 @@ def test_workflows_use_node24_actions():
         assert "actions/setup-python@v5" not in workflow
 
 
-def test_release_chatops_is_owner_only_and_pins_v3_contract():
-    workflow = (ROOT / ".github/workflows/release-v3.yml").read_text(encoding="utf-8")
-    assert "github.actor == github.repository_owner" in workflow
-    assert "[release-v3.0.0]" in workflow
-    assert "JDSS-3.0.0-TWIN-H05" in workflow
-    assert "live_enabled: false" in workflow
-    assert "gh release create v3.0.0" in workflow
-    assert "ref: main" in workflow
+def test_completed_release_chatops_is_retired():
+    assert not (ROOT / ".github/workflows/release-v3.yml").exists()
+    deployment = (ROOT / "docs/infra/DEPLOYMENT.md").read_text(encoding="utf-8")
+    assert "버전 전용 ChatOps workflow는 재실행과 운영 혼선을 막기 위해" in deployment

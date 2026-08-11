@@ -109,7 +109,14 @@ Telegram `/ping`, `/portfolio`, `/dashboard`, `/account`, `/sgov`, `/bt`를 확�
 
 ## 4. GitHub 릴리스
 
-GitHub API 연결에서 Release 생성이 지원되지 않는 환경은 owner 전용 ChatOps를 사용한다. 제목이 `[release-v3.0.0]`으로 시작하는 이슈를 만들면 `Release V3` workflow가 최신 원격 `main`, 패키지·설정 3.0.0, `live_enabled: false`를 확인하고 `v3.0.0` 태그와 Release를 만든다. 이미 같은 Release가 있으면 변경하지 않고 기존 URL을 보고한다. 릴리스 성공을 확인한 뒤 `[deploy-oracle-dry-run]` 이슈를 별도로 생성한다.
+`v3.0.0` 태그와 GitHub Release는 검증된 commit
+`df640d16c485b770d9c57c570f5a13b3bdb4e2de`에 게시되어 있다. 해당 릴리스에 사용한
+버전 전용 ChatOps workflow는 재실행과 운영 혼선을 막기 위해 릴리스 완료 후 제거했다.
+
+다음 버전을 릴리스할 때는 패키지·설정 버전, 전략 식별자, `live_enabled: false`, 최신
+`main`의 CI·Security·백테스트 성공을 확인한 뒤 해당 버전에 맞는 릴리스 절차를 별도
+PR로 추가한다. 릴리스 성공 후에는 `Deploy Oracle Dry Run`으로 배포하고 일회성 릴리스
+절차를 다시 제거한다.
 
 ## 5. 롤백
 
