@@ -1,5 +1,7 @@
 """Robustness checks for the research-only monthly twin-engine strategy."""
 
+# ruff: noqa: E501, I001
+
 from __future__ import annotations
 
 import argparse
@@ -111,7 +113,6 @@ def _simulate(
                     quantities[symbol] -= quantity
                     trades.append({"date": str(timestamp.date()), "symbol": symbol, "side": "SELL", "quantity": quantity})
 
-        close_equity = cash + sum(quantities[s] * closes[s] for s in SYMBOLS)
         if timestamp in month_ends:
             due = position + 1 + delay
             if due < len(index):
