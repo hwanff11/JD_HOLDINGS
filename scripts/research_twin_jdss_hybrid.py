@@ -170,25 +170,38 @@ def _simulate_hybrid(
             for symbol in SYMBOLS
         )
 
-        recalculate = False
-        core_targets = {
-            ("core", symbol): 0.15 if core_active[symbol] else 0.0
-            for symbol in SYMBOLS
-        }
+        core_changed = False
+        booster_changed = False
         if pending_core is not None:
             core_active = {symbol: pending_core[symbol] > 0 for symbol in SYMBOLS}
-            core_targets = {("core", symbol): pending_core[symbol] for symbol in SYMBOLS}
+            core_targets = {
+                ("core", symbol): pending_core[symbol] for symbol in SYMBOLS
+            }
+            cash = _trade_component_targets(
+                core_targets, quantities, opens, timestamp=timestamp, cash=cash,
+                equity=open_equity, buy_fee=buy_fee, sell_fee=sell_fee,
+                slippage=slippage, trades=trades,
+            )
             pending_core = None
-            recalculate = True
+            core_changed = True
 
         if timestamp in baseline_events:
             for event in baseline_events[timestamp]:
                 symbol = event["symbol"]
-                signed = int(event["quantity"]) if event["side"] == "BUY" else -int(event["quantity"])
+                signed = (
+                    int(event["quantity"])
+                    if event["side"] == "BUY"
+                    else -int(event["quantity"])
+                )
                 reference_qty[symbol] = max(0, reference_qty[symbol] + signed)
-            recalculate = True
+            booster_changed = True
 
-        if recalculate:
+        if core_changed or booster_changed:
+            open_equity = cash + sum(
+                quantities[component][symbol] * opens[symbol]
+                for component in quantities
+                for symbol in SYMBOLS
+            )
             booster_targets: dict[tuple[str, str], float] = {}
             for symbol in SYMBOLS:
                 utilization = min(
@@ -196,11 +209,12 @@ def _simulate_hybrid(
                     reference_qty[symbol] * opens[symbol]
                     / float(config.global_.capital_per_symbol),
                 )
-                effective_cap = booster_cap if core_active[symbol] else min(0.05, booster_cap)
+                effective_cap = (
+                    booster_cap if core_active[symbol] else min(0.05, booster_cap)
+                )
                 booster_targets[("booster", symbol)] = effective_cap * utilization
-            targets = {**core_targets, **booster_targets}
             cash = _trade_component_targets(
-                targets, quantities, opens, timestamp=timestamp, cash=cash,
+                booster_targets, quantities, opens, timestamp=timestamp, cash=cash,
                 equity=open_equity, buy_fee=buy_fee, sell_fee=sell_fee,
                 slippage=slippage, trades=trades,
             )
