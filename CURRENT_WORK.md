@@ -8,8 +8,8 @@
 - PR #22 병합 반영 기준 SHA: `065cd0c22a4313d809b91174b4215ac0b1435d82`
 - PR #24 병합: GitHub Actions 백테스트·보안검사 자동화 (`8f1e970bb77fc6901bcbbea8bae36f735d3d4e44`)
 - PR #25 병합: Telegram 최근 점수 이력 조회 (`5e9090ee803030be8a713bd2486ce56b4f83e944`)
-- 활성 작업 브랜치: `main`
-- 작업 목표: 동작 보존형 코드 정리, 보안 점검·강화, Markdown 중복 제거와 역할 명확화
+- 활성 작업 브랜치: `agent/chatops-latest-main-deploy`
+- 작업 목표: ChatGPT의 단일 이슈 요청으로 최신 `main` Oracle dry-run 배포
 - 전략 변경: 없음
 - 실거래 승격: 금지
 
@@ -32,12 +32,10 @@
 
 ## Oracle ChatOps 상태
 
-- owner 이슈 기반 워크플로 기동과 결과 댓글 작성은 정상 동작
-- Actions run `31436429350`: Ruff, pytest 100개, 설정 검증 통과
-- 배포 중단 지점: `Prepare SSH`
-- 원인: GitHub Environment `oracle-dry-run`의 `ORACLE_SSH_KEY`, `ORACLE_HOST` 미등록
-- 운영 서버에는 접속하지 않았으므로 기존 Oracle 서비스와 DB는 변경되지 않음
-- SSH 키는 로컬에만 보관 중이며 GitHub 등록·재배포는 보류
+- owner 이슈 기반 워크플로 기동과 결과 댓글 작성은 정상 동작한다.
+- Issue #28은 Actions run `31489316669`를 정상 기동했으며, 트리거가 아니라 pytest 2건 실패로 Oracle 접속 전에 중단됐다.
+- ChatOps 이슈에는 SHA를 넣지 않고, Actions가 실행 시점의 최신 원격 `main`을 직접 확정하도록 변경 중이다.
+- GitHub Environment `oracle-dry-run`의 Oracle secret은 Actions에서만 사용하고 저장소·이슈·ChatGPT에 노출하지 않는다.
 
 ## 현재 브랜치 완료 작업
 
@@ -67,8 +65,8 @@
 
 ## 다음 작업
 
-1. Oracle 배포는 GitHub Environment secret 등록 결정 전까지 보류
-2. 배포 재개 시 `main` 최신 SHA 기준 dry-run과 systemd·Toss smoke 검증
+1. ChatOps 수정 PR의 CI와 JDSS Dry Run을 통과시켜 `main`에 병합
+2. SHA 없는 owner 이슈로 최신 `main` 배포를 실행하고 systemd active·강제 dry-run·Toss smoke 결과 확인
 
 ## 작업 종료 갱신 규칙
 

@@ -10,7 +10,7 @@
 | JDSS 애플리케이션 | 검증된 `strategy.yaml`과 내부 상태 모델 | 환경변수, DB 기존 상태, 외부 시세·주문 응답 |
 | Toss OpenAPI | TLS로 연결한 공식 고정 호스트 | HTTP 상태, JSON 객체 형식, 필수 응답값, 주문 입력 경계 |
 | SQLite | 트랜잭션으로 확정된 JDSS 원장 | 브로커 잔고·미체결 주문과의 일치 여부 |
-| GitHub Actions | 보호된 `main` 계보와 Environment | 배포 SHA, 요청 주체, Secret 존재 여부 |
+| GitHub Actions | 원격과 정확히 일치하는 최신 `main`과 Environment | 배포 SHA, 요청 주체, Secret 존재 여부 |
 | Oracle | commit별 읽기 전용 릴리스 | shared DB·로그·환경파일 권한, 서비스 상태, smoke test |
 
 ## 2. 비밀정보
@@ -60,7 +60,7 @@
 ## 7. 배포와 실행 권한
 
 - 배포 대상은 깨끗하고 원격과 일치하는 `main` 커밋으로 제한한다.
-- ChatOps 요청은 저장소 소유자가 생성한 정확한 40자리 `main` SHA만 허용한다.
+- ChatOps 요청은 저장소 소유자가 생성한 전용 제목의 이슈만 허용하고, SHA 입력 대신 Actions가 실행 시점의 최신 원격 `main`을 직접 확정한다.
 - Actions 권한은 `contents: read`를 기본으로 하고 배포 결과 댓글에 필요한 `issues: write`만 추가한다.
 - Oracle 서비스는 비루트 사용자, `NoNewPrivileges`, 빈 capability, private devices/tmp, 커널·control group 보호와 제한된 주소 패밀리를 사용한다.
 - 배포 후 서비스 active, 강제 dry-run, 빈 live 확인값과 Toss 조회 전용 smoke test를 확인한다.
