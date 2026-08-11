@@ -6,11 +6,13 @@ on:
     paths:
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
+      - scripts/research_twin_engine_audit.py
       - .github/workflows/jdss-twin-engine-robustness.yml
   pull_request:
     paths:
       - scripts/research_twin_engine.py
       - scripts/research_twin_engine_robustness.py
+      - scripts/research_twin_engine_audit.py
       - .github/workflows/jdss-twin-engine-robustness.yml
   workflow_dispatch:
     inputs:
@@ -42,7 +44,7 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: ruff check scripts/research_twin_engine_robustness.py
+      - run: ruff check scripts/research_twin_engine_robustness.py scripts/research_twin_engine_audit.py
       - name: Run twin-engine robustness
         env:
           END_DATE: ${{ inputs.end_date || '2026-08-10' }}
@@ -53,11 +55,23 @@ jobs:
             --slippage "$SLIPPAGE" \
             --output reports/twin_engine_robustness.json \
             --markdown reports/twin_engine_robustness.md
-      - run: cat reports/twin_engine_robustness.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Run twin-engine return-source audit
+        env:
+          END_DATE: ${{ inputs.end_date || '2026-08-10' }}
+          SLIPPAGE: ${{ matrix.slippage }}
+        run: |
+          python scripts/research_twin_engine_audit.py \
+            --end "$END_DATE" \
+            --slippage "$SLIPPAGE" \
+            --output reports/twin_engine_audit.json \
+            --markdown reports/twin_engine_audit.md
+      - run: cat reports/twin_engine_robustness.md reports/twin_engine_audit.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
           name: jdss-twin-engine-robustness-${{ github.run_id }}-${{ matrix.slippage }}
           path: |
             reports/twin_engine_robustness.json
             reports/twin_engine_robustness.md
+            reports/twin_engine_audit.json
+            reports/twin_engine_audit.md
           retention-days: 30
