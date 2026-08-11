@@ -1,0 +1,1 @@
+Simple confirmation filters for 6-month monthly trend.
