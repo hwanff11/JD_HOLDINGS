@@ -6,6 +6,10 @@ on:
     paths:
       - scripts/research_hybrid_jdss.py
       - .github/workflows/jdss-hybrid-research.yml
+  pull_request:
+    paths:
+      - scripts/research_hybrid_jdss.py
+      - .github/workflows/jdss-hybrid-research.yml
   workflow_dispatch:
     inputs:
       end_date:
