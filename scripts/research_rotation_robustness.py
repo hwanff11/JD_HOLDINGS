@@ -16,6 +16,7 @@ from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_met
 from jd_holdings.config import StrategyConfig, load_config
 from jd_holdings.core.indicators import calculate_indicators
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
+
 from research_simple_strategies import (
     DOWNLOAD_SYMBOLS,
     ROOT,
