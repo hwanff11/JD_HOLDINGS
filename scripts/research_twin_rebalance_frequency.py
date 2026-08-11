@@ -26,11 +26,13 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 CADENCES = {
     "MONTHLY": {"kind": "monthly"},
+    "SEMIMONTHLY": {"kind": "semimonthly"},
     "BIWEEKLY_A": {"kind": "biweekly", "phase": 0},
     "BIWEEKLY_B": {"kind": "biweekly", "phase": 1},
     "WEEKLY": {"kind": "weekly"},
     "BIWEEKLY_BAND_A": {"kind": "band", "phase": 0, "lower": 0.12, "upper": 0.18},
     "BIWEEKLY_BAND_B": {"kind": "band", "phase": 1, "lower": 0.12, "upper": 0.18},
+    "SEMIMONTHLY_BAND": {"kind": "semimonthly_band", "lower": 0.12, "upper": 0.18},
 }
 
 
@@ -42,6 +44,13 @@ def _week_end_sessions(index: pd.DatetimeIndex) -> list[pd.Timestamp]:
 def _cadence_sessions(index: pd.DatetimeIndex, spec: dict[str, Any]) -> set[pd.Timestamp]:
     if spec["kind"] == "monthly":
         return set()
+    if spec["kind"] in {"semimonthly", "semimonthly_band"}:
+        midmonth = []
+        for _, sessions in pd.Series(index=index, data=index).groupby(index.to_period("M")):
+            first_half = sessions[sessions.dt.day <= 15]
+            if not first_half.empty:
+                midmonth.append(first_half.iloc[-1])
+        return set(midmonth)
     week_ends = _week_end_sessions(index)
     if spec["kind"] == "weekly":
         return set(week_ends)
@@ -178,7 +187,7 @@ def _simulate(
             pending_core = {symbol: 0.15 if bool(signals[symbol].loc[timestamp]) else 0.0 for symbol in SYMBOLS}
         elif timestamp in cadence_dates:
             desired = {symbol: 0.15 if active[symbol] else 0.0 for symbol in SYMBOLS}
-            if spec["kind"] == "band":
+            if spec["kind"] in {"band", "semimonthly_band"}:
                 weights = {symbol: quantities["core"][symbol] * closes[symbol] / close_equity for symbol in SYMBOLS}
                 if not any(active[symbol] and (weights[symbol] < spec["lower"] or weights[symbol] > spec["upper"]) for symbol in SYMBOLS):
                     desired = None
@@ -234,6 +243,9 @@ def main() -> int:
 
     definitions = {name: (name, 0.0) for name in CADENCES}
     definitions.update({
+        "MONTHLY_H05": ("MONTHLY", 0.05), "MONTHLY_H10": ("MONTHLY", 0.10),
+        "SEMIMONTHLY_H05": ("SEMIMONTHLY", 0.05),
+        "SEMIMONTHLY_BAND_H05": ("SEMIMONTHLY_BAND", 0.05),
         "BIWEEKLY_A_H05": ("BIWEEKLY_A", 0.05), "BIWEEKLY_B_H05": ("BIWEEKLY_B", 0.05),
         "BIWEEKLY_A_H10": ("BIWEEKLY_A", 0.10), "BIWEEKLY_B_H10": ("BIWEEKLY_B", 0.10),
         "BAND_A_H05": ("BIWEEKLY_BAND_A", 0.05), "BAND_B_H05": ("BIWEEKLY_BAND_B", 0.05),
@@ -264,14 +276,20 @@ def main() -> int:
 
     eligible = {name: data for name, data in report["candidates"].items() if data["full"]["mdd_pct"] >= -30.0}
     best = max(eligible, key=lambda name: eligible[name]["full"]["cagr_pct"])
-    monthly_return = report["candidates"]["MONTHLY"]["full"]["total_return_pct"]
     phase_pairs = {
-        "BIWEEKLY": ("BIWEEKLY_A", "BIWEEKLY_B"),
-        "BIWEEKLY_H05": ("BIWEEKLY_A_H05", "BIWEEKLY_B_H05"),
-        "BIWEEKLY_H10": ("BIWEEKLY_A_H10", "BIWEEKLY_B_H10"),
-        "BAND_H05": ("BAND_A_H05", "BAND_B_H05"),
+        "BIWEEKLY": (("BIWEEKLY_A", "BIWEEKLY_B"), "MONTHLY"),
+        "BIWEEKLY_H05": (("BIWEEKLY_A_H05", "BIWEEKLY_B_H05"), "MONTHLY_H05"),
+        "BIWEEKLY_H10": (("BIWEEKLY_A_H10", "BIWEEKLY_B_H10"), "MONTHLY_H10"),
+        "BAND_H05": (("BAND_A_H05", "BAND_B_H05"), "MONTHLY_H05"),
     }
-    phase_robust = [label for label, pair in phase_pairs.items() if all(report["candidates"][name]["full"]["total_return_pct"] > monthly_return for name in pair)]
+    phase_robust = [
+        label for label, (pair, baseline_name) in phase_pairs.items()
+        if all(
+            report["candidates"][name]["full"]["total_return_pct"]
+            > report["candidates"][baseline_name]["full"]["total_return_pct"]
+            for name in pair
+        )
+    ]
     report["selection"] = {"best_under_30pct_mdd": best, "phase_robust": phase_robust}
     markdown = _markdown(report)
     args.output.parent.mkdir(parents=True, exist_ok=True)
