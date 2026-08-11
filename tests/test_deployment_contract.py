@@ -59,9 +59,24 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
 
 
 def test_workflows_use_node24_actions():
-    for name in ("ci.yml", "final-dry-run.yml", "deploy-oracle-dry-run.yml"):
+    for name in (
+        "ci.yml",
+        "final-dry-run.yml",
+        "deploy-oracle-dry-run.yml",
+        "release-v3.yml",
+    ):
         workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
         assert "actions/checkout@v7" in workflow
         assert "actions/setup-python@v7" in workflow
         assert "actions/checkout@v4" not in workflow
         assert "actions/setup-python@v5" not in workflow
+
+
+def test_release_chatops_is_owner_only_and_pins_v3_contract():
+    workflow = (ROOT / ".github/workflows/release-v3.yml").read_text(encoding="utf-8")
+    assert "github.actor == github.repository_owner" in workflow
+    assert "[release-v3.0.0]" in workflow
+    assert "JDSS-3.0.0-TWIN-H05" in workflow
+    assert "live_enabled: false" in workflow
+    assert "gh release create v3.0.0" in workflow
+    assert "ref: main" in workflow
