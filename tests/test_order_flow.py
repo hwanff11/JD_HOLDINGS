@@ -10,7 +10,7 @@ from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import ApprovalError, SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
-from jd_holdings.application.position_manager import PositionManager
+from jd_holdings.application.position_manager import PositionManager, tp1_completed_at_key
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service import TradingService
@@ -235,6 +235,11 @@ def test_tp2_recovery_does_not_reset_tp1_remainder_clock(tmp_path, config):
     quote, premarket = create_approved_entry(repository, trading, config)
     trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     fill_tp1_completely(repository, broker, monitor)
+    position = repository.get_position("TQQQ")
+    repository.set_system_value(
+        tp1_completed_at_key("TQQQ", position.cycle_id),
+        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
+    )
 
     tp2_local = next(
         order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2"
