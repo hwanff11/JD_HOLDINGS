@@ -88,7 +88,9 @@ class PortfolioBacktestEngine:
         }
         month_ends = self._month_end_sessions(index)
         trends = {
-            symbol: self._monthly_trend(frames[underlying], index, self.config.portfolio.trend_months)
+            symbol: self._monthly_trend(
+                frames[underlying], index, self.config.portfolio.trend_months
+            )
             for symbol, underlying in self.config.portfolio.core_underlyings.items()
         }
         booster_events: dict[pd.Timestamp, list[dict[str, Any]]] = defaultdict(list)
@@ -107,9 +109,17 @@ class PortfolioBacktestEngine:
         idle_returns = idle_close.pct_change(fill_method=None).fillna(0.0)
 
         for timestamp in index:
-            opens = {symbol: float(frames[symbol].loc[timestamp, "open"]) for symbol in self.config.enabled_symbols}
-            closes = {symbol: float(frames[symbol].loc[timestamp, "close"]) for symbol in self.config.enabled_symbols}
-            income = max(0.0, cash - float(self.config.idle_cash.cash_buffer)) * float(idle_returns.loc[timestamp])
+            opens = {
+                symbol: float(frames[symbol].loc[timestamp, "open"])
+                for symbol in self.config.enabled_symbols
+            }
+            closes = {
+                symbol: float(frames[symbol].loc[timestamp, "close"])
+                for symbol in self.config.enabled_symbols
+            }
+            income = max(0.0, cash - float(self.config.idle_cash.cash_buffer)) * float(
+                idle_returns.loc[timestamp]
+            )
             cash += income
             idle_income += income
 
@@ -120,8 +130,16 @@ class PortfolioBacktestEngine:
                     for symbol in self.config.enabled_symbols
                 )
                 cash = self._rebalance_core(
-                    pending_core, quantities["core"], opens, cash=cash, equity=equity_at_open,
-                    timestamp=timestamp, buy_fee=buy_fee, sell_fee=sell_fee, slippage=slip, trades=trades,
+                    pending_core,
+                    quantities["core"],
+                    opens,
+                    cash=cash,
+                    equity=equity_at_open,
+                    timestamp=timestamp,
+                    buy_fee=buy_fee,
+                    sell_fee=sell_fee,
+                    slippage=slip,
+                    trades=trades,
                 )
                 pending_core = None
 
@@ -145,19 +163,33 @@ class PortfolioBacktestEngine:
                     fee = quantity * price * sell_fee
                     cash += quantity * price - fee
                     quantities["booster"][symbol] -= quantity
-                trades.append({"date": timestamp.date().isoformat(), "component": "booster", "symbol": symbol,
-                               "side": side, "purpose": event.get("purpose", "JDSS"), "quantity": quantity,
-                               "price": round(price, 6), "fee": round(fee, 6)})
+                trades.append(
+                    {
+                        "date": timestamp.date().isoformat(),
+                        "component": "booster",
+                        "symbol": symbol,
+                        "side": side,
+                        "purpose": event.get("purpose", "JDSS"),
+                        "quantity": quantity,
+                        "price": round(price, 6),
+                        "fee": round(fee, 6),
+                    }
+                )
 
             if timestamp in month_ends:
                 pending_core = {
-                    symbol: (float(self.config.portfolio.core_target_weight) if bool(trends[symbol].loc[timestamp]) else 0.0)
+                    symbol: (
+                        float(self.config.portfolio.core_target_weight)
+                        if bool(trends[symbol].loc[timestamp])
+                        else 0.0
+                    )
                     for symbol in self.config.enabled_symbols
                 }
 
             liquidation = sum(
                 quantities[component][symbol] * closes[symbol] * (1 - sell_fee)
-                for component in quantities for symbol in self.config.enabled_symbols
+                for component in quantities
+                for symbol in self.config.enabled_symbols
             )
             equity = cash + liquidation
             equity_values.append(equity)
@@ -166,10 +198,19 @@ class PortfolioBacktestEngine:
         equity_curve = pd.Series(equity_values, index=index)
         metrics = self._metrics(equity_curve, exposures, trades, idle_income)
         metrics["component_fills"] = {
-            component: sum(trade["component"] == component for trade in trades) for component in quantities
+            component: sum(trade["component"] == component for trade in trades)
+            for component in quantities
         }
-        return PortfolioBacktestResult(index[0].date(), index[-1].date(), self.config.version,
-                                       self.config.config_version, slip, metrics, tuple(trades), equity_curve)
+        return PortfolioBacktestResult(
+            index[0].date(),
+            index[-1].date(),
+            self.config.version,
+            self.config.config_version,
+            slip,
+            metrics,
+            tuple(trades),
+            equity_curve,
+        )
 
     @staticmethod
     def _month_end_sessions(index: pd.DatetimeIndex) -> set[pd.Timestamp]:
@@ -177,7 +218,9 @@ class PortfolioBacktestEngine:
         return set(values.groupby(index.to_period("M")).last().tolist())
 
     @classmethod
-    def _monthly_trend(cls, frame: pd.DataFrame, index: pd.DatetimeIndex, months: int) -> pd.Series:
+    def _monthly_trend(
+        cls, frame: pd.DataFrame, index: pd.DatetimeIndex, months: int
+    ) -> pd.Series:
         history = frame.loc[: index[-1], "close"].dropna()
         monthly = history.groupby(history.index.to_period("M")).last()
         active = monthly > monthly.rolling(months, min_periods=months).mean()
@@ -186,7 +229,20 @@ class PortfolioBacktestEngine:
             result.loc[timestamp] = bool(active.get(timestamp.to_period("M"), False))
         return result
 
-    def _rebalance_core(self, targets, quantities, prices, *, cash, equity, timestamp, buy_fee, sell_fee, slippage, trades):
+    def _rebalance_core(
+        self,
+        targets,
+        quantities,
+        prices,
+        *,
+        cash,
+        equity,
+        timestamp,
+        buy_fee,
+        sell_fee,
+        slippage,
+        trades,
+    ):
         changes = {}
         for symbol, weight in targets.items():
             buy_price = prices[symbol] * (1 + slippage)
@@ -194,17 +250,20 @@ class PortfolioBacktestEngine:
             target_qty = math.floor(weight * equity / (buy_price * (1 + buy_fee)))
             changes[symbol] = (target_qty - quantities[symbol], buy_price, sell_price)
         for symbol, (difference, _, sell_price) in changes.items():
-            if difference >= 0: continue
+            if difference >= 0:
+                continue
             quantity = -difference
             fee = quantity * sell_price * sell_fee
             cash += quantity * sell_price - fee
             quantities[symbol] -= quantity
             trades.append(self._core_trade(timestamp, symbol, "SELL", quantity, sell_price, fee))
         for symbol, (difference, buy_price, _) in changes.items():
-            if difference <= 0: continue
+            if difference <= 0:
+                continue
             affordable = math.floor(cash / (buy_price * (1 + buy_fee)))
             quantity = min(difference, affordable)
-            if quantity <= 0: continue
+            if quantity <= 0:
+                continue
             fee = quantity * buy_price * buy_fee
             cash -= quantity * buy_price + fee
             quantities[symbol] += quantity
@@ -213,23 +272,45 @@ class PortfolioBacktestEngine:
 
     @staticmethod
     def _core_trade(timestamp, symbol, side, quantity, price, fee):
-        return {"date": timestamp.date().isoformat(), "component": "core", "symbol": symbol, "side": side,
-                "purpose": f"CORE_REBALANCE_{side}", "quantity": quantity, "price": round(price, 6), "fee": round(fee, 6)}
+        return {
+            "date": timestamp.date().isoformat(),
+            "component": "core",
+            "symbol": symbol,
+            "side": side,
+            "purpose": f"CORE_REBALANCE_{side}",
+            "quantity": quantity,
+            "price": round(price, 6),
+            "fee": round(fee, 6),
+        }
 
-    def _metrics(self, equity: pd.Series, exposures: list[float], trades: list[dict[str, Any]], idle_income: float) -> dict[str, Any]:
+    def _metrics(
+        self,
+        equity: pd.Series,
+        exposures: list[float],
+        trades: list[dict[str, Any]],
+        idle_income: float,
+    ) -> dict[str, Any]:
         initial, final = float(equity.iloc[0]), float(equity.iloc[-1])
         years = max((equity.index[-1] - equity.index[0]).days / 365.2425, 1 / 365.2425)
         sharpe, sortino = risk_adjusted_metrics(equity, self.config.backtest.annualization_days)
         half_year = pd.Index([f"{ts.year}-H{1 if ts.month <= 6 else 2}" for ts in equity.index])
         return {
-            "initial_equity": round(initial, 2), "final_equity": round(final, 2),
+            "initial_equity": round(initial, 2),
+            "final_equity": round(final, 2),
             "total_return_pct": round((final / initial - 1) * 100, 2),
             "cagr_pct": round(((final / initial) ** (1 / years) - 1) * 100, 2),
-            "mdd_pct": round(maximum_drawdown(equity) * 100, 2), "sharpe": round(sharpe, 3),
-            "sortino": round(sortino, 3), "trade_fills": len(trades),
-            "average_exposure_pct": round(sum(exposures) / len(exposures) * 100, 2), "idle_cash_income": round(idle_income, 2),
-            "annual_returns_pct": {str(year): round((group.iloc[-1] / group.iloc[0] - 1) * 100, 2)
-                                   for year, group in equity.groupby(equity.index.year)},
-            "half_year_returns_pct": {str(period): round((group.iloc[-1] / group.iloc[0] - 1) * 100, 2)
-                                      for period, group in equity.groupby(half_year)},
+            "mdd_pct": round(maximum_drawdown(equity) * 100, 2),
+            "sharpe": round(sharpe, 3),
+            "sortino": round(sortino, 3),
+            "trade_fills": len(trades),
+            "average_exposure_pct": round(sum(exposures) / len(exposures) * 100, 2),
+            "idle_cash_income": round(idle_income, 2),
+            "annual_returns_pct": {
+                str(year): round((group.iloc[-1] / group.iloc[0] - 1) * 100, 2)
+                for year, group in equity.groupby(equity.index.year)
+            },
+            "half_year_returns_pct": {
+                str(period): round((group.iloc[-1] / group.iloc[0] - 1) * 100, 2)
+                for period, group in equity.groupby(half_year)
+            },
         }
