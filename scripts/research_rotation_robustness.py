@@ -20,6 +20,7 @@ from research_simple_strategies import (
     _research_indicators,
     _simulate_rotation,
 )
+
 from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
 from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
 from jd_holdings.config import StrategyConfig, load_config
