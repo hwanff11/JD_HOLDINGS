@@ -8,6 +8,7 @@
 - 릴리스·Oracle 실행 코드: `df640d16c485b770d9c57c570f5a13b3bdb4e2de`
 - 현재 작업: V3 승격·릴리스·dry-run 배포 완료 상태 기록
 - 완료 범위: 코드·DB·Telegram·백테스트·문서·GitHub Release·Oracle dry-run 배포
+- 저장소 정리: V3 일회성 릴리스 workflow 제거, 대체된 PR과 완료·과거 트리거 이슈 종료
 - 제외: live 적용. V3는 설정과 코드 양쪽에서 전체 live 모드를 거부한다.
 
 ## 전략·운영 기준
