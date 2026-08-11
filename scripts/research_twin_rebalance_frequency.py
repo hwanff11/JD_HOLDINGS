@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import numpy as np
 
 from research_simple_strategies import ROOT, SYMBOLS, _combined, _idle_return
 from research_twin_engine import _metrics, _month_end_sessions
@@ -109,6 +110,7 @@ def _simulate(
     cadence: str,
     booster_cap: float,
     slippage: float,
+    execution_delay: int = 0,
 ) -> tuple[pd.Series, dict[str, Any]]:
     spec = CADENCES[cadence]
     index = raw["TQQQ"].index
@@ -122,18 +124,24 @@ def _simulate(
         for symbol in SYMBOLS
     }
     baseline_events: dict[pd.Timestamp, list[dict[str, Any]]] = defaultdict(list)
+    date_positions = {timestamp: position for position, timestamp in enumerate(index)}
     for symbol, result in baseline.items():
         for trade in result.trades:
             event = dict(trade)
             event["symbol"] = symbol
-            baseline_events[pd.Timestamp(event["date"])].append(event)
+            event_date = pd.Timestamp(event["date"])
+            if event_date not in date_positions:
+                continue
+            due = date_positions[event_date] + execution_delay
+            if due < len(index):
+                baseline_events[index[due]].append(event)
 
     initial = float(config.global_.capital_per_symbol) * len(SYMBOLS)
     cash = initial
     quantities = {"core": {symbol: 0 for symbol in SYMBOLS}, "booster": {symbol: 0 for symbol in SYMBOLS}}
     reference_qty = {symbol: 0 for symbol in SYMBOLS}
     active = {symbol: False for symbol in SYMBOLS}
-    pending_core: dict[str, float] | None = None
+    scheduled_core: dict[int, dict[str, float]] = {}
     trades: list[dict[str, Any]] = []
     equity_values: list[float] = []
     exposure_values: list[float] = []
@@ -142,7 +150,7 @@ def _simulate(
     buy_fee = float(config.global_.buy_fee)
     sell_fee = float(config.global_.sell_fee)
 
-    for timestamp in index:
+    for position, timestamp in enumerate(index):
         opens = {symbol: float(raw[symbol].loc[timestamp, "open"]) for symbol in SYMBOLS}
         closes = {symbol: float(raw[symbol].loc[timestamp, "close"]) for symbol in SYMBOLS}
         income = max(0.0, cash - float(config.idle_cash.cash_buffer)) * float(idle_returns.loc[timestamp])
@@ -151,16 +159,16 @@ def _simulate(
         open_equity = cash + sum(quantities[component][symbol] * opens[symbol] for component in quantities for symbol in SYMBOLS)
 
         regime_changed = False
-        if pending_core is not None:
-            next_active = {symbol: pending_core[symbol] > 0 for symbol in SYMBOLS}
+        core_targets = scheduled_core.pop(position, None)
+        if core_targets is not None:
+            next_active = {symbol: core_targets[symbol] > 0 for symbol in SYMBOLS}
             regime_changed = next_active != active
             active = next_active
             cash = _trade_targets(
-                {("core", symbol): pending_core[symbol] for symbol in SYMBOLS}, quantities, opens,
+                {("core", symbol): core_targets[symbol] for symbol in SYMBOLS}, quantities, opens,
                 timestamp=timestamp, cash=cash, equity=open_equity, buy_fee=buy_fee,
                 sell_fee=sell_fee, slippage=slippage, trades=trades,
             )
-            pending_core = None
 
         changed_symbols: set[str] = set()
         if timestamp in baseline_events:
@@ -184,14 +192,19 @@ def _simulate(
 
         close_equity = cash + sum(quantities[component][symbol] * closes[symbol] for component in quantities for symbol in SYMBOLS)
         if timestamp in month_ends:
-            pending_core = {symbol: 0.15 if bool(signals[symbol].loc[timestamp]) else 0.0 for symbol in SYMBOLS}
+            desired = {symbol: 0.15 if bool(signals[symbol].loc[timestamp]) else 0.0 for symbol in SYMBOLS}
+            due = position + 1 + execution_delay
+            if due < len(index):
+                scheduled_core[due] = desired
         elif timestamp in cadence_dates:
             desired = {symbol: 0.15 if active[symbol] else 0.0 for symbol in SYMBOLS}
             if spec["kind"] in {"band", "semimonthly_band"}:
                 weights = {symbol: quantities["core"][symbol] * closes[symbol] / close_equity for symbol in SYMBOLS}
                 if not any(active[symbol] and (weights[symbol] < spec["lower"] or weights[symbol] > spec["upper"]) for symbol in SYMBOLS):
                     desired = None
-            pending_core = desired
+            due = position + 1 + execution_delay
+            if desired is not None and due < len(index):
+                scheduled_core[due] = desired
 
         liquidation = sum(quantities[component][symbol] * closes[symbol] * (1 - sell_fee) for component in quantities for symbol in SYMBOLS)
         equity = cash + liquidation
@@ -208,6 +221,40 @@ def _candidate_summary(metrics: dict[str, Any]) -> dict[str, Any]:
     return {key: metrics[key] for key in ("total_return_pct", "cagr_pct", "mdd_pct", "sharpe", "trade_fills", "average_exposure_pct", "annual_returns_pct", "component_fills")}
 
 
+def _paired_bootstrap(
+    candidate: pd.Series,
+    baseline: pd.Series,
+    *,
+    iterations: int = 500,
+    block: int = 20,
+) -> dict[str, float]:
+    aligned = pd.concat([candidate.pct_change(), baseline.pct_change()], axis=1).dropna()
+    candidate_returns = aligned.iloc[:, 0].to_numpy()
+    baseline_returns = aligned.iloc[:, 1].to_numpy()
+    sample_size = len(aligned)
+    rng = np.random.default_rng(20260811)
+    return_wins = 0
+    mdd_wins = 0
+    for _ in range(iterations):
+        sampled: list[int] = []
+        while len(sampled) < sample_size:
+            start = int(rng.integers(0, max(1, sample_size - block + 1)))
+            sampled.extend(range(start, min(start + block, sample_size)))
+        positions = np.asarray(sampled[:sample_size])
+        candidate_path = np.cumprod(1 + candidate_returns[positions])
+        baseline_path = np.cumprod(1 + baseline_returns[positions])
+        candidate_mdd = float(np.min(candidate_path / np.maximum.accumulate(candidate_path) - 1))
+        baseline_mdd = float(np.min(baseline_path / np.maximum.accumulate(baseline_path) - 1))
+        return_wins += int(candidate_path[-1] > baseline_path[-1])
+        mdd_wins += int(candidate_mdd > baseline_mdd)
+    return {
+        "iterations": iterations,
+        "block_sessions": block,
+        "return_win_pct": round(return_wins / iterations * 100, 2),
+        "mdd_win_pct": round(mdd_wins / iterations * 100, 2),
+    }
+
+
 def _markdown(report: dict[str, Any]) -> str:
     lines = [
         "# 쌍발엔진 조정 주기·결합 탐색", "",
@@ -220,6 +267,10 @@ def _markdown(report: dict[str, Any]) -> str:
     lines.extend([
         "", f"- MDD -30% 이내 최고 CAGR 후보: {report['selection']['best_under_30pct_mdd']}",
         f"- 격주 위상 A/B 모두 월간보다 높은 후보: {', '.join(report['selection']['phase_robust']) or '없음'}",
+        f"- 최종 승격 후보: {report['selection']['promotion_candidate']}",
+        f"- 승격 판정: {'통과' if report['selection']['promote'] else '보류'}",
+        f"- 5년 순환 수익 우위: {report['selection']['rolling_5y_wins']}/{len(WINDOWS)}",
+        f"- 부트스트랩 수익/MDD 우위: {report['bootstrap']['return_win_pct']:.2f}% / {report['bootstrap']['mdd_win_pct']:.2f}%",
         "", "> 월말 추세 신호는 유지하고 비중 복원 주기만 변경했습니다.",
         "> 연구 전용이며 운영 코드·설정·Oracle·실주문을 변경하지 않습니다.",
     ])
@@ -290,7 +341,47 @@ def main() -> int:
             for name in pair
         )
     ]
-    report["selection"] = {"best_under_30pct_mdd": best, "phase_robust": phase_robust}
+    delay_results: dict[str, Any] = {}
+    for delay in range(4):
+        delay_results[str(delay)] = {}
+        for label, cadence in (("MONTHLY_H05", "MONTHLY"), ("SEMIMONTHLY_BAND_H05", "SEMIMONTHLY_BAND")):
+            _, metrics = _simulate(
+                raw, config, baseline, start="2011-01-01", end=args.end,
+                cadence=cadence, booster_cap=0.05, slippage=args.slippage,
+                execution_delay=delay,
+            )
+            delay_results[str(delay)][label] = _candidate_summary(metrics)
+    candidate_name = "SEMIMONTHLY_BAND_H05"
+    baseline_name = "MONTHLY_H05"
+    candidate = report["candidates"][candidate_name]
+    baseline_candidate = report["candidates"][baseline_name]
+    rolling_wins = sum(
+        candidate["rolling_5y"][key]["total_return_pct"]
+        > baseline_candidate["rolling_5y"][key]["total_return_pct"]
+        for key in candidate["rolling_5y"]
+    )
+    bootstrap = _paired_bootstrap(equities[candidate_name], equities[baseline_name])
+    criteria = {
+        "full_return_above_monthly_h05": candidate["full"]["total_return_pct"] > baseline_candidate["full"]["total_return_pct"],
+        "full_mdd_within_30pct": candidate["full"]["mdd_pct"] >= -30.0,
+        "full_sharpe_above_monthly_h05": candidate["full"]["sharpe"] > baseline_candidate["full"]["sharpe"],
+        "all_rolling_5y_positive": candidate["positive_rolling_5y"] == len(WINDOWS),
+        "rolling_5y_wins_at_least_8": rolling_wins >= 8,
+        "all_delays_return_above_monthly_h05": all(
+            values[candidate_name]["total_return_pct"] > values[baseline_name]["total_return_pct"]
+            for values in delay_results.values()
+        ),
+        "all_delays_mdd_within_32pct": all(values[candidate_name]["mdd_pct"] >= -32.0 for values in delay_results.values()),
+        "bootstrap_return_win_at_least_60pct": bootstrap["return_win_pct"] >= 60.0,
+        "bootstrap_mdd_win_at_least_50pct": bootstrap["mdd_win_pct"] >= 50.0,
+    }
+    report["delays"] = delay_results
+    report["bootstrap"] = bootstrap
+    report["selection"] = {
+        "best_under_30pct_mdd": best, "phase_robust": phase_robust,
+        "promotion_candidate": candidate_name, "rolling_5y_wins": rolling_wins,
+        "criteria": criteria, "promote": all(criteria.values()),
+    }
     markdown = _markdown(report)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
