@@ -1,0 +1,62 @@
+name: JDSS Simple Strategy Research
+
+on:
+  push:
+    branches: [research/jdss-simple-strategies]
+    paths:
+      - scripts/research_simple_strategies.py
+      - .github/workflows/jdss-simple-strategies.yml
+  pull_request:
+    paths:
+      - scripts/research_simple_strategies.py
+      - .github/workflows/jdss-simple-strategies.yml
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: Last completed U.S. trading session (YYYY-MM-DD)
+        required: true
+        default: "2026-08-10"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jdss-simple-strategies-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        slippage: ["0.0005", "0.001", "0.002"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      - run: ruff check scripts/research_simple_strategies.py
+      - name: Compare simple strategies
+        env:
+          END_DATE: ${{ inputs.end_date || '2026-08-10' }}
+          SLIPPAGE: ${{ matrix.slippage }}
+        run: |
+          python scripts/research_simple_strategies.py \
+            --end "$END_DATE" \
+            --slippage "$SLIPPAGE" \
+            --output reports/simple_strategies.json \
+            --markdown reports/simple_strategies.md
+      - name: Publish job summary
+        run: cat reports/simple_strategies.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: jdss-simple-strategies-${{ github.run_id }}-${{ matrix.slippage }}
+          path: |
+            reports/simple_strategies.json
+            reports/simple_strategies.md
+          retention-days: 30
