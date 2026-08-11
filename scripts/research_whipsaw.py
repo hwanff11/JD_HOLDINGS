@@ -9,7 +9,6 @@ from jd_holdings.data_loader import MarketDataLoader
 
 
 def patch_engine(variant: str):
-    original = PortfolioBacktestEngine._monthly_trend.__func__
     if variant == 'baseline_6m':
         return
     def filtered(cls, frame, index, months):
@@ -18,10 +17,9 @@ def patch_engine(variant: str):
         ma6=monthly.rolling(6,min_periods=6).mean()
         active=monthly > ma6
         if variant == 'confirm_10m':
-            ma10=monthly.rolling(10,min_periods=10).mean()
-            active = active & (monthly > ma10)
+            active &= monthly > monthly.rolling(10,min_periods=10).mean()
         elif variant == 'slope_3m':
-            active = active & (ma6 > ma6.shift(3))
+            active &= ma6 > ma6.shift(3)
         result=pd.Series(False,index=index)
         for ts in cls._month_end_sessions(index):
             result.loc[ts]=bool(active.get(ts.to_period('M'),False))
@@ -48,7 +46,7 @@ def run(variant, output):
 
 
 def summary(path):
-    r=json.loads(Path(path).read_text()); m=r['metrics']
+    m=json.loads(Path(path).read_text(encoding='utf-8'))['metrics']
     print(f"## {Path(path).stem}")
     print(f"- Total Return: {m['total_return_pct']:+.2f}%")
     print(f"- CAGR: {m['cagr_pct']:+.2f}%")
