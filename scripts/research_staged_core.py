@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from jd_holdings.backtest.portfolio_engine import PortfolioBacktestEngine
@@ -50,7 +50,7 @@ def run(variant: str, output: str) -> None:
     market_clock = MarketClock()
     start = "2011-01-01"
     end = market_clock.latest_completed_session().isoformat()
-    warmup_start = (Path and (__import__("datetime").date.fromisoformat(start) - timedelta(days=400))).isoformat()
+    warmup_start = (date.fromisoformat(start) - timedelta(days=400)).isoformat()
 
     spy = data_source.daily("SPY", warmup_start, end)
     qqq = data_source.daily("QQQ", warmup_start, end)
