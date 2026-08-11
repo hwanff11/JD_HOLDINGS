@@ -1,0 +1,41 @@
+name: JDSS V3 Whipsaw Research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/research_whipsaw.py'
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    if: startsWith(github.head_ref, 'research/v3-whipsaw-filter-')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline_6m, confirm_10m, slope_3m]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Run research variant
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: python scripts/research_whipsaw.py --variant "$VARIANT" --output "result-$VARIANT.json"
+      - name: Publish summary
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: python scripts/research_whipsaw.py --summarize "result-$VARIANT.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: whipsaw-${{ matrix.variant }}-${{ github.run_id }}
+          path: result-${{ matrix.variant }}.json
