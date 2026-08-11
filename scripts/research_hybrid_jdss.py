@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -57,6 +57,14 @@ SEGMENTS = {
 }
 
 
+@dataclass(frozen=True)
+class TrendRule:
+    pullback: float = 0.02
+    rsi_low: float = 35
+    rsi_high: float = 50
+    require_above_ema20: bool = True
+
+
 def _snapshot_map(
     symbol: str, frame: pd.DataFrame
 ) -> dict[pd.Timestamp, IndicatorSnapshot]:
@@ -75,6 +83,7 @@ def _strong_benchmark(frame: pd.DataFrame) -> pd.Series:
 
 def _trend_maps(
     frames: dict[str, pd.DataFrame],
+    rules: dict[str, TrendRule],
 ) -> tuple[dict[str, set[date]], dict[str, set[date]]]:
     qqq_strong = _strong_benchmark(frames["QQQ"])
     semiconductor_strong = _strong_benchmark(frames["SOXX"]) & _strong_benchmark(
@@ -85,6 +94,7 @@ def _trend_maps(
 
     for symbol in SYMBOLS:
         frame = frames[symbol]
+        rule = rules[symbol]
         benchmark_strong = qqq_strong if symbol == "TQQQ" else semiconductor_strong
         structural = (
             benchmark_strong.reindex(frame.index).fillna(False)
@@ -92,14 +102,17 @@ def _trend_maps(
             & (frame["close"].pct_change(20) > 0)
         )
         rolling_high = frame["close"].rolling(10, min_periods=10).max()
-        pullback = frame["close"] <= rolling_high * 0.98
+        pullback = frame["close"] <= rolling_high * (1 - rule.pullback)
         reversal = (frame["close"] > frame["previous_close"]) | (
             frame["close"] > frame["open"]
         )
+        price_filter = (
+            frame["close"] > frame["ema20"] if rule.require_above_ema20 else True
+        )
         entry = (
             structural
-            & (frame["close"] > frame["ema20"])
-            & frame["rsi5"].between(35, 50, inclusive="both")
+            & price_filter
+            & frame["rsi5"].between(rule.rsi_low, rule.rsi_high, inclusive="both")
             & pullback
             & reversal
         )
@@ -120,11 +133,15 @@ class HybridBacktestEngine(BacktestEngine):
         entry_dates: dict[str, set[date]],
         structural_dates: dict[str, set[date]],
         trend_tp: tuple[Decimal, Decimal],
+        additional_symbols: frozenset[str] = frozenset(SYMBOLS),
     ) -> None:
         super().__init__(config)
         self.entry_dates = entry_dates
         self.structural_dates = structural_dates
+        self.additional_symbols = additional_symbols
         self.trend_cycle_ids: set[str] = set()
+        self.trend_entry_fills = 0
+        self.trend_add_fills = 0
         self.trend_tp_config = replace(
             config,
             take_profit=replace(
@@ -145,8 +162,16 @@ class HybridBacktestEngine(BacktestEngine):
 
     def run(self, *args: Any, **kwargs: Any) -> BacktestResult:
         self.trend_cycle_ids.clear()
+        self.trend_entry_fills = 0
+        self.trend_add_fills = 0
         with self._decision_overlay():
-            return super().run(*args, **kwargs)
+            result = super().run(*args, **kwargs)
+        metrics = {
+            **result.metrics,
+            "trend_entry_fills": self.trend_entry_fills,
+            "trend_add_fills": self.trend_add_fills,
+        }
+        return replace(result, metrics=metrics)
 
     def _evaluate_hybrid(
         self,
@@ -168,6 +193,22 @@ class HybridBacktestEngine(BacktestEngine):
             system_ok=system_ok,
             sector_benchmarks=sector_benchmarks,
         )
+        trend_cycle = position.cycle_id in self.trend_cycle_ids
+        if (
+            trend_cycle
+            and snapshot.symbol not in self.additional_symbols
+            and position.state
+            in {
+                PositionState.HOLDING_1ST,
+                PositionState.HOLDING_2ND,
+                PositionState.HOLDING_3RD,
+            }
+        ):
+            return TradeDecision(
+                action=DecisionType.NO_ACTION,
+                allowed=False,
+                reason_codes=("RESEARCH_TREND_ADDITIONAL_DISABLED",),
+            )
         if baseline.allowed or score.regime != MarketRegime.GREEN:
             return baseline
         if (
@@ -192,7 +233,7 @@ class HybridBacktestEngine(BacktestEngine):
                 planned_budget=budget,
             )
 
-        if position.cycle_id not in self.trend_cycle_ids:
+        if not trend_cycle:
             return baseline
         if snapshot.trade_date not in self.structural_dates[snapshot.symbol]:
             return baseline
@@ -240,6 +281,9 @@ class HybridBacktestEngine(BacktestEngine):
             return filled, reason
         if "RESEARCH_TREND_PULLBACK_ENTRY" in pending.decision.reason_codes:
             self.trend_cycle_ids.add(state.cycle_id)
+            self.trend_entry_fills += 1
+        if "RESEARCH_TREND_PULLBACK_ADD" in pending.decision.reason_codes:
+            self.trend_add_fills += 1
         if state.cycle_id in self.trend_cycle_ids:
             state.tp_plan = calculate_take_profit(
                 state.average_price,
@@ -274,6 +318,13 @@ def _combined_metrics(
             int(result.metrics["closed_cycles"]) for result in results.values()
         ),
         "signals": sum(int(result.metrics["signals"]) for result in results.values()),
+        "trend_entry_fills": sum(
+            int(result.metrics.get("trend_entry_fills", 0))
+            for result in results.values()
+        ),
+        "trend_add_fills": sum(
+            int(result.metrics.get("trend_add_fills", 0)) for result in results.values()
+        ),
         "idle_cash_income": round(
             sum(
                 float(result.metrics.get("idle_cash_income", 0))
@@ -318,6 +369,9 @@ def _markdown(report: dict[str, Any]) -> str:
             "- A_BASELINE: 운영 중인 JDSS-2.2.2-SGOV 그대로",
             "- B_HYBRID_4_6: 기존 과매도 반등 + GREEN 추세 눌림목, 추세 사이클 TP 4%/6%",
             "- C_HYBRID_5_9: B와 동일하되 추세 사이클만 TP 5%/9%",
+            "- D_TQQQ_ONLY: TQQQ에만 추세 눌림목 적용",
+            "- E_SOXL_FIRST_ONLY: SOXL 추세 사이클은 1차 40%만 허용",
+            "- F_SOXL_STRICT: SOXL은 3% 조정·RSI5 30~45로 진입 강화",
             "",
             "> 연구 전용 결과이며 운영 설정이나 주문 로직을 변경하지 않습니다.",
         ]
@@ -352,7 +406,14 @@ def main() -> int:
     snapshots = {
         symbol: _snapshot_map(symbol, frame) for symbol, frame in frames.items()
     }
-    entry_dates, structural_dates = _trend_maps(frames)
+    standard_rules = {symbol: TrendRule() for symbol in SYMBOLS}
+    entry_dates, structural_dates = _trend_maps(frames, standard_rules)
+    strict_rules = {
+        "TQQQ": TrendRule(),
+        "SOXL": TrendRule(pullback=0.03, rsi_low=30, rsi_high=45),
+    }
+    strict_entry_dates, strict_structural_dates = _trend_maps(frames, strict_rules)
+    tqqq_only_entry_dates = {**entry_dates, "SOXL": set()}
 
     factories = {
         "A_BASELINE": lambda: BacktestEngine(config),
@@ -367,6 +428,25 @@ def main() -> int:
             entry_dates=entry_dates,
             structural_dates=structural_dates,
             trend_tp=(Decimal("0.05"), Decimal("0.09")),
+        ),
+        "D_TQQQ_ONLY": lambda: HybridBacktestEngine(
+            config,
+            entry_dates=tqqq_only_entry_dates,
+            structural_dates=structural_dates,
+            trend_tp=(Decimal("0.04"), Decimal("0.06")),
+        ),
+        "E_SOXL_FIRST_ONLY": lambda: HybridBacktestEngine(
+            config,
+            entry_dates=entry_dates,
+            structural_dates=structural_dates,
+            trend_tp=(Decimal("0.04"), Decimal("0.06")),
+            additional_symbols=frozenset({"TQQQ"}),
+        ),
+        "F_SOXL_STRICT": lambda: HybridBacktestEngine(
+            config,
+            entry_dates=strict_entry_dates,
+            structural_dates=strict_structural_dates,
+            trend_tp=(Decimal("0.04"), Decimal("0.06")),
         ),
     }
     report: dict[str, Any] = {
