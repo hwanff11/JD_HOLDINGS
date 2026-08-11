@@ -170,7 +170,6 @@ def _simulate_hybrid(
             for symbol in SYMBOLS
         )
 
-        core_changed = False
         booster_regime_changed = False
         changed_symbols: set[str] = set()
         if pending_core is not None:
@@ -186,7 +185,6 @@ def _simulate_hybrid(
                 slippage=slippage, trades=trades,
             )
             pending_core = None
-            core_changed = True
 
         if timestamp in baseline_events:
             for event in baseline_events[timestamp]:
