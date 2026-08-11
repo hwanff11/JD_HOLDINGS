@@ -23,6 +23,7 @@ from jd_holdings.infrastructure.telegram_bot import (
     _regime_label,
     _won,
     parse_backtest_request,
+    parse_history_request,
 )
 
 SYMBOLS = ("TQQQ", "SOXL")
@@ -41,6 +42,41 @@ SEOUL_TZ = ZoneInfo("Asia/Seoul")
 )
 def test_toss_order_maintenance_window(now, expected):
     assert _is_toss_order_maintenance_window(now) is expected
+
+
+def test_history_command_defaults_to_all_symbols_and_seven_days():
+    assert parse_history_request("/history", ("TQQQ", "SOXL")) == (("TQQQ", "SOXL"), 7)
+    assert parse_history_request("/h 10", ("TQQQ", "SOXL")) == (("TQQQ", "SOXL"), 10)
+
+
+def test_history_command_accepts_symbol_and_days():
+    assert parse_history_request("/history TQQQ 14", ("TQQQ", "SOXL")) == (("TQQQ",), 14)
+
+
+@pytest.mark.parametrize("command", ["/h 0", "/h 91", "/h TQQQ 7 extra", "/h NVDA 7"])
+def test_history_command_rejects_invalid_input(command):
+    with pytest.raises(ValueError):
+        parse_history_request(command, ("TQQQ", "SOXL"))
+
+
+def test_score_history_format_lists_date_score_grade_and_regime():
+    message = TelegramBotApp._format_score_history(
+        "TQQQ",
+        [
+            {
+                "trade_date": date(2026, 8, 10),
+                "score": 72,
+                "grade": "WATCH",
+                "regime": "YELLOW",
+            }
+        ],
+        7,
+    )
+    assert "TQQQ 최근 7거래일" in message
+    assert "2026-08-10" in message
+    assert "72점" in message
+    assert "WATCH" in message
+    assert "YELLOW" in message
 
 
 def test_backtest_command_defaults_to_soxl_and_300_trading_days():

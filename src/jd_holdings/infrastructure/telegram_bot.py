@@ -101,6 +101,32 @@ def parse_backtest_request(
     return TelegramBacktestRequest(symbols=selected, start=start, end=end)
 
 
+def parse_history_request(
+    text: str,
+    enabled_symbols: tuple[str, ...],
+    default_days: int = 7,
+) -> tuple[tuple[str, ...], int]:
+    """Parse /history [SYMBOL] [DAYS], defaulting to all configured symbols."""
+    parts = (text or "").split()[1:]
+    if len(parts) > 2:
+        raise ValueError("형식: /history [종목] [거래일수]")
+    symbols = enabled_symbols
+    if parts and not parts[0].isdigit():
+        symbol = parts.pop(0).upper()
+        if symbol not in enabled_symbols:
+            raise ValueError(
+                f"지원하지 않는 종목입니다. 사용 가능 종목: {', '.join(enabled_symbols)}"
+            )
+        symbols = (symbol,)
+    if parts:
+        days = int(parts[0])
+    else:
+        days = default_days
+    if not 1 <= days <= 90:
+        raise ValueError("조회 기간은 1~90 거래일 사이로 입력해 주세요.")
+    return symbols, days
+
+
 def _is_toss_order_maintenance_window(now_kst: datetime) -> bool:
     return now_kst.hour == 8 and 50 <= now_kst.minute <= 59
 
@@ -453,6 +479,27 @@ class TelegramBotApp:
         return markup
 
     @staticmethod
+    def _format_score_history(
+        symbol: str,
+        history: list[dict[str, object]],
+        requested_days: int,
+    ) -> str:
+        lines = [
+            f"📈 <b>{symbol} 최근 {requested_days}거래일 JDSS 점수</b>",
+            "<i>완결 일봉 기준 재계산 결과</i>",
+            "",
+        ]
+        if not history:
+            return "\n".join(lines + ["조회 가능한 점수 이력이 없습니다."])
+        for item in history:
+            trade_date = item["trade_date"]
+            lines.append(
+                f"• <code>{trade_date}</code>  "
+                f"<b>{item['score']}점</b> · {item['grade']} · {item['regime']}"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
     def _format_score_message(result: AnalysisResult) -> str:
         snapshot = result.snapshot
         score = result.score
@@ -704,6 +751,24 @@ class TelegramBotApp:
                     f"❌ SGOV 유휴자금 조회 중 오류 발생:\n<code>{html.escape(str(exc))}</code>"
                 )
 
+        @bot.message_handler(commands=["history", "h"])
+        def history(message):
+            if not self._authorized_message(message):
+                return
+            try:
+                symbols, days = parse_history_request(
+                    message.text, self.config.enabled_symbols
+                )
+                self._send(f"⏳ 최근 {days}거래일 점수를 계산 중입니다...")
+                for symbol in symbols:
+                    rows = self.analysis_service.score_history(symbol, days)
+                    self._send(self._format_score_history(symbol, rows, days))
+            except Exception as exc:
+                LOGGER.exception("history 실패")
+                self._send(
+                    f"❌ 점수 이력 조회 중 오류 발생:\n<code>{html.escape(str(exc))}</code>"
+                )
+
         @bot.message_handler(commands=["score", "sc", "indicator", "i"])
         def score(message):
             if not self._authorized_message(message):
@@ -842,7 +907,7 @@ class TelegramBotApp:
                 self._backtest_lock.release()
                 raise
 
-        @bot.message_handler(commands=["help", "h", "start"])
+        @bot.message_handler(commands=["help", "menu", "start"])
         def help_handler(message):
             if not self._authorized_message(message):
                 return
@@ -853,13 +918,14 @@ class TelegramBotApp:
                 "• <code>/sgov</code> : 💵 JDSS SGOV 유휴자금\n"
                 "• <code>/status</code> : 종목별 상세 포지션\n"
                 "• <code>/score</code> : JDSS 세부 지표 분석\n"
+                "• <code>/history</code> 또는 <code>/h</code> : 최근 점수 이력\n"
                 "• <code>/signal</code> : 활성 매수 신호\n"
                 "• <code>/backtest</code> : 자유 종목 백테스트\n"
                 "• <code>/guide</code> : 📖 JDSS 용어 및 지표 가이드\n"
                 "• <code>/order</code> : 미체결 주문 현황\n"
                 "• <code>/errors</code> : 최근 시스템 기록\n"
                 "• <code>/ping</code> : 봇 상태 확인\n\n"
-                "✨ <b>사용 예시</b> : <code>/score TQQQ</code> · <code>/bt NVDA 100</code>\n\n"
+                "✨ <b>사용 예시</b> : <code>/score TQQQ</code> · <code>/h TQQQ 7</code> · <code>/bt NVDA 100</code>\n\n"
                 "💡 <i>모든 매수는 2단계 안전 승인을 거쳐 실행됩니다.</i>"
             )
 
@@ -1261,6 +1327,7 @@ class TelegramBotApp:
                 telebot.types.BotCommand(IDLE_CASH_COMMANDS[0], "💵 SGOV 유휴자금"),
                 telebot.types.BotCommand("status", "✨ 종목별 포지션 상세"),
                 telebot.types.BotCommand("score", "🎯 JDSS 지표 분석"),
+                telebot.types.BotCommand("history", "📈 최근 점수 이력"),
                 telebot.types.BotCommand("signal", "🚨 활성 매수 신호"),
                 telebot.types.BotCommand("backtest", "🌞 백테스트 실행"),
                 telebot.types.BotCommand("guide", "📖 JDSS 용어 및 지표 설명서"),
