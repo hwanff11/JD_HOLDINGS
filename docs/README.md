@@ -25,6 +25,7 @@ GitHub `main`을 소스의 기준으로 사용한다. 작업 시작 전에 로�
 | [`infra/DECISIONS.md`](infra/DECISIONS.md) | 구현 결정과 변경 이유 | 누적 기록, 최신 결정 우선 |
 | [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md) | 현재 전략 요약과 과거 전략 발전사 | 첫 부분만 현재, Archive는 과거 |
 | [`BACKTEST_REPORT.md`](BACKTEST_REPORT.md) | 현재 회귀 요약과 과거 백테스트 기록 | 첫 부분만 현재, Archive는 과거 |
+| [`research/PR27_SIMPLE_STRATEGY_RESEARCH.md`](research/PR27_SIMPLE_STRATEGY_RESEARCH.md) | PR #27 대안 전략군과 최종 승격 보류 근거 | 연구 기록, 운영 설정 아님 |
 | [`archive/spec_v1/`](archive/spec_v1/) | v1 계열 명세 보존 | 현재 구현에 사용 금지 |
 | [`../configs/strategy_v1.1.2.yaml`](../configs/strategy_v1.1.2.yaml) | v1.1.2 연구 재현용 설정 | Archive 전용, 현재 구현에 사용 금지 |
 

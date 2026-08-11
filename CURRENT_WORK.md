@@ -8,8 +8,8 @@
 - PR #22 병합 반영 기준 SHA: `065cd0c22a4313d809b91174b4215ac0b1435d82`
 - PR #24 병합: GitHub Actions 백테스트·보안검사 자동화 (`8f1e970bb77fc6901bcbbea8bae36f735d3d4e44`)
 - PR #25 병합: Telegram 최근 점수 이력 조회 (`5e9090ee803030be8a713bd2486ce56b4f83e944`)
-- 활성 작업 브랜치: `main`
-- 작업 목표: ChatGPT의 `배포해` 요청으로 최신 `main` Oracle dry-run 배포 운영
+- 활성 작업 브랜치: `research/jdss-simple-strategies`
+- 작업 목표: PR #27 대안 전략 연구를 재검증하고 연구 자동화·판정 문서를 `main`에 반영
 - 전략 변경: 없음
 - 실거래 승격: 금지
 
@@ -40,6 +40,10 @@
 
 ## 현재 브랜치 완료 작업
 
+- PR #27의 회전·다중 슬롯·피라미딩·월간 쌍발 코어·JDSS 부스터 연구 자동화 추가
+- 최종 후보 `SEMIMONTHLY_BAND_H05`를 세 슬리피지에서 재실행하고 승격 보류 판정
+- PR #27 최종 연구 보고서와 운영 전략 비변경 경계 문서화
+
 - Toss 성공 응답 JSON 객체 검증과 주문 입력 경계 검증 추가
 - Toss 오류·입력 테스트 추가
 - systemd UMask·capability·device·kernel·주소 패밀리 제한 강화
@@ -66,8 +70,8 @@
 
 ## 다음 작업
 
-1. 사용자가 `배포해`라고 요청하면 owner 전용 이슈를 SHA 없이 생성하고 결과 댓글을 확인
-2. 실패 시 같은 이슈의 Actions run에서 중단 단계를 확인하고, 실거래 잠금은 해제하지 않음
+1. PR #27 전체 CI와 연구 matrix 성공 후 `main` 병합
+2. 최신 `main`을 Oracle에 강제 dry-run 배포하고 서비스 active·Toss smoke 확인
 
 ## 작업 종료 갱신 규칙
 
