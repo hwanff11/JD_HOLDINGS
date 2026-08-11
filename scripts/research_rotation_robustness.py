@@ -11,12 +11,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
-from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
-from jd_holdings.config import StrategyConfig, load_config
-from jd_holdings.core.indicators import calculate_indicators
-from jd_holdings.infrastructure.market_data import YFinanceDataSource
-
 from research_simple_strategies import (
     DOWNLOAD_SYMBOLS,
     ROOT,
@@ -26,6 +20,11 @@ from research_simple_strategies import (
     _research_indicators,
     _simulate_rotation,
 )
+from jd_holdings.backtest.engine import BacktestEngine, BacktestResult
+from jd_holdings.backtest.performance import maximum_drawdown, risk_adjusted_metrics
+from jd_holdings.config import StrategyConfig, load_config
+from jd_holdings.core.indicators import calculate_indicators
+from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 STRESS_PERIODS = {
     "2011_US_DOWNGRADE": ("2011-07-01", "2012-01-31"),
