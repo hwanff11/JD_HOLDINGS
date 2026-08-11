@@ -42,15 +42,17 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     workflow = (ROOT / ".github/workflows/deploy-oracle-dry-run.yml").read_text(
         encoding="utf-8"
     )
-    assert "git merge-base --is-ancestor HEAD origin/main" in workflow
+    assert 'test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"' in workflow
     assert "git checkout -B main HEAD" in workflow
+    assert "ref: main" in workflow
     assert 'SKIP_LOCAL_CHECKS: "1"' in workflow
     assert "Force server trading lock to dry_run" not in workflow
     assert "Toss read-only smoke test" not in workflow
     assert "issues:" in workflow
     assert "github.actor == github.repository_owner" in workflow
     assert "[deploy-oracle-dry-run]" in workflow
-    assert "[0-9a-fA-F]{40}" in workflow
+    assert "inputs.ref" not in workflow
+    assert "ISSUE_BODY" not in workflow
     assert "gh issue comment" in workflow
     assert "github.run_id" in workflow
     assert "actions/runs/" in workflow

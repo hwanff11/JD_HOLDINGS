@@ -9,7 +9,7 @@ from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
-from jd_holdings.application.position_manager import PositionManager
+from jd_holdings.application.position_manager import PositionManager, tp1_completed_at_key
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service import TradingService
@@ -117,6 +117,11 @@ def test_final_production_flow_end_to_end_with_restart(tmp_path, config):
     position = repository.get_position("TQQQ")
     assert position.state == PositionState.PARTIAL_TP_1
     assert position.quantity > 0
+    assert position.cycle_id is not None
+    repository.set_system_value(
+        tp1_completed_at_key("TQQQ", position.cycle_id),
+        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
+    )
     assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
 
     # 3) Simulate a TP2 cancellation/recovery before the 20-session deadline.
