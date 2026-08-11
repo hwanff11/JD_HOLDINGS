@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   research:
-    if: startsWith(github.head_ref, 'research/v3-whipsaw-filter-')
+    if: startsWith(github.head_ref, 'research/v3-whipsaw-')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
