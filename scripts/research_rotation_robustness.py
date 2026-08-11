@@ -75,10 +75,11 @@ def _rotation_results(
     end: str,
     slippage: float,
     delay: int,
+    candidate: str,
 ) -> dict[str, SimResult]:
     return {
         "portfolio": _simulate_rotation(
-            "N_ROTATION_TREND_CAP40",
+            candidate,
             research_frames,
             raw[config.idle_cash.symbol],
             config,
@@ -195,8 +196,9 @@ def _paired_block_bootstrap(
 
 def _markdown(report: dict[str, Any]) -> str:
     lines = [
-        "# 상대강도 40% 후보 견고성 검증",
+        f"# {report['candidate']} 견고성 검증",
         "",
+        f"- 후보: {report['candidate']}",
         f"- 데이터 종료일: {report['end_date']}",
         f"- 슬리피지: {report['slippage'] * 100:.2f}%",
         "",
@@ -277,6 +279,11 @@ def main() -> int:
     parser.add_argument("--end", default="2026-08-10")
     parser.add_argument("--slippage", type=float, default=0.001)
     parser.add_argument(
+        "--candidate",
+        choices=("N_ROTATION_TREND_CAP40", "P_ROTATION_TREND_CAP30"),
+        default="N_ROTATION_TREND_CAP40",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=ROOT / "reports" / "rotation_robustness.json",
@@ -313,6 +320,7 @@ def main() -> int:
         end=args.end,
         slippage=args.slippage,
         delay=1,
+        candidate=args.candidate,
     )
     baseline_full_equity = _equity(baseline_full_results)
     candidate_full_equity = _equity(candidate_full_results)
@@ -321,6 +329,7 @@ def main() -> int:
         "generated_at": datetime.now(UTC).isoformat(),
         "end_date": args.end,
         "slippage": args.slippage,
+        "candidate": args.candidate,
         "execution_delay": {},
         "rolling_windows": [],
         "stress_periods": {},
@@ -339,6 +348,7 @@ def main() -> int:
                 end=args.end,
                 slippage=args.slippage,
                 delay=delay,
+                candidate=args.candidate,
             )
             report["execution_delay"][str(delay)][segment] = _combined(results, config)
 
@@ -363,6 +373,7 @@ def main() -> int:
                 end=end,
                 slippage=args.slippage,
                 delay=1,
+                candidate=args.candidate,
             ),
             config,
         )
