@@ -131,7 +131,7 @@ def _simulate(
     slippage: float,
 ) -> dict[str, Any]:
     full_index = raw["TQQQ"].index
-    for symbol in ("SOXL", "QQQ", "SOXX", config.idle_cash.symbol):
+    for symbol in ("SOXL", "QQQ", "SOXX"):
         full_index = full_index.intersection(raw[symbol].index)
     full_index = full_index[full_index <= pd.Timestamp(end)]
     index = full_index[full_index >= pd.Timestamp(start)]
