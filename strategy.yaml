@@ -1,8 +1,24 @@
-version: JDSS-2.2.2-SGOV
-config_version: "2.2.2"
+version: JDSS-3.0.0-TWIN-H05
+config_version: "3.0.0"
+
+portfolio:
+  enabled: true
+  total_capital: 20000
+  live_enabled: false
+  core_target_weight: 0.15
+  booster_max_weight: 0.05
+  trend_months: 10
+  signal_schedule: month_end
+  execution_schedule: next_session
+  core_underlyings:
+    TQQQ: QQQ
+    SOXL: SOXX
+  buy_approval_required: true
+  risk_reducing_sells_automatic: true
+  rebalance_tolerance_weight: 0.005
 
 global:
-  capital_per_symbol: 10000
+  capital_per_symbol: 1000
   buy_fee: 0.001
   sell_fee: 0.001
   approval_required: true

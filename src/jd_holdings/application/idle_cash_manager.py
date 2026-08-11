@@ -251,7 +251,7 @@ class IdleCashManager:
         return receipt
 
     def _target_value(self) -> Decimal:
-        allocated = self.config.global_.capital_per_symbol * len(self.config.enabled_symbols)
+        allocated = self.config.total_strategy_capital
         invested = self.repository.strategy_invested_capital()
         return max(
             Decimal("0"), allocated - invested - self.config.idle_cash.cash_buffer

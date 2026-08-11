@@ -45,7 +45,7 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install and verify JDSS 2.2
+      - name: Install and verify JDSS V3
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip
@@ -53,7 +53,8 @@ jobs:
           python -m ruff check .
           python -m pytest
           jdss validate-config
-          grep -q 'JDSS-2.2.2-SGOV' strategy.yaml
+          grep -q 'JDSS-3.0.0-TWIN-H05' strategy.yaml
+          grep -q 'live_enabled: false' strategy.yaml
 
       - name: Prepare SSH
         env:
@@ -67,7 +68,7 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           chmod 600 ~/.ssh/oracle_jdss
 
-      - name: Deploy and smoke-test JDSS 2.2 in forced dry-run mode
+      - name: Deploy and smoke-test JDSS V3 in forced dry-run mode
         env:
           SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}

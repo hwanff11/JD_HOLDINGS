@@ -78,8 +78,10 @@ class TradingService:
         self.market_clock = market_clock or MarketClock()
         self.idle_cash_manager = idle_cash_manager
 
-    def create_review_approval(self, signal_id: int) -> tuple[int, str]:
-        signal = self._active_signal(signal_id)
+    def create_review_approval(
+        self, signal_id: int, *, now: datetime | None = None
+    ) -> tuple[int, str]:
+        signal = self._active_signal(signal_id, now=now)
         if self.repository.cash_release_intent_is_active(signal_id):
             raise ApprovalError("SGOV 현금화 또는 최종 매수 승인이 이미 진행 중입니다")
         return self.repository.create_approval(
@@ -205,8 +207,10 @@ class TradingService:
         if comparison != approved_comparison:
             self._set_cash_intent_status(signal_id, "CANCELED")
             raise QuoteChangedError("가격 또는 수량이 바뀌어 새로운 최종 확인이 필요합니다")
-        signal = self._active_signal(signal_id)
+        signal = self._active_signal(signal_id, now=now)
         action = str(signal["action"])
+        if action == DecisionType.CORE_REBALANCE_BUY.value:
+            return self._execute_core_buy(signal, quote)
         target_stage = int(signal["target_stage"]) if signal["target_stage"] else None
         position = self.repository.get_position(signal["symbol"])
         expected = BASE_STATE_BY_ACTION_STAGE[(action, target_stage)]
@@ -305,6 +309,40 @@ class TradingService:
         self._set_cash_intent_status(signal_id, "COMPLETED")
         return receipt
 
+    def _execute_core_buy(self, signal: dict, quote: ReviewQuote) -> OrderReceipt:
+        if self.order_manager.settings.trading_mode != "dry_run":
+            raise RuntimeError("JDSS V3 코어 매수는 live 모드가 잠겨 있습니다")
+        symbol = str(signal["symbol"])
+        core = self.repository.get_core_position(symbol)
+        if not bool(core["trend_active"]):
+            raise QuoteChangedError("월간 코어 추세가 꺼져 승인을 취소했습니다")
+        client_order_id = build_client_order_id(
+            symbol=symbol,
+            purpose="CORE_REBALANCE_BUY",
+            signal_id=int(signal["signal_id"]),
+            unique_context=f"core-v{core['version']}",
+        )
+        receipt = self.order_manager.submit(
+            OrderRequest(
+                client_order_id=client_order_id,
+                symbol=symbol,
+                side="BUY",
+                order_type="LIMIT",
+                quantity=quote.quantity,
+                price=quote.limit_price,
+                purpose="CORE_REBALANCE_BUY",
+                signal_id=int(signal["signal_id"]),
+            ),
+            cycle_id=None,
+        )
+        if receipt.filled_quantity > 0:
+            self.repository.apply_core_fill(client_order_id)
+        self.repository.mark_signal(
+            int(signal["signal_id"]), status="PROCESSED", processed=True
+        )
+        self._set_cash_intent_status(int(signal["signal_id"]), "COMPLETED")
+        return receipt
+
     def _set_cash_intent_status(self, signal_id: int, status: str) -> None:
         try:
             self.repository.update_cash_release_intent(signal_id, status=status)
@@ -318,13 +356,46 @@ class TradingService:
         now: datetime | None,
         allow_cash_release: bool,
     ) -> ReviewQuote:
-        signal = self._active_signal(signal_id)
         current = now or datetime.now(UTC)
+        signal = self._active_signal(signal_id, now=current)
         session = self.market_clock.classify_session(current)
         if not session_is_allowed(session, self.config):
             raise ApprovalError(f"현재 주문 허용 세션이 아닙니다: {session}")
         position = self.repository.get_position(signal["symbol"])
         action = DecisionType(signal["action"])
+        if action == DecisionType.CORE_REBALANCE_BUY:
+            ceiling = Decimal(str(signal["max_chase_price"]))
+            current_price = self.broker.get_price(signal["symbol"])
+            limit = calculate_limit_price(current_price, ceiling, self.config)
+            budget = Decimal(str(signal["planned_budget"]))
+            quantity = calculate_order_quantity(
+                budget, limit, self.config.global_.buy_fee
+            )
+            if quantity < 1:
+                raise ApprovalError("계산된 코어 매수수량이 0주입니다")
+            total = Decimal(quantity) * limit * (
+                Decimal("1") + self.config.global_.buy_fee
+            )
+            if self.idle_cash_manager is not None and allow_cash_release:
+                self.idle_cash_manager.ensure_buying_power(
+                    total,
+                    signal_id=signal_id,
+                    expires_at=datetime.fromisoformat(str(signal["valid_until"])),
+                )
+            buying_power = self.broker.get_buying_power("USD")
+            if total + self.config.idle_cash.cash_buffer > buying_power:
+                raise ApprovalError("실제 달러 매수가능금액이 부족합니다")
+            return ReviewQuote(
+                signal_id=signal_id,
+                symbol=signal["symbol"],
+                session=session,
+                current_price=current_price,
+                execution_ceiling=ceiling,
+                limit_price=limit,
+                quantity=quantity,
+                planned_budget=budget,
+                estimated_fee=Decimal(quantity) * limit * self.config.global_.buy_fee,
+            )
         stage_trigger = (
             Decimal(str(signal["stage_trigger_price"]))
             if signal["stage_trigger_price"] is not None
@@ -382,11 +453,14 @@ class TradingService:
             estimated_fee=Decimal(quantity) * limit * self.config.global_.buy_fee,
         )
 
-    def _active_signal(self, signal_id: int) -> dict:
+    def _active_signal(self, signal_id: int, *, now: datetime | None = None) -> dict:
         signal = self.repository.get_signal(signal_id)
         if signal["status"] != "ACTIVE" or int(signal["processed"]):
             raise ApprovalError("활성 상태가 아닌 신호입니다")
-        if datetime.fromisoformat(signal["valid_until"]) < datetime.now(UTC):
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        if datetime.fromisoformat(signal["valid_until"]) < current:
             self.repository.mark_signal(
                 signal_id, status="EXPIRED", processed=True, reason="SIGNAL_EXPIRED"
             )
@@ -413,6 +487,11 @@ class TradingService:
         ):
             return "SIGNAL_VERSION_MISMATCH"
         action = str(signal["action"])
+        if action == DecisionType.CORE_REBALANCE_BUY.value:
+            core = self.repository.get_core_position(str(signal["symbol"]))
+            if not bool(core["trend_active"]):
+                return "CORE_TREND_OFF"
+            return None
         if action == DecisionType.FIRST_ENTRY_CANDIDATE.value:
             required_score = self.config.global_.entry_score
             required_reversal = self.config.global_.minimum_reversal_score
@@ -443,4 +522,6 @@ class TradingService:
             return "ENTRY_1"
         if action == DecisionType.ADD_ENTRY_CANDIDATE.value:
             return f"ENTRY_{target_stage}"
+        if action == DecisionType.CORE_REBALANCE_BUY.value:
+            return "CORE_REBALANCE_BUY"
         return "REBUY"

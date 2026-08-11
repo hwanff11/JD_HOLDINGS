@@ -127,6 +127,22 @@ class BacktestConfig:
 
 
 @dataclass(frozen=True)
+class PortfolioConfig:
+    enabled: bool
+    total_capital: Decimal
+    live_enabled: bool
+    core_target_weight: Decimal
+    booster_max_weight: Decimal
+    trend_months: int
+    signal_schedule: str
+    execution_schedule: str
+    core_underlyings: dict[str, str]
+    buy_approval_required: bool
+    risk_reducing_sells_automatic: bool
+    rebalance_tolerance_weight: Decimal
+
+
+@dataclass(frozen=True)
 class StrategyConfig:
     version: str
     config_version: str
@@ -144,10 +160,17 @@ class StrategyConfig:
     scheduler: SchedulerConfig
     idle_cash: IdleCashConfig
     backtest: BacktestConfig
+    portfolio: PortfolioConfig
 
     @property
     def enabled_symbols(self) -> tuple[str, ...]:
         return tuple(symbol for symbol, enabled in self.symbols.items() if enabled)
+
+    @property
+    def total_strategy_capital(self) -> Decimal:
+        if self.portfolio.enabled:
+            return self.portfolio.total_capital
+        return self.global_.capital_per_symbol * len(self.enabled_symbols)
 
 
 def _decimal(value: Any) -> Decimal:
@@ -195,6 +218,26 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
         },
     )
     backtest_raw = _require(raw, "backtest")
+    # Archived V1/V2 fixtures remain loadable for reproducible backtests.  The
+    # V3 controller is enabled only when the contract is explicitly present.
+    portfolio_raw = raw.get(
+        "portfolio",
+        {
+            "enabled": False,
+            "total_capital": _decimal(global_raw["capital_per_symbol"])
+            * len(raw["symbols"]),
+            "live_enabled": False,
+            "core_target_weight": 0.15,
+            "booster_max_weight": 0.05,
+            "trend_months": 10,
+            "signal_schedule": "month_end",
+            "execution_schedule": "next_session",
+            "core_underlyings": {},
+            "buy_approval_required": True,
+            "risk_reducing_sells_automatic": True,
+            "rebalance_tolerance_weight": 0.005,
+        },
+    )
 
     config = StrategyConfig(
         version=str(_require(raw, "version")),
@@ -296,6 +339,27 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             default_slippage=_decimal(backtest_raw["default_slippage"]),
             annualization_days=int(backtest_raw["annualization_days"]),
         ),
+        portfolio=PortfolioConfig(
+            enabled=bool(portfolio_raw["enabled"]),
+            total_capital=_decimal(portfolio_raw["total_capital"]),
+            live_enabled=bool(portfolio_raw["live_enabled"]),
+            core_target_weight=_decimal(portfolio_raw["core_target_weight"]),
+            booster_max_weight=_decimal(portfolio_raw["booster_max_weight"]),
+            trend_months=int(portfolio_raw["trend_months"]),
+            signal_schedule=str(portfolio_raw["signal_schedule"]),
+            execution_schedule=str(portfolio_raw["execution_schedule"]),
+            core_underlyings={
+                str(symbol).upper(): str(underlying).upper()
+                for symbol, underlying in portfolio_raw["core_underlyings"].items()
+            },
+            buy_approval_required=bool(portfolio_raw["buy_approval_required"]),
+            risk_reducing_sells_automatic=bool(
+                portfolio_raw["risk_reducing_sells_automatic"]
+            ),
+            rebalance_tolerance_weight=_decimal(
+                portfolio_raw["rebalance_tolerance_weight"]
+            ),
+        ),
     )
     validate_config(config)
     return config
@@ -339,6 +403,35 @@ def validate_config(config: StrategyConfig) -> None:
         errors.append("수수료는 0 이상이어야 합니다")
     if config.global_.capital_per_symbol <= 0:
         errors.append("종목별 자금은 양수여야 합니다")
+    if config.portfolio.enabled:
+        if config.portfolio.live_enabled:
+            errors.append("V3.0.0은 검증 전 live_enabled를 허용하지 않습니다")
+        if config.portfolio.total_capital <= 0:
+            errors.append("포트폴리오 총자금은 양수여야 합니다")
+        if not Decimal("0") < config.portfolio.core_target_weight <= Decimal("0.25"):
+            errors.append("코어 목표비중은 0 초과 25% 이하여야 합니다")
+        if not Decimal("0") <= config.portfolio.booster_max_weight <= Decimal("0.10"):
+            errors.append("부스터 최대비중은 0~10%여야 합니다")
+        if config.portfolio.trend_months < 6:
+            errors.append("월간 추세기간은 6개월 이상이어야 합니다")
+        if set(config.portfolio.core_underlyings) != set(config.enabled_symbols):
+            errors.append("코어 기초자산 설정은 활성 종목과 정확히 일치해야 합니다")
+        if config.portfolio.signal_schedule != "month_end":
+            errors.append("V3 신호주기는 month_end만 지원합니다")
+        if config.portfolio.execution_schedule != "next_session":
+            errors.append("V3 체결주기는 next_session만 지원합니다")
+        if not config.portfolio.buy_approval_required:
+            errors.append("V3 코어 매수 승인은 비활성화할 수 없습니다")
+        if not config.portfolio.risk_reducing_sells_automatic:
+            errors.append("V3 코어 위험축소 자동매도는 비활성화할 수 없습니다")
+        if not Decimal("0") <= config.portfolio.rebalance_tolerance_weight <= Decimal(
+            "0.02"
+        ):
+            errors.append("코어 리밸런싱 허용오차는 0~2%여야 합니다")
+        if config.global_.capital_per_symbol != (
+            config.portfolio.total_capital * config.portfolio.booster_max_weight
+        ):
+            errors.append("종목별 JDSS 자금은 총자금의 booster_max_weight와 같아야 합니다")
     if config.global_.review_token_ttl_minutes <= 0:
         errors.append("검토 토큰 TTL은 양수여야 합니다")
     if config.global_.execution_token_ttl_seconds <= 0:

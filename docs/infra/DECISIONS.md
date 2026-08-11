@@ -66,7 +66,7 @@ Telegram dry-run 관찰, Toss 조회 smoke test, 서버 정합성 검사를 통�
 
 ## D-008 — Telegram 운영 UI 및 백테스트 2.0 최신화
 
-> 상태: D-011의 FINAL Telegram 표시 계약으로 대체된 역사적 결정.
+> 상태: D-016의 V3 Telegram·백테스트 계약으로 대체된 역사적 결정.
 
 - 인자 없는 `/backtest`의 기본값은 SOXL 최근 300거래일로 고정한다.
 - 임의 티커 입력 백테스트(`/bt NVDA 100` 등)를 완전 허용한다.
@@ -135,3 +135,20 @@ Telegram dry-run 관찰, Toss 조회 smoke test, 서버 정합성 검사를 통�
 - pip 업그레이드와 systemd enable은 최초 설치 시에만 수행한다.
 - 최신 운영 SHA는 배포 직후 바뀌는 문서 상수가 아니라 Oracle `current` 심볼릭 링크와 배포 출력을 기준으로 한다.
 - ChatGPT 환경에서는 저장소 소유자가 생성한 전용 GitHub 이슈와 정확한 `main` SHA를 ChatOps 배포 요청으로 사용하며, 배포 비밀값은 GitHub Environment에만 보관한다.
+
+## D-016 — JDSS-3.0.0-TWIN-H05 dry-run 승격
+
+- PR #27의 반월·격주 밴드 후보는 위상 민감성과 사전 기준 미달로 채택하지 않는다.
+- 비교 기준이었던 `MONTHLY_H05`를 첫 V3 dry-run 계약으로 채택한다. 규칙이 단순하고 시작 주 위상 선택이 없기 때문이다.
+- QQQ·SOXX 10개월 월간 추세가 ON이면 대응 TQQQ·SOXL 코어를 종목당 총 평가액 15%로 둔다.
+- 기존 JDSS는 종목당 `$1,000`, 초기 총자금의 5% 부스터로 축소한다.
+- 코어와 부스터 원장을 분리하고 브로커 수량은 두 원장의 합으로 검증한다.
+- 모든 매수는 2단계 승인을 유지하고 코어 위험축소 매도만 자동화한다.
+- V3.0.0은 전략 모의운영 승격이며 live를 설정·시작·코어 주문 경로에서 명시적으로 차단한다.
+
+## D-017 — 연구 Actions 정리와 V3 검증 단일화
+
+- PR #27의 후보 탐색 스크립트와 최종 보고서는 재현 기록으로 보존한다.
+- 브랜치 전용으로 중복 실행되던 simple, rotation, multi-sleeve, twin-engine 연구 workflow는 제거한다.
+- 운영 회귀는 CI, `JDSS V3 Dry Run`, `JDSS V3 Backtest`, `Deploy Oracle Dry Run`, Security workflow로 단순화한다.
+- 장기 전략 재검증은 `jdss backtest --symbol ALL`과 수동 V3 Backtest workflow를 사용한다.

@@ -21,10 +21,15 @@ from jd_holdings.application.analysis_service import AnalysisResult, AnalysisSer
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.idle_cash_manager import IdleCashManager, IdleCashReleasePending
 from jd_holdings.application.order_monitor import OrderMonitor
+from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.trading_service import QuoteChangedError, TradingService
 from jd_holdings.backtest.engine import BacktestResult
 from jd_holdings.backtest.performance import maximum_drawdown
+from jd_holdings.backtest.portfolio_engine import (
+    PortfolioBacktestEngine,
+    PortfolioBacktestResult,
+)
 from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
 from jd_holdings.config import StrategyConfig
 from jd_holdings.infrastructure.market_clock import MarketClock
@@ -58,9 +63,7 @@ def parse_backtest_request(
     parts = (text or "").split()[1:]
     selected = enabled_symbols
     if not parts:
-        if "SOXL" not in enabled_symbols:
-            raise BacktestCommandError("기본 종목 SOXL이 활성화되지 않았습니다.")
-        parts = ["SOXL", "300"]
+        parts = ["ALL", "300"]
     if parts and not _looks_like_iso_date(parts[0]):
         requested = parts.pop(0).upper()
         if requested == "ALL":
@@ -241,6 +244,7 @@ def _action_label(value: str) -> str:
         "FIRST_ENTRY_CANDIDATE": "1차 매수 검토 가능",
         "ADD_ENTRY_CANDIDATE": "추가매수 검토 가능",
         "REBUY_CANDIDATE": "재매수 검토 가능",
+        "CORE_REBALANCE_BUY": "월간 코어 매수 승인 대기",
         "NO_ACTION": "현재 매수 조건 미충족",
     }.get(value, value.replace("_", " "))
 
@@ -326,9 +330,21 @@ def _condition_mark(condition: bool) -> str:
 
 
 def _guide_cards() -> tuple[str, ...]:
-    """Return the user-visible guide derived from the JDSS 2.2 contract."""
+    """Return the user-visible guide derived from the JDSS V3 contract."""
+    overview = (
+        "🌗 <b>[JDSS V3.0 MONTHLY_H05 전략 개요]</b>\n\n"
+        "• 총 전략자금 <code>$20,000</code>을 하나의 계좌로 관리합니다.\n"
+        "• <b>월간 쌍발 코어</b>: QQQ·SOXX 월말 종가가 각 10개월 이동평균 위이면 "
+        "다음 거래일 TQQQ·SOXL을 각각 총자산 <b>15%</b>까지 보유합니다.\n"
+        "• <b>JDSS 부스터</b>: 기존 과매도·반등 전략을 종목당 초기자금의 최대 <b>5%</b>로 제한합니다.\n"
+        "• 나머지는 <b>SGOV</b>에 두고 <code>$250</code> 현금 버퍼를 유지합니다.\n\n"
+        "🛡 <b>실행 계약</b>\n"
+        "• 모든 코어·부스터 <b>매수는 2단계 Telegram 승인</b>이 필요합니다.\n"
+        "• 추세가 꺼지거나 목표를 넘은 <b>코어 축소 매도는 자동</b>입니다.\n"
+        "• V3.0.0은 검증 단계라 <b>live 전체가 코드에서 잠겨</b> 있고 dry-run만 허용합니다."
+    )
     card1 = (
-        "📖 <b>[JDSS 2.2 지표 및 점수 체계 가이드]</b>\n\n"
+        "📖 <b>[V3 JDSS 5% 부스터 점수 가이드]</b>\n\n"
         "🎯 <b>1. JDSS 종합 점수 체계 (100점 만점)</b>\n"
         "💡 <i>(단일 지표가 아닌 아래 모든 지표들의 총 합산 점수입니다.)</i>\n"
         "• <b>55점 이상</b> : 모든 매수 단계의 최소 점수\n"
@@ -345,7 +361,7 @@ def _guide_cards() -> tuple[str, ...]:
         "• 양봉, 전일 종가, EMA5, 캔들 종가 위치로 반등 점수 산출"
     )
     card2 = (
-        "🛒 <b>[JDSS 2.2 분할매수 및 익절 메커니즘]</b>\n\n"
+        "🛒 <b>[V3 JDSS 5% 부스터 매수·익절]</b>\n\n"
         "🛒 <b>4단계 분할 매수</b>\n"
         "• <b>1차 (40%)</b> : JDSS 55점·반등 5점 이상 🟢\n"
         "• <b>2차 (30%)</b> : 최초 체결가 대비 <b>-2%</b> 🟡\n"
@@ -373,7 +389,7 @@ def _guide_cards() -> tuple[str, ...]:
         "가격이 평소 범위보다 눌린 과매도 구간으로 봅니다.\n"
         "• <b>거래량 비율</b> : 최근 평균 대비 오늘 거래량입니다. "
         "<code>1.0배</code>는 평균, <code>1.5배</code>는 활발, <code>2.0배</code> 이상은 급증입니다.\n"
-        "• <b>ATR 비율</b> : 하루 가격 변동 폭입니다. JDSS 2.2 전략은 "
+        "• <b>ATR 비율</b> : 하루 가격 변동 폭입니다. JDSS 부스터는 "
         "<code>2~10%</code>를 적정 구간으로 평가하고, 10% 초과는 위험을 낮춰 평가합니다.\n"
         "• <b>종가 위치</b> : 당일 저가=0, 고가=1입니다. "
         "<code>0.50</code> 이상이면 장 후반 반등 조건 하나를 충족합니다.\n\n"
@@ -390,7 +406,7 @@ def _guide_cards() -> tuple[str, ...]:
         "• 기존 개인 SGOV는 JDSS 관리분으로 자동 편입하지 않습니다.\n\n"
         "💡 <i>/sgov 명령어로 JDSS 관리 SGOV 수량과 현금화 상태를 확인할 수 있습니다.</i>"
     )
-    return card1, card2, card3, card4
+    return overview, card1, card2, card3, card4
 
 
 def _is_us_holding(item: dict) -> bool:
@@ -413,6 +429,7 @@ class TelegramBotApp:
         market_clock: MarketClock,
         account_client: TossClient | None = None,
         idle_cash_manager: IdleCashManager | None = None,
+        portfolio_service: PortfolioService | None = None,
     ) -> None:
         if not settings.telegram_bot_token:
             raise ValueError("TELEGRAM_BOT_TOKEN이 설정되지 않았습니다")
@@ -429,6 +446,7 @@ class TelegramBotApp:
         self.market_clock = market_clock
         self.account_client = account_client
         self.idle_cash_manager = idle_cash_manager
+        self.portfolio_service = portfolio_service
         self.allowed_chat_id = settings.allowed_chat_ids[0]
         self.bot = telebot.TeleBot(settings.telegram_bot_token, threaded=True)
         self._stop = threading.Event()
@@ -526,7 +544,7 @@ class TelegramBotApp:
             f"• 거래량 : <code>{snapshot.volume_ratio:.2f}배</code> → {_volume_label(snapshot.volume_ratio)}\n"
             f"• ATR : <code>{snapshot.atr_pct * 100:.2f}%</code> → {_atr_label(snapshot.atr_pct)}\n"
             f"• 종가 위치 : <code>{snapshot.close_position:.2f}</code> → {_close_position_label(snapshot.close_position)}\n\n"
-            "🚦 <b>JDSS 2.2 핵심 조건</b>\n"
+            "🚦 <b>V3 JDSS 5% 부스터 핵심 조건</b>\n"
             f"• 총점 55점 이상 : {_condition_mark(score.total >= 55)}\n"
             f"• 반등 5점 이상 : {_condition_mark(score.reversal_score >= 5)}\n"
             f"• RED 국면 아님 : {_condition_mark(regime_value not in {'RED', 'BEARISH'})}\n\n"
@@ -535,15 +553,18 @@ class TelegramBotApp:
 
     def _format_status_message(self, symbol: str) -> str:
         position = self.repository.get_position(symbol)
+        core = self.repository.get_core_position(symbol)
         plan = self.repository.active_tp_plan(symbol)
         lines = [
-            f"✨ <b>[{symbol} 상세 포지션]</b>",
+            f"✨ <b>[{symbol} V3 슬리브 상세]</b>",
             "",
-            f"• <b>상태</b> : {_state_label(position.state.value)}",
-            f"• <b>보유 수량</b> : <code>{_quantity(position.quantity)}주</code>",
-            f"• <b>평균 단가</b> : <code>{_money(position.average_price)}</code>",
-            f"• <b>매수 원가</b> : <code>{_money(position.current_cost_basis)}</code>",
-            f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code>",
+            f"• <b>월간 코어 추세</b> : {'🟢 ON' if core['trend_active'] else '⚪ OFF'}",
+            f"• <b>코어 수량</b> : <code>{_quantity(core['qty'])}주</code>",
+            f"• <b>코어 목표비중</b> : <code>{Decimal(str(core['target_weight'])) * 100:.1f}%</code>",
+            f"• <b>부스터 상태</b> : {_state_label(position.state.value)}",
+            f"• <b>부스터 수량</b> : <code>{_quantity(position.quantity)}주</code>",
+            f"• <b>부스터 평균 단가</b> : <code>{_money(position.average_price)}</code>",
+            f"• <b>부스터 매수 원가</b> : <code>{_money(position.current_cost_basis)}</code>",
             f"• <b>1차 진입가</b> : <code>{_money(position.anchor_price)}</code>",
         ]
         if plan:
@@ -553,6 +574,32 @@ class TelegramBotApp:
                     "🎯 <b>자동 익절 목표</b>",
                     f"• <b>1차 익절 (TP1)</b> : <code>{_money(Decimal(plan['tp1_price']))}</code> (<code>{plan['tp1_target_qty']}주</code>)",
                     f"• <b>2차 익절 (TP2)</b> : <code>{_money(Decimal(plan['tp2_price']))}</code> (<code>{plan['tp2_target_qty']}주</code>)",
+                ]
+            )
+        return "\n".join(lines)
+
+    def _format_portfolio_message(self) -> str:
+        if self.portfolio_service is None:
+            return "📊 <b>[V3 포트폴리오]</b>\n\n포트폴리오 서비스가 비활성화되어 있습니다."
+        snapshot = self.portfolio_service.snapshot()
+        lines = [
+            "📊 <b>[JDSS V3 MONTHLY_H05]</b>",
+            "",
+            f"• <b>전략 평가액</b> : <code>{_money(snapshot['equity'])}</code>",
+            "• <b>코어</b> : 월간 10개월 추세 · 종목당 15%",
+            "• <b>부스터</b> : JDSS 점수 전략 · 종목당 최대 5%",
+            "• <b>실거래</b> : 🔒 잠금",
+            "",
+        ]
+        for row in snapshot["rows"]:
+            lines.extend(
+                [
+                    f"✨ <b>{row['symbol']} / {row['underlying']}</b>",
+                    f"• 추세 : {'🟢 ON' if row['trend_active'] else '⚪ OFF'}",
+                    f"• 코어 : <code>{row['core_quantity']}주</code> / <code>{Decimal(str(row['core_weight'])) * 100:.2f}%</code>",
+                    f"• 부스터 : <code>{row['booster_quantity']}주</code> / 원가 <code>{_money(row['booster_cost_basis'])}</code>",
+                    f"• 신호 기준일 : <code>{row['signal_trade_date'] or '-'}</code>",
+                    "",
                 ]
             )
         return "\n".join(lines)
@@ -706,6 +753,7 @@ class TelegramBotApp:
 
                 for result in results:
                     position = self.repository.get_position(result.symbol)
+                    core = self.repository.get_core_position(result.symbol)
                     cap = (
                         position.cycle_exposure_cap
                         if position.cycle_exposure_cap > 0
@@ -714,18 +762,18 @@ class TelegramBotApp:
                     lines.extend(
                         [
                             f"✨ <b>{result.symbol}</b>",
-                            f"• <b>포지션 상태</b> : {_format_position_state(position)}",
-                            f"• <b>JDSS 점수</b> : <code>{result.score.total}점</code> ({_grade_label(result.score.grade.value)})",
-                            f"• <b>보유 잔고</b> : <code>{_quantity(position.quantity)}주</code> (평단 <code>{_money(position.average_price)}</code>)",
-                            f"• <b>누적 매수금</b> : <code>{_money(position.staged_entry_capital)}</code> / <code>{_money(cap)}</code>",
-                            f"• <b>전략 판단</b> : <b>{_action_label(result.decision.action.value)}</b>",
+                            f"• <b>월간 코어</b> : {'🟢 ON' if core['trend_active'] else '⚪ OFF'} · <code>{core['qty']}주</code>",
+                            f"• <b>JDSS 부스터</b> : {_format_position_state(position)}",
+                            f"• <b>부스터 점수</b> : <code>{result.score.total}점</code> ({_grade_label(result.score.grade.value)})",
+                            f"• <b>부스터 잔고</b> : <code>{_quantity(position.quantity)}주</code> / 한도 <code>{_money(cap)}</code>",
+                            f"• <b>부스터 판단</b> : <b>{_action_label(result.decision.action.value)}</b>",
                             "",
                         ]
                     )
                 lines.extend(
                     [
                         "━━━━━━━━━━━━━━━━━━━━",
-                        "💡 <i>/status [종목] 및 /score [종목] 명령어로 세부 정보를 확인하실 수 있습니다.</i>",
+                        "💡 <i>/portfolio, /status [종목], /score [종목]으로 세부 정보를 확인하세요.</i>",
                     ]
                 )
                 self._send("\n".join(lines), markup=None)
@@ -738,6 +786,12 @@ class TelegramBotApp:
             if not self._authorized_message(message):
                 return
             self._send_account()
+
+        @bot.message_handler(commands=["portfolio", "pf"])
+        def portfolio(message):
+            if not self._authorized_message(message):
+                return
+            self._send(self._format_portfolio_message())
 
         @bot.message_handler(commands=list(IDLE_CASH_COMMANDS))
         def idle_cash(message):
@@ -881,7 +935,7 @@ class TelegramBotApp:
                 self._send(
                     f"⚠️ <b>{html.escape(str(exc))}</b>\n\n"
                     "💡 <b>사용 예시</b>\n"
-                    "<code>/bt</code> (SOXL 최근 300거래일)\n"
+                    "<code>/bt</code> (V3 전체 포트폴리오 최근 300거래일)\n"
                     "<code>/bt TQQQ 100</code>\n"
                     "<code>/bt ALL 250</code>"
                 )
@@ -891,7 +945,12 @@ class TelegramBotApp:
                     "⏳ <b>다른 백테스트가 이미 실행 중입니다.</b>\n완료 알림 후 다시 시도해 주세요."
                 )
                 return
-            symbols_text = " + ".join(request.symbols)
+            symbols_text = (
+                "V3 MONTHLY_H05 포트폴리오"
+                if self.config.portfolio.enabled
+                and request.symbols == self.config.enabled_symbols
+                else " + ".join(request.symbols)
+            )
             self._send(
                 f"🌞 <b>[{symbols_text} 백테스트 시작]</b>\n\n"
                 f"• <b>시작일</b> : <code>{request.start}</code>\n"
@@ -914,10 +973,11 @@ class TelegramBotApp:
             self._send(
                 "☀️ <b>[JH홀딩스 JDSS 메뉴]</b>\n\n"
                 "• <code>/dashboard</code> : 통합 대시보드\n"
+                "• <code>/portfolio</code> : 📊 V3 월간 코어·부스터 현황\n"
                 "• <code>/account</code> : 💰 토스 계좌 잔고\n"
                 "• <code>/sgov</code> : 💵 JDSS SGOV 유휴자금\n"
                 "• <code>/status</code> : 종목별 상세 포지션\n"
-                "• <code>/score</code> : JDSS 세부 지표 분석\n"
+                "• <code>/score</code> : JDSS 5% 부스터 지표 분석\n"
                 "• <code>/history</code> 또는 <code>/h</code> : 최근 점수 이력\n"
                 "• <code>/signal</code> : 활성 매수 신호\n"
                 "• <code>/backtest</code> : 자유 종목 백테스트\n"
@@ -1048,10 +1108,20 @@ class TelegramBotApp:
                 "❌ 무시 / 취소", callback_data=f"cancel|approval|{approval_id}"
             )
         )
+        is_core = signal["action"] == "CORE_REBALANCE_BUY"
+        title = "월간 코어 리밸런싱" if is_core else "JDSS 5% 부스터 신호"
+        score_line = (
+            "<code>├ 코어 규칙 : 10개월 추세 ON · 목표 15%</code>\n"
+            "<code>├ 실행 기준 : 완료 월말의 다음 거래일</code>\n"
+            if is_core
+            else (
+                f"<code>├ JDSS 점수 : {signal['score']:>3}점 · {_grade_label(signal['grade'])}</code>\n"
+                f"<code>├ 시장 국면 : {_regime_label(signal['regime'])}</code>\n"
+            )
+        )
         self._send(
-            f"🌟 <b>[{signal['symbol']} 매수 신호 포착]</b>\n\n"
-            f"<code>├ JDSS 점수 : {signal['score']:>3}점 · {_grade_label(signal['grade'])}</code>\n"
-            f"<code>├ 시장 국면 : {_regime_label(signal['regime'])}</code>\n"
+            f"🌟 <b>[{signal['symbol']} {title}]</b>\n\n"
+            f"{score_line}"
             f"<code>├ 투자 금액 : {_money(signal['planned_budget']):>11}</code>\n"
             f"<code>├ 신호 가격 : {_money(signal['signal_close']):>11}</code>\n"
             f"<code>└ 추격 상한 : {_money(signal['max_chase_price']):>11}</code>\n\n"
@@ -1073,8 +1143,10 @@ class TelegramBotApp:
                 callback_data=f"cancel|approval|{quote.execution_approval_id}",
             )
         )
+        signal = self.repository.get_signal(quote.signal_id)
+        sleeve = "월간 코어" if signal["action"] == "CORE_REBALANCE_BUY" else "JDSS 5% 부스터"
         self._send(
-            f"🌞 <b>[{quote.symbol} 최종 매수 승인]</b>\n\n"
+            f"🌞 <b>[{quote.symbol} {sleeve} 최종 매수 승인]</b>\n\n"
             f"• <b>현재 가격</b> : <code>{_money(quote.current_price)}</code>\n"
             f"• <b>지정 가격</b> : <code>{_money(quote.limit_price)}</code>\n"
             f"• <b>주문 수량</b> : <code>{_quantity(quote.quantity)}주</code>\n"
@@ -1110,8 +1182,10 @@ class TelegramBotApp:
             
             engine = StrategyBacktestEngine(self.config)
             results = {}
+            target_frames = {}
             for symbol in request.symbols:
                 target = self.data_source.daily(symbol, warmup_start, end)
+                target_frames[symbol] = target
                 results[symbol] = engine.run(
                     symbol,
                     target,
@@ -1122,6 +1196,30 @@ class TelegramBotApp:
                     sector_data=sector_data if sector_data else None,
                     idle_cash_data=idle_cash_data,
                 )
+            if (
+                self.config.portfolio.enabled
+                and request.symbols == self.config.enabled_symbols
+            ):
+                raw_frames = {
+                    **target_frames,
+                    "QQQ": qqq,
+                    self.config.idle_cash.symbol: idle_cash_data,
+                }
+                for underlying in self.config.portfolio.core_underlyings.values():
+                    if underlying not in raw_frames:
+                        raw_frames[underlying] = self.data_source.daily(
+                            underlying, warmup_start, end
+                        )
+                portfolio_result = PortfolioBacktestEngine(self.config).run(
+                    raw_frames,
+                    results,
+                    start=start,
+                    end=end,
+                )
+                self._send_long(
+                    self._format_portfolio_backtest_result(portfolio_result)
+                )
+                return
             self._send_long(self._format_backtest_results(results))
         except Exception as exc:
             LOGGER.exception("Telegram 백테스트 실패")
@@ -1263,6 +1361,43 @@ class TelegramBotApp:
         return "\n".join(lines)
 
     @staticmethod
+    def _format_portfolio_backtest_result(
+        result: PortfolioBacktestResult,
+    ) -> str:
+        metrics = result.metrics
+        lines = [
+            "🌗 <b>[JDSS V3 MONTHLY_H05 통합 백테스트]</b>",
+            "",
+            f"<code>├ 기간     : {result.start_date} ~ {result.end_date}</code>",
+            f"<code>├ 초기자산 : {_money(metrics['initial_equity']):>12}</code>",
+            f"<code>├ 최종자산 : {_money(metrics['final_equity']):>12}</code>",
+            f"<code>├ 누적수익 : {metrics['total_return_pct']:>+10.2f}%</code>",
+            f"<code>├ CAGR     : {metrics['cagr_pct']:>+10.2f}%</code>",
+            f"<code>├ 최대낙폭 : {metrics['mdd_pct']:>10.2f}%</code>",
+            f"<code>├ Sharpe   : {metrics['sharpe']:>10.3f}</code>",
+            f"<code>└ 평균노출 : {metrics['average_exposure_pct']:>10.2f}%</code>",
+            "━━━━━━━━━━━━━━━━━━",
+            "📦 <b>구성별 체결</b>",
+            f"• 월간 코어: <code>{metrics['component_fills']['core']}회</code>",
+            f"• JDSS 5% 부스터: <code>{metrics['component_fills']['booster']}회</code>",
+            f"• SGOV 추정수익: <code>{_money(metrics['idle_cash_income'])}</code>",
+            "",
+            "📜 <b>최근 통합 매매</b>",
+        ]
+        for trade in result.trades[-15:]:
+            sleeve = "코어" if trade["component"] == "core" else "부스터"
+            side = "매수" if trade["side"] == "BUY" else "매도"
+            lines.append(
+                f"<code>[{str(trade['date'])[2:].replace('-', '')}] "
+                f"{trade['symbol']} {sleeve}{side} "
+                f"{trade['quantity']}주 @{_money(trade['price'])}</code>"
+            )
+        if not result.trades:
+            lines.append("해당 기간 체결이 없습니다.")
+        lines.append("\n💡 <i>완료봉 신호·다음 거래일 체결·수수료·슬리피지·SGOV를 반영한 dry-run 모델입니다.</i>")
+        return "\n".join(lines)
+
+    @staticmethod
     def _requested_symbol(text: str) -> str | None:
         parts = (text or "").split()
         return parts[1].upper() if len(parts) >= 2 else None
@@ -1274,6 +1409,13 @@ class TelegramBotApp:
                     delay_minutes=self.config.scheduler.signal_delay_minutes
                 )
                 last_analysis = self.repository.get_system_value("last_analysis_trade_date")
+                if self.portfolio_service is not None:
+                    portfolio_run = self.portfolio_service.run_month_end()
+                    if portfolio_run is not None:
+                        for event in portfolio_run.events:
+                            self._send(f"📊 {html.escape(event)}")
+                        for signal_id in portfolio_run.signals:
+                            self._send_signal(self.repository.get_signal(signal_id))
                 if last_analysis != completed.isoformat():
                     results = self.analysis_service.analyze_all()
                     self.notify_new_signals(results)
@@ -1323,6 +1465,7 @@ class TelegramBotApp:
         self.bot.set_my_commands(
             [
                 telebot.types.BotCommand("dashboard", "☀️ 통합 대시보드"),
+                telebot.types.BotCommand("portfolio", "📊 V3 코어·부스터 현황"),
                 telebot.types.BotCommand("account", "💰 토스 계좌 잔고"),
                 telebot.types.BotCommand(IDLE_CASH_COMMANDS[0], "💵 SGOV 유휴자금"),
                 telebot.types.BotCommand("status", "✨ 종목별 포지션 상세"),

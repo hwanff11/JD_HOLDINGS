@@ -10,6 +10,7 @@ import pandas as pd
 
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.database import SQLiteRepository
+from jd_holdings.backtest.portfolio_engine import PortfolioBacktestEngine
 from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
@@ -126,8 +127,10 @@ def main(argv: list[str] | None = None) -> int:
         }
         engine = StrategyBacktestEngine(config)
         completed_results = {}
+        target_frames = {}
         for symbol in symbols:
             target = data_source.daily(symbol, warmup_start, end, refresh=args.refresh)
+            target_frames[symbol] = target
             result = engine.run(
                 symbol,
                 target,
@@ -159,26 +162,63 @@ def main(argv: list[str] | None = None) -> int:
                 f"cycles={metrics['closed_cycles']} signals={metrics['signals']}"
                 f"{sector_text}{cash_text}"
             )
-        portfolio = pd.concat(
-            [result.equity_curve.rename(symbol) for symbol, result in completed_results.items()],
-            axis=1,
-            join="inner",
-        ).sum(axis=1)
-        years = (portfolio.index[-1] - portfolio.index[0]).days / 365.25
-        portfolio_metrics = {
-            "initial_equity": round(float(portfolio.iloc[0]), 2),
-            "final_equity": round(float(portfolio.iloc[-1]), 2),
-            "total_return_pct": round(float((portfolio.iloc[-1] / portfolio.iloc[0] - 1) * 100), 2),
-            "cagr_pct": round(float(((portfolio.iloc[-1] / portfolio.iloc[0]) ** (1 / years) - 1) * 100), 2),
-            "mdd_pct": round(float((portfolio / portfolio.cummax() - 1).min() * 100), 2),
-            "idle_cash_income": round(
-                sum(
-                    float(result.metrics.get("idle_cash_income", 0))
-                    for result in completed_results.values()
+        if config.portfolio.enabled and symbols == config.enabled_symbols:
+            raw_frames = {
+                **target_frames,
+                "QQQ": qqq,
+                config.idle_cash.symbol: idle_cash_data,
+            }
+            for underlying in config.portfolio.core_underlyings.values():
+                if underlying not in raw_frames:
+                    raw_frames[underlying] = data_source.daily(
+                        underlying, warmup_start, end, refresh=args.refresh
+                    )
+            portfolio_result = PortfolioBacktestEngine(config).run(
+                raw_frames,
+                completed_results,
+                start=start,
+                end=end,
+                slippage=args.slippage,
+            )
+            portfolio_metrics = portfolio_result.metrics
+            output["v3_portfolio"] = portfolio_result.to_dict(include_equity=False)
+        else:
+            portfolio = pd.concat(
+                [
+                    result.equity_curve.rename(symbol)
+                    for symbol, result in completed_results.items()
+                ],
+                axis=1,
+                join="inner",
+            ).sum(axis=1)
+            years = (portfolio.index[-1] - portfolio.index[0]).days / 365.25
+            portfolio_metrics = {
+                "initial_equity": round(float(portfolio.iloc[0]), 2),
+                "final_equity": round(float(portfolio.iloc[-1]), 2),
+                "total_return_pct": round(
+                    float((portfolio.iloc[-1] / portfolio.iloc[0] - 1) * 100), 2
                 ),
-                2,
-            ),
-        }
+                "cagr_pct": round(
+                    float(
+                        (
+                            (portfolio.iloc[-1] / portfolio.iloc[0]) ** (1 / years)
+                            - 1
+                        )
+                        * 100
+                    ),
+                    2,
+                ),
+                "mdd_pct": round(
+                    float((portfolio / portfolio.cummax() - 1).min() * 100), 2
+                ),
+                "idle_cash_income": round(
+                    sum(
+                        float(result.metrics.get("idle_cash_income", 0))
+                        for result in completed_results.values()
+                    ),
+                    2,
+                ),
+            }
         output["portfolio_metrics"] = portfolio_metrics
         print(
             "PORTFOLIO: "

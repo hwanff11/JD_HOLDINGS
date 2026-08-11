@@ -1,10 +1,16 @@
 # PR #27 대안 전략 연구 최종 보고서
 
-## 결론
+## PR #27 당시 결론
 
 PR #27의 연구 자동화는 `main`에 보존할 가치가 있지만, 연구한 후보를 현재 운영 전략으로 승격하지 않는다. 운영 계약은 계속 `JDSS-2.2.2-SGOV`이며 `strategy.yaml`, 주문 로직, Telegram 승인, SGOV 관리와 실거래 잠금은 변경하지 않는다.
 
 최종 승격 후보였던 `SEMIMONTHLY_BAND_H05`는 세 슬리피지 모두 사전 기준을 통과하지 못했다. 따라서 PR 병합과 Oracle 배포는 연구 도구·문서의 배포일 뿐 새로운 전략의 운영 적용이 아니다.
+
+## 후속 V3 결정
+
+2026-08-11 후속 검토에서는 탈락한 `SEMIMONTHLY_BAND_H05`나 위상 민감한 격주 밴드를 되살리지 않고, 그 후보들의 비교 기준이었던 `MONTHLY_H05`를 V3 dry-run 계약으로 채택했다. 이는 PR #27 당시 “복잡한 후보를 운영 승격하지 않는다”는 판정을 뒤집는 것이 아니라, 더 단순하고 위상 선택이 없는 보수적 기준선을 별도 버전으로 구현·재검증하는 결정이다.
+
+V3 운영 계약은 `JDSS-3.0.0-TWIN-H05`이며 live 적용은 포함하지 않는다. 현재 규칙은 [`../JDSS_FINAL_SPEC.md`](../JDSS_FINAL_SPEC.md)를 따른다.
 
 ## 연구 범위
 
@@ -64,4 +70,4 @@ python scripts/research_twin_rebalance_frequency.py \
   --markdown reports/twin_rebalance_frequency.md
 ```
 
-GitHub Actions의 `JDSS Twin Core Hybrid Research`는 세 슬리피지를 병렬 실행하고 JSON·Markdown 결과를 30일 Artifact로 보관한다. 이 연구 결과를 다시 운영 후보로 검토하려면 새로운 사전 기준과 독립 검증 계획을 먼저 문서화해야 한다.
+당시 `JDSS Twin Core Hybrid Research` Actions가 세 슬리피지를 병렬 실행했다. V3 승격 뒤에는 중복 연구 workflow를 제거했으며, 스크립트는 위 명령으로 재현할 수 있다. 현재 운영 회귀는 `JDSS V3 Backtest` workflow를 사용한다.

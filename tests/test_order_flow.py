@@ -115,7 +115,7 @@ def switch_to_remainder_exit(repository, broker, trading, monitor):
 def test_two_step_dry_run_order_flow(tmp_path, config):
     repository, broker, trading, _ = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
-    assert quote.quantity == 39
+    assert quote.quantity == 3
     receipt = trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     assert receipt.status == "FILLED"
     position = repository.get_position("TQQQ")
@@ -190,19 +190,19 @@ def test_partial_tp_is_applied_cumulatively_and_recovered(tmp_path, config):
     )
     tp1 = broker.orders[tp1_local["broker_order_id"]]
     tp1["status"] = "PARTIAL_FILLED"
-    tp1["execution"]["filledQuantity"] = "2"
+    tp1["execution"]["filledQuantity"] = "1"
     tp1["execution"]["averageFilledPrice"] = tp1["price"]
     broker._apply_fill(tp1)
 
     monitor.run_once()
-    assert repository.get_position("TQQQ").quantity == initial_quantity - 2
+    assert repository.get_position("TQQQ").quantity == initial_quantity - 1
     assert repository.get_order_by_client_id(tp1_local["client_order_id"])["applied"] == 0
 
     tp1["status"] = "CANCELED"
     events = monitor.run_once()
     recovered = repository.open_orders("TQQQ")
     assert any("자동 복구" in event for event in events)
-    assert sum(int(order["qty"]) for order in recovered) == initial_quantity - 2
+    assert sum(int(order["qty"]) for order in recovered) == initial_quantity - 1
     assert repository.get_order_by_client_id(tp1_local["client_order_id"])["applied"] == 1
 
 
