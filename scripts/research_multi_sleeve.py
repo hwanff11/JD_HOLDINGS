@@ -261,11 +261,32 @@ def _simulate(
             close = float(row["close"])
             sleeve.peak_close = max(sleeve.peak_close, close)
             held = (timestamp - sleeve.entry_date).days
-            if not sleeve.tp1_done and close >= sleeve.entry_price * 1.06:
+            is_pyramid = name in {
+                "T_WINNER_PYRAMID",
+                "U_RELATIVE_PYRAMID",
+                "V_CRASH_RECLAIM_PYRAMID",
+            }
+            if is_pyramid and (
+                close <= sleeve.peak_close * 0.88
+                or float(base["close"]) < float(base["sma50_r"])
+                or held >= 180
+            ):
+                pending.append(Pending("PYRAMID_EXIT", sleeve.symbol, sleeve.sleeve_id))
+            elif (
+                not is_pyramid
+                and not sleeve.tp1_done
+                and close >= sleeve.entry_price * 1.06
+            ):
                 pending.append(Pending("TP1", sleeve.symbol, sleeve.sleeve_id))
-            elif sleeve.tp1_done and close <= sleeve.peak_close * 0.90:
+            elif (
+                not is_pyramid
+                and sleeve.tp1_done
+                and close <= sleeve.peak_close * 0.90
+            ):
                 pending.append(Pending("TRAIL", sleeve.symbol, sleeve.sleeve_id))
-            elif float(base["close"]) < float(base["sma50_r"]) or held >= 60:
+            elif not is_pyramid and (
+                float(base["close"]) < float(base["sma50_r"]) or held >= 60
+            ):
                 pending.append(Pending("EXIT", sleeve.symbol, sleeve.sleeve_id))
 
         for symbol in SYMBOLS:
