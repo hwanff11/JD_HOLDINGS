@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from contextvars import ContextVar
-from decimal import Decimal
 
 from jd_holdings.core.enums import PositionState
 from jd_holdings.core.models import OrderReceipt, OrderRequest
@@ -25,7 +24,6 @@ class FinalTradingService(TradingService):
         try:
             return super().execute(approval_id, token, now=now)
         except Exception as exc:
-            # Expected approval/quote errors are still useful in the persistent event log.
             self.repository.log_event(
                 "WARNING",
                 "ORDER_EXECUTION_ERROR",
