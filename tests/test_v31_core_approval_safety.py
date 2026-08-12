@@ -4,15 +4,17 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pandas as pd
+import pytest
 
 from jd_holdings.application.broker import DryRunBroker
-from jd_holdings.application.database import SQLiteRepository
+from jd_holdings.application.database import ApprovalError, SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service import TradingService
 from jd_holdings.bot import restore_dry_run_orders
+from jd_holdings.core.enums import PositionState
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
@@ -124,6 +126,33 @@ def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path,
     quote = trading.consume_review(review_id, review_token, now=approval_time)
 
     assert quote.quantity == 9
+
+
+def test_core_signal_is_invalidated_when_symbol_is_in_safe_mode(tmp_path, config):
+    repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    position = repository.get_position("TQQQ")
+    repository.transition_position(
+        "TQQQ",
+        expected_state=position.state,
+        new_state=PositionState.SAFE_MODE,
+        reason_code="TEST_SAFE_MODE",
+        expected_version=position.version,
+    )
+
+    with pytest.raises(ApprovalError, match="SIGNAL_SAFE_MODE"):
+        trading.create_review_approval(signal_id)
+
+    assert repository.get_signal(signal_id)["status"] == "INVALID"
+
+
+def test_core_signal_is_invalidated_when_idle_cash_is_in_safe_mode(tmp_path, config):
+    repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    repository.set_system_value("idle_cash_safe_mode", "1")
+
+    with pytest.raises(ApprovalError, match="SIGNAL_IDLE_CASH_SAFE_MODE"):
+        trading.create_review_approval(signal_id)
+
+    assert repository.get_signal(signal_id)["status"] == "INVALID"
 
 
 def test_restart_sequence_uses_completed_historical_dry_orders(tmp_path, config):
