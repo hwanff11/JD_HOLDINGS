@@ -34,6 +34,7 @@ def test_market_data_dry_run_fills_pending_sell_when_price_crosses_limit():
         order_type="LIMIT",
         quantity=3,
         price=Decimal("110"),
+        purpose="TP1",
     )
 
     receipt = broker.place_order(request)
@@ -56,6 +57,7 @@ def test_dry_run_can_cancel_partial_order():
         order_type="LIMIT",
         quantity=10,
         price=Decimal("90"),
+        purpose="FIRST_ENTRY_CANDIDATE",
     )
     receipt = broker.place_order(request)
     broker.orders[receipt.broker_order_id]["status"] = "PARTIAL_FILLED"
