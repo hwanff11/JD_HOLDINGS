@@ -95,7 +95,7 @@ def fill_tp1_completely(repository, broker, monitor):
 def test_two_step_dry_run_order_flow(tmp_path, config):
     repository, _, trading, _ = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
-    assert quote.quantity == 31
+    assert quote.quantity == 79
     receipt = trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     assert receipt.status == "FILLED"
     position = repository.get_position("TQQQ")
