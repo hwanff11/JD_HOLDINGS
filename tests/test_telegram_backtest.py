@@ -240,17 +240,18 @@ def test_telegram_guide_matches_current_contract():
     cards = _guide_cards()
     guide = "\n".join(cards)
     for expected in (
-        "V3.0",
-        "10개월",
+        "V3.1",
+        "6개월",
+        "첫 달 10%",
         "15%",
-        "5%",
+        "$8,000",
+        "40%",
         "55점",
         "-2%",
         "-5%",
-        "-7%",
         "+4%",
-        "+6%",
-        "+2%",
+        "+10%",
+        "재매수와 자동손절은 비활성화",
         "SGOV",
         "/sgov",
     ):
@@ -266,9 +267,8 @@ def test_telegram_guide_matches_current_contract():
         assert expected in guide
     assert len(cards) == 5
     assert all(len(card) < 4096 for card in cards)
-    assert "50점" not in guide
-    assert "-4% 하락" not in guide
-    assert "+8.0%" not in guide
+    for rejected in ("10개월 이동평균", "최대 5%", "-7%", "+6%", "20거래일 경과"):
+        assert rejected not in guide
 
 
 def test_score_message_explains_indicators_and_final_gates():
