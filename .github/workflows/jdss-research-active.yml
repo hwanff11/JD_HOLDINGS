@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline_6m, stage_10, stage_7_5]
+        variant: [tp2_6, tp2_8, tp2_10]
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v7
