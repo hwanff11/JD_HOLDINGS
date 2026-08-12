@@ -44,3 +44,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Legacy research output contains a Markdown table header that is intentionally
+# kept on one line so the Actions job summary renders predictably.
+"scripts/research_active.py" = ["E501"]
