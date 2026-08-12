@@ -1,37 +1,38 @@
 # Oracle 배포 가이드
 
-Oracle 배포 대상은 **JDSS-3.0.0-TWIN-H05**다. 이 버전은 `dry_run` 전용이며 설정과 애플리케이션 코드가 live 시작을 모두 거부한다.
+Oracle 배포 대상은 검증된 최신 `main`의 **JDSS V3.1 dry-run 계약**이다. 전략 수치는 `strategy.yaml`과 `docs/JDSS_FINAL_SPEC.md`를 따르며, 실제 Oracle 배포 SHA와 현재 서버 버전은 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)만 기준으로 확인한다. V3.1도 설정과 애플리케이션 코드가 live 시작을 모두 거부한다.
 
-현재 실제 배포 SHA와 성공 여부는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md), `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 Actions 출력을 기준으로 한다. 배포 smoke test는 TQQQ·SOXL·SGOV 시세와 미국장 캘린더를 조회할 뿐 주문하지 않는다.
+배포 smoke test는 TQQQ·SOXL·SGOV 시세와 미국장 캘린더를 조회할 뿐 주문하지 않는다.
 
 ## 1. 서버 준비
 
-Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요합니다. 기본
-배포 경로는 `/home/ubuntu/JD_HOLDINGS`이고 기존 CCI 프로젝트와 별도입니다.
+Oracle 인스턴스에 Python 3.11 이상, `python3-venv`, `tar`, systemd가 필요하다. 기본 배포 경로는 `/home/ubuntu/JD_HOLDINGS`다. 서버 Python이 3.11 미만이면 Python 3.12와 해당 `venv`를 먼저 설치하고 실제 실행파일을 배포 설정에 지정한다.
 
-과거 확인된 기존 서버 기본 Python은 3.8.10이므로 그대로는 배포할 수 없습니다.
-Python 3.12와 해당 버전의 `venv` 모듈을 먼저 설치하고, 로컬 배포 설정에 실제 실행파일을
-지정합니다. V2 SQLite 파일은 첫 V3 시작 때 `core_positions`와 `core_fill_progress`를 비파괴적으로 추가한다.
+DB는 `/home/ubuntu/JD_HOLDINGS/shared/data/jdss.db`를 계속 사용한다. 기존 스키마에 필요한 테이블·컬럼은 애플리케이션 시작 시 비파괴적으로 보강한다.
 
-서버 공인 IP를 Toss Securities OpenAPI 허용 IP에 등록합니다. 첫 배포 전에 서버에서
-다음 파일을 직접 만들고 권한을 제한합니다.
+서버 공인 IP를 Toss Securities OpenAPI 허용 IP에 등록하고 첫 배포 전에 다음 파일을 만든다.
 
 ```bash
 mkdir -p /home/ubuntu/JD_HOLDINGS/shared
 install -m 0600 /dev/null /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
-`.env.example`을 기준으로 Telegram 봇 토큰, 개인 Chat ID 하나, Toss 앱 키/시크릿 및
-계좌 순번을 입력합니다. 기준선 검증이 끝날 때까지 아래 값은 유지합니다.
+`.env.example`을 기준으로 Telegram Chat ID, Toss 앱 키/시크릿 및 계좌 순번을 입력한다. live 승격 전까지 다음 값은 바꾸지 않는다.
 
 ```dotenv
 JDSS_TRADING_MODE=dry_run
 JDSS_LIVE_CONFIRMATION=
 ```
 
-## 2. 로컬 배포 설정
+## 2. 배포 경로
 
-로컬 `.env`의 배포 항목에 SSH 키와 서버를 설정합니다.
+권장 경로는 GitHub Actions `Deploy Oracle Dry Run` 한 가지다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요한 variable을 보관한다. 비밀값은 저장소 파일이나 ChatGPT 대화에 복사하지 않는다.
+
+워크플로는 최신 `main`을 체크아웃하고 원격 `main`과 일치하는지 검증한 뒤 Ruff·pytest·설정·버전을 확인한다. 성공한 커밋만 commit별 릴리스 경로에 배치하고 서버 `.env`를 다시 `dry_run`으로 강제한 뒤 `current` 링크를 교체하고 서비스를 한 번 재시작한다. 마지막에는 Toss 조회 전용 smoke test를 실행한다.
+
+ChatGPT 연결에서 수동 Actions dispatch가 제공되지 않으면 저장소 소유자가 제목을 `[deploy-oracle-dry-run]`으로 시작하는 이슈를 생성하는 ChatOps 경로를 사용한다. Actions는 실행 시점의 최신 `main`을 다시 검증하므로 오래된 PR SHA를 임의로 배포하지 않는다.
+
+로컬 직접 배포가 필요한 경우에만 깨끗하고 원격과 동기화된 `main`에서 실행한다.
 
 ```dotenv
 SSH_KEY_PATH=/absolute/path/to/oracle.key
@@ -39,59 +40,29 @@ SERVER_HOST=203.0.113.10
 SERVER_USER=ubuntu
 SERVER_TARGET_DIR=/home/ubuntu/JD_HOLDINGS
 SYSTEMD_SERVICE=jd_holdings_bot
-REMOTE_PYTHON_BIN=/home/ubuntu/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12
+REMOTE_PYTHON_BIN=/path/to/python3.12
 ```
-
-Git 작업트리가 깨끗한 `main`이어야 하며, 로컬 HEAD가 `origin/main`과 정확히 일치해야 합니다. remote URL에는 토큰을 포함하지 않습니다.
 
 ```bash
 git remote -v
 env -u GITHUB_TOKEN ./deploy.sh
 ```
 
-권장 경로는 GitHub Actions의 수동 워크플로 `Deploy Oracle Dry Run`이다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요 시 `ORACLE_USER`, `ORACLE_TARGET_DIR`, `ORACLE_PYTHON` variable을 설정한다. 워크플로는 실행 시점의 최신 `main`을 직접 체크아웃하고 원격 `main`과 정확히 일치하는지 확인한 뒤 Ruff·pytest·설정·버전을 한 번 검증한다. 이후 `deploy.sh`에 이미 검증했음을 알려 중복 실행만 생략한다.
+`SKIP_LOCAL_CHECKS=1`은 같은 커밋을 바로 앞 GitHub Actions 단계에서 검증한 경우에만 사용한다.
 
-```dotenv
-JDSS_TRADING_MODE=dry_run
-JDSS_LIVE_CONFIRMATION=
-```
+## 3. 운영 데이터와 서비스
 
-워크플로 파일: `.github/workflows/deploy-oracle-dry-run.yml`
-
-### ChatGPT에서 배포 요청
-
-ChatGPT의 GitHub 연결에서 수동 Actions dispatch가 직접 제공되지 않는 환경은 GitHub 이슈를 배포 요청으로 사용한다. ChatGPT는 다음을 순서대로 수행한다.
-
-1. 대상 PR의 필수 CI와 JDSS Dry Run이 성공했는지 확인하고 PR을 `main`에 병합한다.
-2. 저장소 소유자 계정으로 제목이 `[deploy-oracle-dry-run]`으로 시작하는 이슈를 생성한다. SHA와 특별한 본문은 필요하지 않다.
-3. Actions는 이슈 작성자가 저장소 소유자인지 확인하고 실행 시점의 최신 `main`을 직접 체크아웃한다.
-4. 체크아웃한 HEAD가 원격 `main`과 정확히 같은지 검증한다. 실행 중 `main`이 바뀌면 오래된 커밋을 배포하지 않고 안전하게 실패한다.
-5. 검증 후 pytest·Ruff·설정·버전 게이트와 Oracle dry-run 배포·Toss smoke test를 실행하고, 실제 배포 SHA와 성공 또는 실패 결과를 같은 이슈에 댓글로 남긴다.
-
-ChatGPT는 서버 SSH 키나 Toss 비밀값을 직접 취급하지 않는다. 비밀값은 GitHub Environment `oracle-dry-run`과 Oracle shared `.env`에만 유지한다. 이 ChatOps 경로도 `dry_run`만 허용하며 live 전환에는 사용하지 않는다.
-
-로컬 직접 배포는 기본으로 pytest·Ruff·설정 검증을 실행한다. `SKIP_LOCAL_CHECKS=1`은 같은 커밋을 바로 앞 단계에서 검증한 GitHub Actions만 사용한다.
-
-배포는 원격 `main` 일치 확인 → 필요 시 로컬 검증 → commit별 릴리스 업로드 → 서버 `dry_run` 잠금 → 의존성·설정 검증 → `current` 링크 교체 → systemd 재시작 1회 → Toss 조회 전용 smoke test 순으로 한 번에 수행된다. pip 자체 업그레이드와 systemd enable은 최초 구성 시에만 실행한다.
-DB, `.env`, 로그는 `shared`에 남아 새 릴리스와 분리됩니다.
-Telegram 백테스트의 yfinance 캐시도
-`/home/ubuntu/JD_HOLDINGS/shared/data/cache`에 저장되어 읽기 전용 릴리스와 분리됩니다.
-systemd 서비스는 `JDSS_CACHE_PATH`를 shared 캐시로, `JDSS_CONFIG_PATH`를
-`/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정해
-설치형 패키지에서도 현재 릴리스의 설정을 사용합니다.
-
-서비스는 `UMask=0077`로 새 DB·로그 파일을 운영 사용자 전용으로 만들고, capability 제거,
-private devices/tmp, 커널·control group 보호, SUID/SGID 제한과 `AF_UNIX/AF_INET/AF_INET6`
-주소 패밀리 제한을 적용한다. 보안 기준과 점검표는 [`SECURITY.md`](SECURITY.md)를 따른다.
-
-운영 데이터 경로는 다음과 같다.
+DB, `.env`, 로그와 yfinance 캐시는 `shared`에 남고 commit별 코드 릴리스와 분리한다.
 
 - DB: `/home/ubuntu/JD_HOLDINGS/shared/data/jdss.db`
 - 로그: `/home/ubuntu/JD_HOLDINGS/shared/logs/jdss.log`
 - 캐시: `/home/ubuntu/JD_HOLDINGS/shared/data/cache`
 - 비밀정보: `/home/ubuntu/JD_HOLDINGS/shared/.env`
+- 현재 코드: `/home/ubuntu/JD_HOLDINGS/current`
 
-## 3. 검증
+systemd 서비스는 `JDSS_CACHE_PATH`를 shared 캐시로, `JDSS_CONFIG_PATH`를 `/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정한다. 서비스는 `UMask=0077` 등 운영 사용자 전용 권한과 기존 보안 hardening을 유지하며 세부 기준은 [`SECURITY.md`](SECURITY.md)를 따른다.
+
+## 4. 배포 후 검증
 
 ```bash
 sudo systemctl status jd_holdings_bot --no-pager
@@ -100,27 +71,31 @@ ls -l /home/ubuntu/JD_HOLDINGS/current
 grep '^JDSS_TRADING_MODE=' /home/ubuntu/JD_HOLDINGS/shared/.env
 ```
 
-Telegram `/ping`, `/portfolio`, `/dashboard`, `/account`, `/sgov`, `/bt`를 확인합니다. `/portfolio`는 QQQ·SOXX 월간 추세, 코어·부스터 분리수량과 live 잠금을 표시해야 합니다. `/sgov`는 JDSS 관리 SGOV와 비관리 SGOV를 구분하고 SAFE_MODE가 없어야 합니다. SGOV 현금화 후 최종 승인 자동 재개, 활성 의도 중 재예치 차단, 60초 미체결 재가격도 확인합니다. 인자 없는
-`/bt`는 V3 전체 포트폴리오 최근 300거래일을 실행하며 코어·부스터 체결과 통합 성과를 표시해야 합니다. `/account`는 미국주식과
-수수료 반영 평가손익만 표시해야 합니다. 실주문 전에는 서버에서
-`jdss toss-smoke`를 실행해 TQQQ·SOXL·SGOV 시세와 조회 전용 인증을 확인합니다.
+Telegram에서는 `/ping`, `/portfolio`, `/dashboard`, `/account`, `/sgov`, `/bt`, `/guide`를 확인한다.
 
-배포 후에는 실제 브로커 잔고·미체결 주문·SQLite 코어/부스터 원장·주문 상태·SGOV 관리 원장을 Reconciliation한다. 브로커 TQQQ·SOXL 기대수량은 코어와 부스터의 합이다. 기존 계좌 SGOV를 자동 인수하지 않는다. 불일치가 있거나 `SAFE_MODE`가 활성화되면 신규매수를 중지한 채 원인을 먼저 해결한다. V3.0.0에서는 `JDSS_TRADING_MODE=live`를 설정하지 않는다.
+V3.1에서 특히 확인할 내용은 다음과 같다.
 
-## 4. GitHub 릴리스
+- `/portfolio`: 6개월 월간 추세, 첫 ON 10%→지속 15% 코어와 부스터 분리수량
+- `/status`: 부스터 평단·TP1 +4% 약 30%·TP2 +10%가 코어 보유수량과 섞이지 않는지
+- `/guide`: H40 자금 상한 40%와 S3 정상 최대 신규투입 36%가 구분되는지
+- `/sgov`: JDSS 관리 SGOV와 비관리 SGOV가 분리되고 SAFE_MODE가 없는지
+- SGOV 현금화 후 최종 승인 자동 재개, 활성 의도 중 재예치 차단, 60초 미체결 재가격
+- `/bt`: V3.1 통합 포트폴리오 결과와 코어·부스터 체결수 표시
+- `jdss toss-smoke`: TQQQ·SOXL·SGOV 시세와 조회 전용 인증 성공
 
-`v3.0.0` 태그와 GitHub Release는 검증된 commit
-`df640d16c485b770d9c57c570f5a13b3bdb4e2de`에 게시되어 있다. 해당 릴리스에 사용한
-버전 전용 ChatOps workflow는 재실행과 운영 혼선을 막기 위해 릴리스 완료 후 제거했다.
+배포 후 Reconciliation은 브로커 TQQQ·SOXL 수량과 `코어 수량 + 부스터 수량`, 미체결 주문, SGOV 관리 원장을 비교한다. 불일치나 SAFE_MODE가 있으면 신규매수를 진행하지 않고 원인을 먼저 해결한다.
 
-다음 버전을 릴리스할 때는 패키지·설정 버전, 전략 식별자, `live_enabled: false`, 최신
-`main`의 CI·Security·백테스트 성공을 확인한 뒤 해당 버전에 맞는 릴리스 절차를 별도
-PR로 추가한다. 릴리스 성공 후에는 `Deploy Oracle Dry Run`으로 배포하고 일회성 릴리스
-절차를 다시 제거한다.
+`JDSS_TRADING_MODE=live`는 설정하지 않는다. V3.1 live 승격은 별도 승인과 코드 변경 없이는 허용하지 않는다.
 
-## 5. 롤백
+## 5. 릴리스 이력과 다음 릴리스
 
-이전 commit 릴리스로 `current` 링크를 되돌린 뒤 전용 서비스만 재시작합니다.
+기존 `v3.0.0` GitHub Release는 과거 운영 기준으로 보존한다. V3.1을 정식 GitHub Release로 만들 경우 패키지·설정 버전, 전략 식별자, `live_enabled: false`, 최신 `main`의 CI·Security·Dry Run·백테스트 결과를 확인한 뒤 별도 릴리스 절차를 실행한다.
+
+릴리스 여부와 Oracle 배포 여부는 같은 의미가 아니다. `main`에 V3.1이 병합돼도 `CURRENT_WORK.md`에 V3.1 Oracle 배포 성공이 기록되기 전까지 서버는 기존 배포 버전을 사용한다고 판단한다.
+
+## 6. 롤백
+
+이전 commit 릴리스로 `current` 링크를 되돌린 뒤 전용 서비스만 재시작한다.
 
 ```bash
 ln -sfn /home/ubuntu/JD_HOLDINGS/releases/<previous-commit> \
@@ -129,5 +104,4 @@ mv -Tf /home/ubuntu/JD_HOLDINGS/current.new /home/ubuntu/JD_HOLDINGS/current
 sudo systemctl restart jd_holdings_bot
 ```
 
-롤백 시에도 `shared` DB의 스키마 호환성을 먼저 확인합니다. 기존 CCI 서비스나 다른
-Python 프로세스를 일괄 종료하지 않습니다.
+롤백 전에는 shared DB 스키마가 이전 코드와 호환되는지 확인한다. 다른 프로젝트나 Python 프로세스를 일괄 종료하지 않는다.
