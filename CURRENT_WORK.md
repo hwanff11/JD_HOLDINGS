@@ -8,6 +8,7 @@
 - 최신 main 전략 코드: `54baca27e612d123b44d7a9fa1a036d2e42c0a44`
 - 현재 전략: `JDSS-3.1.0-TWIN-H40-S3` / `3.1.0`
 - PR #62에서 연구 후보를 정식 구현·문서·테스트에 반영하고 main에 squash 병합 완료
+- V3.1 main production 통합 백테스트 재검증 완료
 - 제외: Oracle V3.1 배포와 live 적용. live는 설정과 애플리케이션 코드에서 계속 차단한다.
 
 ## 전략·운영 기준
@@ -46,7 +47,11 @@
 - JDSS V3 Dry Run run `31559148124` (#97) 성공
 - Security run `31559148110` (#147) 성공
 - 연구 동일 조건 비교: V3.0 Total +678.07%, CAGR 14.05%, MDD -28.29%, Sharpe 0.835, Sortino 1.004 → V3.1 최종 후보 Total +1372.96%, CAGR 18.81%, MDD -26.04%, Sharpe 0.940, Sortino 1.197
-- 정식 main production 엔진의 장기 백테스트 재검증은 V3.1 main 기준으로 별도 실행하여 연구 결과와의 동등성을 확인한다.
+- V3.1 main production 재검증: Issue #64, `JDSS V3 Backtest` run `31559442771` 성공
+  - main SHA `54baca27e612d123b44d7a9fa1a036d2e42c0a44`
+  - Total +1372.96%, CAGR 18.81%, MDD -26.04%, Sharpe 0.940, 평균노출 31.87%
+  - 코어 체결 320건, 부스터 체결 443건, SGOV 추정수익 `$21,538.41`
+  - 연구 최종 후보와 핵심 성과가 정확히 일치하여 research → production 엔진 동등성 확인
 
 ## 배포 상태
 
@@ -65,8 +70,8 @@
 
 ## 다음 작업
 
-1. V3.1 `main`의 정식 통합 백테스트를 실행해 연구 결과와 production 엔진의 성과 동등성을 재검증한다.
-2. V3.1을 Oracle에 적용하려면 별도 `Deploy Oracle Dry Run` 절차를 실행하고 서비스·Reconciliation·Telegram 출력·Toss read-only smoke를 확인한다.
+1. V3.1을 Oracle에 적용하려면 별도 `Deploy Oracle Dry Run` 절차를 실행하고 서비스·Reconciliation·Telegram 출력·Toss read-only smoke를 확인한다.
+2. Oracle V3.1 dry-run에서는 주문·승인·부분체결·재시작 복구를 관찰하되 장기 잔고수익률은 성과 근거로 사용하지 않는다.
 3. live는 계속 금지하며 위 managed equity 보완과 별도 운영 검증·승인 전에는 활성화하지 않는다.
 
 ## 작업 종료 갱신 규칙
