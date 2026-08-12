@@ -15,6 +15,7 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 from .broker import Broker
 from .database import SQLiteRepository
+from .managed_account import managed_equity
 from .order_manager import OrderManager, build_client_order_id
 
 
@@ -146,18 +147,8 @@ class PortfolioService:
         )
 
     def portfolio_equity(self) -> Decimal:
-        value = self.broker.get_buying_power("USD")
-        symbols = (*self.config.enabled_symbols, self.config.idle_cash.symbol)
-        for symbol in symbols:
-            holdings = self.broker.get_holdings(symbol)
-            quantity = sum(
-                Decimal(str(item.get("quantity", "0")))
-                for item in holdings
-                if str(item.get("symbol", "")).upper() == symbol
-            )
-            if quantity > 0:
-                value += quantity * self.broker.get_price(symbol)
-        return value
+        """JDSS-managed equity only; unrelated personal assets are excluded."""
+        return managed_equity(self.config, self.repository, self.broker)
 
     def snapshot(self) -> dict[str, object]:
         equity = self.portfolio_equity()
