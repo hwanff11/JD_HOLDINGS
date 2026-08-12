@@ -10,6 +10,18 @@ from .broker import Broker
 from .database import SQLiteRepository
 
 
+def _missing_broker_id_issue(orders: list[dict], prefix: str = "") -> str | None:
+    stranded = [
+        str(order["status"])
+        for order in orders
+        if not order.get("broker_order_id")
+    ]
+    if not stranded:
+        return None
+    statuses = ",".join(sorted(set(stranded)))
+    return f"{prefix}OPEN_ORDER_WITHOUT_BROKER_ID:{statuses}"
+
+
 class ReconciliationService:
     def __init__(
         self,
@@ -50,11 +62,9 @@ class ReconciliationService:
                         f"TP_PLAN_QTY_MISMATCH:{expected_tp}!={position.quantity}"
                     )
             local_orders = self.repository.open_orders(symbol)
-            if any(
-                order["status"] == "UNKNOWN" and not order.get("broker_order_id")
-                for order in local_orders
-            ):
-                issues.append("UNKNOWN_ORDER_WITHOUT_BROKER_ID")
+            missing_id = _missing_broker_id_issue(local_orders)
+            if missing_id:
+                issues.append(missing_id)
             try:
                 broker_orders = self.broker.list_orders(status="OPEN", symbol=symbol)
                 local_broker_ids = {
@@ -102,11 +112,9 @@ class ReconciliationService:
                 for order in self.repository.open_orders(cash_symbol)
                 if str(order["purpose"]).startswith("SGOV_")
             ]
-            if any(
-                order["status"] == "UNKNOWN" and not order.get("broker_order_id")
-                for order in local_orders
-            ):
-                issues.append("SGOV_UNKNOWN_ORDER_WITHOUT_BROKER_ID")
+            missing_id = _missing_broker_id_issue(local_orders, "SGOV_")
+            if missing_id:
+                issues.append(missing_id)
             try:
                 broker_orders = self.broker.list_orders(status="OPEN", symbol=cash_symbol)
                 local_ids = {
