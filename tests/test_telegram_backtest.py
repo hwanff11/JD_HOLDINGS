@@ -223,7 +223,7 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "3.1.0"
+    assert __version__ == "3.1.1"
     assert project["version"] == __version__
     assert config.config_version == __version__
 
@@ -232,7 +232,7 @@ def test_final_bot_uses_v3_portfolio_backtest_path():
     assert FinalTelegramBotApp._run_backtest_and_send is TelegramBotApp._run_backtest_and_send
 
 
-def test_sgov_is_the_only_idle_cash_command():
+def test_sgov_legacy_command_parser_remains_backward_compatible():
     assert IDLE_CASH_COMMANDS == ("sgov",)
 
 
@@ -240,34 +240,36 @@ def test_telegram_guide_matches_current_contract():
     cards = _guide_cards()
     guide = "\n".join(cards)
     for expected in (
-        "V3.1",
+        "V3.1.1",
+        "$50,000",
         "6개월",
-        "첫 달 10%",
+        "10%",
         "15%",
-        "$8,000",
+        "$20,000",
+        "$18,000",
         "40%",
         "55점",
         "-2%",
         "-5%",
         "+4%",
         "+10%",
-        "재매수와 자동손절은 비활성화",
+        "재투자",
         "SGOV",
-        "/sgov",
-    ):
-        assert expected in guide
-    for expected in (
-        "CCI 5 / 10",
-        "RSI 5 / 14",
-        "EMA 5 / 20 / 60",
-        "볼린저 하단",
-        "ATR 비율",
-        "종가 위치",
+        "QQQ/QQQM",
     ):
         assert expected in guide
     assert len(cards) == 5
     assert all(len(card) < 4096 for card in cards)
-    for rejected in ("10개월 이동평균", "최대 5%", "-7%", "+6%", "20거래일 경과"):
+    for rejected in (
+        "10개월 이동평균",
+        "최대 5%",
+        "$8,000",
+        "$7,200",
+        "-7%",
+        "+6%",
+        "20거래일 경과",
+        "/sgov",
+    ):
         assert rejected not in guide
 
 
