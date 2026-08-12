@@ -52,8 +52,8 @@ def restore_dry_run_holdings(
                 "averagePurchasePrice": cash_state.average_price,
             }
 
-    # Reconstruct cash from all persisted fills so realized P/L and fees survive
-    # restart. Current position cost bases alone cannot reproduce closed-cycle cash.
+    # Reconstruct only cash still inside the fixed JDSS principal budget.
+    # Realized profit above the principal ceiling remains personal/unmanaged cash.
     broker.buying_power = max(
         Decimal("0"), managed_cash_balance(repository.config, repository)
     )
@@ -84,13 +84,8 @@ def restore_dry_run_orders(
         local_status = str(local.get("status") or "PENDING")
         filled_qty = int(local.get("filled_qty") or 0)
         if local_status == "UNKNOWN":
-            # UNKNOWN remains a lost-response safety stop. Its historical broker id was
-            # already consumed above so a future dry-run order cannot reuse it.
             continue
         if local_status == "PARTIAL_FILLED" or filled_qty > 0:
-            # The in-memory broker cannot prove whether the persisted partial fill was
-            # already reflected in each sleeve ledger at the exact crash point. Do not
-            # guess. Leaving it unrestored makes Reconciliation enter SAFE_MODE.
             continue
 
         try:
@@ -149,7 +144,7 @@ def main() -> None:
     data_source = YFinanceDataSource(settings.cache_path)
     market_clock = MarketClock()
     if config.portfolio.enabled and settings.trading_mode == "live":
-        raise RuntimeError("JDSS V3.1은 운영 검증 전이므로 전체 live 모드가 잠겨 있습니다")
+        raise RuntimeError("JDSS V3.1.1은 운영 검증 전이므로 전체 live 모드가 잠겨 있습니다")
     if settings.trading_mode == "live":
         settings.require_live_trading()
         broker = TossClient()
@@ -166,9 +161,11 @@ def main() -> None:
         else None
     )
     order_manager = OrderManager(repository, broker, settings)
-    idle_cash_manager = IdleCashManager(
-        config, repository, broker, order_manager, market_clock
-    )
+    idle_cash_manager = None
+    if config.idle_cash.enabled:
+        idle_cash_manager = IdleCashManager(
+            config, repository, broker, order_manager, market_clock
+        )
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
     trading_service = FinalTradingService(
@@ -190,7 +187,8 @@ def main() -> None:
         tp_manager,
     )
     reconciliation_service = ReconciliationService(config, repository, broker)
-    idle_cash_manager.refresh_orders()
+    if idle_cash_manager is not None:
+        idle_cash_manager.refresh_orders()
     mismatches = reconciliation_service.run()
     if mismatches:
         logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
