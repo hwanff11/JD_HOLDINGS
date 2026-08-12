@@ -10,6 +10,7 @@ from jd_holdings.infrastructure.market_clock import MarketClock
 
 from .broker import Broker
 from .database import ApprovalError, SQLiteRepository
+from .managed_account import available_managed_cash, managed_cash_balance
 from .order_manager import OrderManager, build_client_order_id
 
 TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
@@ -70,7 +71,7 @@ class IdleCashManager:
             broker_quantity=broker_qty,
             price=price,
             market_value=price * state.managed_quantity,
-            buying_power=self.broker.get_buying_power("USD"),
+            buying_power=available_managed_cash(self.config, self.repository, self.broker),
             target_value=target,
             safe_mode=self.repository.get_system_value("idle_cash_safe_mode") == "1",
         )
@@ -99,7 +100,9 @@ class IdleCashManager:
         target_qty = self._target_quantity(snapshot.target_value, snapshot.price)
         difference = target_qty - snapshot.state.managed_quantity
         if difference > 0:
-            available = max(Decimal("0"), snapshot.buying_power - self.config.idle_cash.cash_buffer)
+            available = max(
+                Decimal("0"), snapshot.buying_power - self.config.idle_cash.cash_buffer
+            )
             limit = self._buy_limit(snapshot.price)
             affordable = int(
                 (available / (limit * (Decimal("1") + self.config.global_.buy_fee))).to_integral_value(
@@ -126,14 +129,19 @@ class IdleCashManager:
         self._cancel_open_sweep_buys()
         required_with_buffer = required + self.config.idle_cash.cash_buffer
         reserved = self.repository.reserved_cash_release_amount(signal_id)
-        buying_power = max(Decimal("0"), self.broker.get_buying_power("USD") - reserved)
+        buying_power = available_managed_cash(
+            self.config,
+            self.repository,
+            self.broker,
+            additional_reservation=reserved,
+        )
         if buying_power >= required_with_buffer:
             return
         if self.repository.get_system_value("idle_cash_safe_mode") == "1":
             raise ApprovalError("SGOV 정합성 SAFE_MODE로 전략 매수를 중단했습니다")
         state = self.repository.get_idle_cash_state()
         if state.managed_quantity <= 0:
-            raise ApprovalError("전략 매수에 필요한 달러 매수가능금액이 부족합니다")
+            raise ApprovalError("전략 매수에 필요한 JDSS 관리 달러가 부족합니다")
         if signal_id is not None and expires_at is not None:
             self.repository.upsert_cash_release_intent(signal_id, required, expires_at)
         if self._open_cash_orders():
@@ -156,8 +164,11 @@ class IdleCashManager:
         )
         if receipt.status in TERMINAL_STATUSES and receipt.filled_quantity > 0:
             self.repository.apply_idle_cash_fill(receipt.client_order_id)
-        available_after = max(
-            Decimal("0"), self.broker.get_buying_power("USD") - reserved
+        available_after = available_managed_cash(
+            self.config,
+            self.repository,
+            self.broker,
+            additional_reservation=reserved,
         )
         if available_after < required_with_buffer:
             if receipt.status in {"REJECTED", "CANCELED"}:
@@ -174,7 +185,23 @@ class IdleCashManager:
         for order in self._open_cash_orders():
             if not order.get("broker_order_id"):
                 continue
-            receipt = self.order_manager.refresh_order(str(order["client_order_id"]))
+            try:
+                receipt = self.order_manager.refresh_order(str(order["client_order_id"]))
+            except KeyError:
+                self.repository.set_system_value("idle_cash_safe_mode", "1")
+                self.repository.log_event(
+                    "SAFE_MODE",
+                    "SGOV_BROKER_ORDER_MISSING",
+                    "DB에는 열린 SGOV 주문이 있으나 broker에서 확인할 수 없습니다",
+                    symbol=str(order["symbol"]),
+                    context={
+                        "client_order_id": str(order["client_order_id"]),
+                        "broker_order_id": str(order["broker_order_id"]),
+                        "status": str(order["status"]),
+                    },
+                )
+                events.append("SGOV 열린 주문 확인 불가: SAFE_MODE")
+                continue
             self.repository.apply_idle_cash_fill(receipt.client_order_id)
             created_at = datetime.fromisoformat(str(order["created_at"]))
             age = (datetime.now(UTC) - created_at.astimezone(UTC)).total_seconds()
@@ -251,10 +278,16 @@ class IdleCashManager:
         return receipt
 
     def _target_value(self) -> Decimal:
-        allocated = self.config.total_strategy_capital
-        invested = self.repository.strategy_invested_capital()
+        state = self.repository.get_idle_cash_state()
+        managed_cash = managed_cash_balance(self.config, self.repository)
+        managed_sgov_value = Decimal("0")
+        if state.managed_quantity > 0:
+            managed_sgov_value = (
+                Decimal(state.managed_quantity) * self.broker.get_price(state.symbol)
+            )
         return max(
-            Decimal("0"), allocated - invested - self.config.idle_cash.cash_buffer
+            Decimal("0"),
+            managed_cash + managed_sgov_value - self.config.idle_cash.cash_buffer,
         )
 
     def _target_quantity(self, target_value: Decimal, price: Decimal) -> int:
