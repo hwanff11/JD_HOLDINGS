@@ -1,9 +1,9 @@
-version: JDSS-3.1.0-TWIN-H40-S3
-config_version: "3.1.0"
+version: JDSS-3.1.1-TWIN-H40-S3
+config_version: "3.1.1"
 
 portfolio:
   enabled: true
-  total_capital: 20000
+  total_capital: 50000
   live_enabled: false
   core_initial_weight: 0.10
   core_target_weight: 0.15
@@ -19,7 +19,7 @@ portfolio:
   rebalance_tolerance_weight: 0.005
 
 global:
-  capital_per_symbol: 8000
+  capital_per_symbol: 20000
   buy_fee: 0.001
   sell_fee: 0.001
   approval_required: true
@@ -163,9 +163,9 @@ scheduler:
   order_monitor_interval_seconds: 60
 
 idle_cash:
-  enabled: true
+  enabled: false
   symbol: SGOV
-  cash_buffer: 250
+  cash_buffer: 0
   minimum_order_amount: 100
   buy_limit_buffer: 0.001
   sell_limit_buffer: 0.001
