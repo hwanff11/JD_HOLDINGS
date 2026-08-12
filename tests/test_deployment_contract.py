@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_deploy_script_has_valid_bash_syntax():
+    subprocess.run(["bash", "-n", str(ROOT / "deploy.sh")], check=True)
 
 
 def test_systemd_uses_shared_writable_runtime_paths():
