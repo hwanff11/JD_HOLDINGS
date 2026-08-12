@@ -15,6 +15,7 @@ from .position_manager import PositionManager, tp1_completed_at_key
 from .tp_manager import TP_PURPOSES, TakeProfitManager
 
 TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
+CORE_PURPOSES = {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}
 BASE_STATE_BY_PURPOSE = {
     "ENTRY_1": PositionState.EMPTY,
     "ENTRY_2": PositionState.HOLDING_1ST,
@@ -55,15 +56,20 @@ class OrderMonitor:
                 continue
             purpose = str(local["purpose"])
             symbol = str(local["symbol"])
+            prior_filled = int(local.get("filled_qty") or 0)
             try:
                 receipt = self.order_manager.refresh_order(local["client_order_id"])
             except KeyError:
                 self._handle_missing_broker_order(local, events)
                 continue
-            if purpose in {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}:
-                if receipt.filled_quantity > 0:
-                    self.repository.apply_core_fill(str(local["client_order_id"]))
-                    events.append(f"{symbol} {purpose} 체결 반영")
+            if purpose in CORE_PURPOSES:
+                self._handle_core_order(
+                    local,
+                    receipt,
+                    prior_filled=prior_filled,
+                    current=current,
+                    events=events,
+                )
                 continue
             if purpose in BASE_STATE_BY_PURPOSE:
                 created = datetime.fromisoformat(local["created_at"])
@@ -122,6 +128,103 @@ class OrderMonitor:
 
         self._switch_due_remainder_exits(current, events)
         return events
+
+    def _handle_core_order(
+        self,
+        local: dict,
+        receipt,
+        *,
+        prior_filled: int,
+        current: datetime,
+        events: list[str],
+    ) -> None:
+        symbol = str(local["symbol"])
+        purpose = str(local["purpose"])
+        if receipt.filled_quantity > prior_filled:
+            self.repository.apply_core_fill(str(local["client_order_id"]))
+            events.append(
+                f"{symbol} {purpose} 신규 {receipt.filled_quantity - prior_filled}주 체결 반영"
+            )
+
+        remaining = max(0, receipt.quantity - receipt.filled_quantity)
+        if receipt.status not in TERMINAL_STATUSES or remaining <= 0:
+            return
+
+        context = {
+            "client_order_id": str(local["client_order_id"]),
+            "broker_order_id": str(local.get("broker_order_id") or ""),
+            "status": receipt.status,
+            "filled_quantity": receipt.filled_quantity,
+            "quantity": receipt.quantity,
+            "remaining_quantity": remaining,
+        }
+        if purpose == "CORE_REBALANCE_BUY":
+            signal_id = int(local.get("signal_id") or 0)
+            can_reapprove = False
+            if signal_id:
+                signal = self.repository.get_signal(signal_id)
+                valid_until = datetime.fromisoformat(str(signal["valid_until"]))
+                core = self.repository.get_core_position(symbol)
+                can_reapprove = valid_until >= current and bool(core["trend_active"])
+                if can_reapprove:
+                    self.repository.mark_signal(
+                        signal_id,
+                        status="ACTIVE",
+                        processed=False,
+                        reason="CORE_BUY_REAPPROVAL_REQUIRED",
+                    )
+                else:
+                    self.repository.mark_signal(
+                        signal_id,
+                        status="EXPIRED",
+                        processed=True,
+                        reason="CORE_BUY_RETRY_WINDOW_CLOSED",
+                    )
+            context["signal_id"] = signal_id or None
+            context["reapproval_available"] = can_reapprove
+            self.repository.log_event(
+                "WARNING",
+                "CORE_BUY_INCOMPLETE",
+                "코어 매수 주문이 전량 체결되지 않았습니다",
+                symbol=symbol,
+                context=context,
+            )
+            if can_reapprove:
+                events.append(
+                    f"{symbol} 코어 매수 {receipt.filled_quantity}/{receipt.quantity}주 체결; "
+                    f"잔여 {remaining}주는 다시 승인이 필요합니다"
+                )
+            else:
+                events.append(
+                    f"{symbol} 코어 매수 {receipt.filled_quantity}/{receipt.quantity}주 체결; "
+                    "재승인 가능 시간이 지나 다음 월간 점검에서 재계산합니다"
+                )
+            return
+
+        self._enter_symbol_safe_mode(symbol, "CORE_SELL_INCOMPLETE")
+        self.repository.log_event(
+            "SAFE_MODE",
+            "CORE_SELL_INCOMPLETE",
+            "코어 위험축소 매도가 전량 완료되지 않았습니다",
+            symbol=symbol,
+            context=context,
+        )
+        events.append(
+            f"{symbol} 코어 위험축소 {receipt.filled_quantity}/{receipt.quantity}주만 체결; "
+            f"잔여 {remaining}주 확인 필요: SAFE_MODE"
+        )
+
+    def _enter_symbol_safe_mode(self, symbol: str, reason: str) -> None:
+        position = self.repository.get_position(symbol)
+        if position.state == PositionState.SAFE_MODE:
+            return
+        self.repository.transition_position(
+            symbol,
+            expected_state=position.state,
+            new_state=PositionState.SAFE_MODE,
+            reason_code=reason,
+            expected_version=position.version,
+        )
 
     def _handle_missing_broker_order(self, order: dict, events: list[str]) -> None:
         symbol = str(order["symbol"])
