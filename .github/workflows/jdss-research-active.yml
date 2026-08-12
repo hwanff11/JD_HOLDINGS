@@ -7,9 +7,6 @@ on:
       - "scripts/research_active.py"
       - "scripts/research_risk_budget.py"
       - "scripts/research_profit_frontier.py"
-      - "scripts/research_profit_lock_parity.py"
-      - "tests/test_profit_lock_parity.py"
-      - "pyproject.toml"
       - ".github/workflows/jdss-research-active.yml"
 
 permissions:
@@ -180,56 +177,3 @@ jobs:
         with:
           name: frontier-${{ matrix.frontier }}-${{ github.run_id }}
           path: frontier-${{ matrix.frontier }}.json
-
-  profit-lock-parity:
-    name: Profit Lock Parity - ${{ matrix.variant }}
-    if: startsWith(github.head_ref, 'research/v3-active-')
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        variant:
-          - profit0
-          - profit25
-          - profit30
-    steps:
-      - name: Checkout research branch
-        uses: actions/checkout@v7
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-
-      - name: Run production-parity variant
-        env:
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          python -m scripts.research_profit_lock_parity \
-            --variant "$VARIANT" \
-            --output "parity-$VARIANT.json"
-
-      - name: Print and publish parity result
-        env:
-          VARIANT: ${{ matrix.variant }}
-        run: |
-          echo "===== JDSS PROFIT LOCK PARITY: $VARIANT ====="
-          python -m scripts.research_profit_lock_parity \
-            --summarize "parity-$VARIANT.json" \
-            | tee parity-summary.md
-          {
-            echo "## Profit Lock Parity: $VARIANT"
-            cat parity-summary.md
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload detailed result archive
-        uses: actions/upload-artifact@v6
-        with:
-          name: parity-${{ matrix.variant }}-${{ github.run_id }}
-          path: parity-${{ matrix.variant }}.json
