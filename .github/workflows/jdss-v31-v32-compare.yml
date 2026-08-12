@@ -1,0 +1,49 @@
+name: Research - JDSS V3.1 vs V3.2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/research_v31_v32_compare.py"
+      - ".github/workflows/jdss-v31-v32-compare.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: V3.1 fixed50 vs V3.2 Profit-Lock25
+    if: startsWith(github.head_ref, 'research/v3-active-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run comparison
+        run: |
+          python -m scripts.research_v31_v32_compare \
+            --output v31-v32-compare.json
+
+      - name: Print comparison
+        run: |
+          python -m scripts.research_v31_v32_compare \
+            --summarize v31-v32-compare.json \
+            | tee v31-v32-summary.md
+          cat v31-v32-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload detailed result
+        uses: actions/upload-artifact@v6
+        with:
+          name: v31-v32-compare-${{ github.run_id }}
+          path: v31-v32-compare.json
