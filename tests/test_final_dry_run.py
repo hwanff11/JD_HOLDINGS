@@ -12,7 +12,7 @@ from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service import TradingService
+from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.core.enums import PositionState
 from jd_holdings.core.execution import max_chase_price
 from jd_holdings.core.strategy import evaluate_entry
@@ -34,7 +34,7 @@ def build_services(tmp_path, config, broker):
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
     market_clock = MarketClock()
-    trading = TradingService(
+    trading = FinalTradingService(
         config,
         repository,
         broker,
