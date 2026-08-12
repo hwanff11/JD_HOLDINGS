@@ -54,7 +54,7 @@ def soxl_sector_guard_blocks(
     guard = config.market_regime.get("soxl_sector_guard", {})
     if symbol.upper() != "SOXL" or not guard.get("enabled", False):
         return False
-    blocked_stages = {int(stage) for stage in guard.get("blocked_stages", (3, 4))}
+    blocked_stages = {int(stage) for stage in guard.get("blocked_stages", (3,))}
     if target_stage not in blocked_stages:
         return False
     if not sector_benchmarks:
@@ -79,13 +79,6 @@ def first_entry_trend_guard_blocks(
     snapshot: IndicatorSnapshot,
     config: StrategyConfig,
 ) -> bool:
-    """Block only the first entry during a confirmed bearish trend.
-
-    This guard intentionally does not affect averaging stages.  The default
-    research rule requires both price below EMA60 and EMA20 below EMA60, which
-    is stricter than merely buying below a long moving average and therefore
-    preserves more ordinary oversold-rebound opportunities.
-    """
     guard = config.market_regime.get("first_entry_trend_guard", {})
     if not guard.get("enabled", False):
         return False
@@ -163,7 +156,7 @@ def evaluate_additional_entry(
     sector_benchmarks: dict[str, IndicatorSnapshot] | None = None,
 ) -> TradeDecision:
     if target_stage not in config.additional_entry.stages:
-        raise ValueError("추가매수 단계는 2, 3, 4 중 하나여야 합니다")
+        raise ValueError(f"지원하지 않는 추가매수 단계: {target_stage}")
     rule = config.additional_entry.stages[target_stage]
     trigger = position.anchor_price * (Decimal("1") - rule.min_drop_from_anchor)
     new_cap = update_cycle_exposure_cap(position.cycle_exposure_cap, score.total, config)
@@ -296,7 +289,7 @@ def evaluate_strategy(
             system_ok=system_ok,
             sector_benchmarks=sector_benchmarks,
         )
-    for stage in (2, 3, 4):
+    for stage in sorted(config.additional_entry.stages):
         if position.state == expected_holding_state(stage - 1):
             return evaluate_additional_entry(
                 snapshot,
