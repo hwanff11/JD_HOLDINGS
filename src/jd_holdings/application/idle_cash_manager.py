@@ -179,7 +179,23 @@ class IdleCashManager:
         for order in self._open_cash_orders():
             if not order.get("broker_order_id"):
                 continue
-            receipt = self.order_manager.refresh_order(str(order["client_order_id"]))
+            try:
+                receipt = self.order_manager.refresh_order(str(order["client_order_id"]))
+            except KeyError:
+                self.repository.set_system_value("idle_cash_safe_mode", "1")
+                self.repository.log_event(
+                    "SAFE_MODE",
+                    "SGOV_BROKER_ORDER_MISSING",
+                    "DB에는 열린 SGOV 주문이 있으나 dry-run 브로커에서 복원할 수 없습니다",
+                    symbol=str(order["symbol"]),
+                    context={
+                        "client_order_id": str(order["client_order_id"]),
+                        "broker_order_id": str(order["broker_order_id"]),
+                        "status": str(order["status"]),
+                    },
+                )
+                events.append("SGOV 열린 주문 복원 불가: SAFE_MODE")
+                continue
             self.repository.apply_idle_cash_fill(receipt.client_order_id)
             created_at = datetime.fromisoformat(str(order["created_at"]))
             age = (datetime.now(UTC) - created_at.astimezone(UTC)).total_seconds()
