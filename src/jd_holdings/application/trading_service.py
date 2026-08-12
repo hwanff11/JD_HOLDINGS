@@ -12,12 +12,13 @@ from jd_holdings.core.execution import (
     calculate_order_quantity,
 )
 from jd_holdings.core.models import OrderReceipt, OrderRequest
+from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.infrastructure.market_clock import MarketClock, session_is_allowed
 
 from .broker import Broker
 from .database import ApprovalError, SQLiteRepository
 from .idle_cash_manager import IdleCashManager, IdleCashReleasePending
-from .managed_account import available_managed_cash
+from .managed_account import available_managed_cash, managed_equity
 from .order_manager import OrderManager, build_client_order_id
 from .position_manager import PositionManager
 from .tp_manager import TakeProfitManager
@@ -369,21 +370,23 @@ class TradingService:
             current_price = self.broker.get_price(signal["symbol"])
             limit = calculate_limit_price(current_price, ceiling, self.config)
             budget = Decimal(str(signal["planned_budget"]))
-            signal_close = Decimal(str(signal["signal_close"]))
-            planned_per_share = (
-                signal_close
-                * (Decimal("1") + self.config.global_.buy_limit_buffer)
-                * (Decimal("1") + self.config.global_.buy_fee)
+            core = self.repository.get_core_position(str(signal["symbol"]))
+            target_weight = Decimal(str(core["target_weight"]))
+            current_target = target_quantity(
+                managed_equity(self.config, self.repository, self.broker),
+                target_weight,
+                limit,
+                self.config.global_.buy_fee,
             )
-            planned_quantity = int(budget / planned_per_share) if planned_per_share > 0 else 0
+            remaining_target = max(0, current_target - int(core["qty"]))
             quantity = calculate_order_quantity(
                 budget,
                 limit,
                 self.config.global_.buy_fee,
-                maximum_quantity=planned_quantity,
+                maximum_quantity=remaining_target,
             )
             if quantity < 1:
-                raise ApprovalError("계산된 코어 매수수량이 0주입니다")
+                raise ApprovalError("코어 목표수량이 이미 충족되었거나 매수수량이 0주입니다")
             total = Decimal(quantity) * limit * (
                 Decimal("1") + self.config.global_.buy_fee
             )
