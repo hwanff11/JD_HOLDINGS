@@ -272,6 +272,35 @@ class MarketDataDryRunBroker(DryRunBroker):
         self.prices[symbol.upper()] = value
         return value
 
+    def get_holdings(self, symbol: str | None = None) -> list[dict[str, Any]]:
+        """Return the in-memory position snapshot without requiring a live quote.
+
+        Reconciliation compares quantities and open orders. Making that safety check
+        depend on Yahoo intraday data caused an unrelated SGOV quote outage to abort
+        the whole reconciliation cycle. A cached quote is used when available; the
+        persisted average price is only an informational fallback for this snapshot.
+        Any operation that actually requires a market price still calls get_price().
+        """
+        symbols = [symbol.upper()] if symbol else list(self.holdings)
+        result = []
+        for item_symbol in symbols:
+            item = self.holdings.get(item_symbol)
+            if item and int(item["quantity"]) > 0:
+                fallback_price = Decimal(str(item["averagePurchasePrice"]))
+                last_price = self.prices.get(item_symbol, fallback_price)
+                result.append(
+                    {
+                        "symbol": item_symbol,
+                        "name": item_symbol,
+                        "marketCountry": "US",
+                        "currency": "USD",
+                        "quantity": str(item["quantity"]),
+                        "lastPrice": str(last_price),
+                        "averagePurchasePrice": str(item["averagePurchasePrice"]),
+                    }
+                )
+        return result
+
     def get_order(self, order_id: str) -> dict[str, Any]:
         order = self.orders[order_id]
         if order["status"] in {"PENDING", "PARTIAL_FILLED"} and order["orderType"] == "LIMIT":
