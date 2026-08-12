@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [booster_5, booster_7_5, booster_10]
+        variant: [booster_10, booster_12_5, booster_15, booster_20, booster_30, booster_40]
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v7
