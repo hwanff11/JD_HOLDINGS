@@ -98,7 +98,7 @@ jobs:
         env:
           VARIANT: ${{ matrix.variant }}
         run: |
-          python scripts/research_risk_budget.py \
+          python -m scripts.research_risk_budget \
             --variant "$VARIANT" \
             --output "risk-$VARIANT.json"
 
@@ -107,7 +107,7 @@ jobs:
           VARIANT: ${{ matrix.variant }}
         run: |
           echo "===== JDSS RISK-BUDGET RESULT: $VARIANT ====="
-          python scripts/research_risk_budget.py \
+          python -m scripts.research_risk_budget \
             --summarize "risk-$VARIANT.json" \
             | tee risk-summary.md
           {
