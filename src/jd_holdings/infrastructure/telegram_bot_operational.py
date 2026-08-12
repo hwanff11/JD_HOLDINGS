@@ -24,28 +24,54 @@ def _operator_text(text: str) -> str:
         ("CORE_SELL_INCOMPLETE", "코어 위험축소 미완료 · SAFE_MODE"),
         ("CORE_ORDER_SUBMISSION_UNKNOWN", "코어 주문 결과 불명 · SAFE_MODE"),
         ("ORDER_SUBMISSION_UNKNOWN", "부스터 주문 결과 불명 · SAFE_MODE"),
+        (
+            "• 부분체결·TP 주문 복구·재시작 정합성 검증은 계속 동작합니다.",
+            "• 코어 부분체결·TP 주문 복구·재시작 정합성 검증은 계속 동작합니다.\n"
+            "• 코어 위험축소가 불완전하면 SAFE_MODE에서 신규매수를 차단합니다.",
+        ),
     )
     for old, new in replacements:
         text = text.replace(old, new)
 
     if "처리 상태</b> : <code>UNKNOWN</code>" in text:
-        text = text.replace("✅ <b>[모의주문 전송 완료]</b> ✨", "🚨 <b>[모의주문 결과 확인 필요]</b>")
-        text += "\n\n🛡️ 주문 결과를 성공으로 추정하지 않습니다. <code>/errors</code>와 SAFE_MODE를 확인하세요."
+        text = text.replace(
+            "✅ <b>[모의주문 전송 완료]</b> ✨",
+            "🚨 <b>[모의주문 결과 확인 필요]</b>",
+        )
+        text += (
+            "\n\n🛡️ 주문 결과를 성공으로 추정하지 않습니다. "
+            "<code>/errors</code>와 SAFE_MODE를 확인하세요."
+        )
     elif any(
         f"처리 상태</b> : <code>{status}</code>" in text
         for status in ("REJECTED", "CANCELED", "REPLACED")
     ):
-        text = text.replace("✅ <b>[모의주문 전송 완료]</b> ✨", "⚠️ <b>[모의주문 미완료]</b>")
-        text += "\n\n💡 코어 매수라면 유효시간 안에서 <code>/signal</code>로 재승인 여부를 확인하세요."
+        text = text.replace(
+            "✅ <b>[모의주문 전송 완료]</b> ✨",
+            "⚠️ <b>[모의주문 미완료]</b>",
+        )
+        text += (
+            "\n\n💡 코어 매수라면 유효시간 안에서 "
+            "<code>/signal</code>로 재승인 여부를 확인하세요."
+        )
     elif "처리 상태</b> : <code>PARTIAL_FILLED</code>" in text:
-        text = text.replace("✅ <b>[모의주문 전송 완료]</b> ✨", "⏳ <b>[모의주문 부분체결]</b>")
+        text = text.replace(
+            "✅ <b>[모의주문 전송 완료]</b> ✨",
+            "⏳ <b>[모의주문 부분체결]</b>",
+        )
         text += "\n\n💡 남은 수량은 주문 모니터가 계속 확인합니다."
     elif any(
         f"처리 상태</b> : <code>{status}</code>" in text
         for status in ("PENDING", "SUBMITTED", "CREATED")
     ):
-        text = text.replace("✅ <b>[모의주문 전송 완료]</b> ✨", "⏳ <b>[모의주문 접수]</b>")
-        text += "\n\n💡 아직 체결 완료가 아닙니다. <code>/order</code>에서 진행 상태를 확인하세요."
+        text = text.replace(
+            "✅ <b>[모의주문 전송 완료]</b> ✨",
+            "⏳ <b>[모의주문 접수]</b>",
+        )
+        text += (
+            "\n\n💡 아직 체결 완료가 아닙니다. "
+            "<code>/order</code>에서 진행 상태를 확인하세요."
+        )
     return text
 
 
@@ -72,7 +98,8 @@ class OperationalTelegramBotApp(FinalTelegramBotApp):
         lines.extend(
             [
                 "",
-                "💡 <code>/errors</code>, <code>/order</code>, <code>/status</code>에서 원인을 확인하세요.",
+                "💡 <code>/errors</code>, <code>/order</code>, "
+                "<code>/status</code>에서 원인을 확인하세요.",
             ]
         )
         try:
@@ -88,7 +115,12 @@ class OperationalTelegramBotApp(FinalTelegramBotApp):
         *,
         cooldown_seconds: int = 600,
     ) -> None:
-        LOGGER.exception("%s", title)
+        LOGGER.error(
+            "%s: %s",
+            title,
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
         self.repository.log_event(
             "ERROR",
             event_type,
@@ -96,8 +128,8 @@ class OperationalTelegramBotApp(FinalTelegramBotApp):
             context={"exception": type(exc).__name__},
         )
         now = time.monotonic()
-        last = self._runtime_error_notice_at.get(event_type, 0.0)
-        if now - last < cooldown_seconds:
+        last = self._runtime_error_notice_at.get(event_type)
+        if last is not None and now - last < cooldown_seconds:
             return
         self._runtime_error_notice_at[event_type] = now
         try:
