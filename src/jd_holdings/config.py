@@ -408,9 +408,9 @@ def validate_config(config: StrategyConfig) -> None:
     rules = [config.additional_entry.stages[stage] for stage in expected_additional]
     drops = [rule.min_drop_from_anchor for rule in rules]
     scores = [rule.min_score for rule in rules]
-    if any(left >= right for left, right in zip(drops, drops[1:])):
+    if any(left >= right for left, right in zip(drops, drops[1:], strict=False)):
         errors.append("추가매수 하락폭은 단계가 깊어질수록 커져야 합니다")
-    if any(left > right for left, right in zip(scores, scores[1:])):
+    if any(left > right for left, right in zip(scores, scores[1:], strict=False)):
         errors.append("추가매수 점수는 단계가 깊어질수록 낮아질 수 없습니다")
     if config.take_profit.tp1_base >= config.take_profit.tp2_base:
         errors.append("TP1은 TP2보다 작아야 합니다")
