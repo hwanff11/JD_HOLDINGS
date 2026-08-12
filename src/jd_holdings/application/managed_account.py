@@ -46,13 +46,16 @@ def _managed_cost_basis_from_connection(
     config: StrategyConfig, connection: Any
 ) -> Decimal:
     """Return principal currently deployed by JDSS-owned sleeves."""
-    booster = connection.execute(
-        "SELECT COALESCE(SUM(CAST(current_cost_basis AS REAL)), 0) AS total FROM positions"
-    ).fetchone()
-    core = connection.execute(
-        "SELECT COALESCE(SUM(CAST(cost_basis AS REAL)), 0) AS total FROM core_positions"
-    ).fetchone()
-    total = Decimal(str(booster["total"] or 0)) + Decimal(str(core["total"] or 0))
+    booster_rows = connection.execute("SELECT current_cost_basis FROM positions").fetchall()
+    core_rows = connection.execute("SELECT cost_basis FROM core_positions").fetchall()
+    total = sum(
+        (Decimal(str(row["current_cost_basis"] or "0")) for row in booster_rows),
+        Decimal("0"),
+    )
+    total += sum(
+        (Decimal(str(row["cost_basis"] or "0")) for row in core_rows),
+        Decimal("0"),
+    )
     if config.idle_cash.enabled:
         idle = connection.execute(
             """
@@ -224,7 +227,7 @@ def managed_market_value(
     return value
 
 
-def managed_equity(
+def marked_managed_equity(
     config: StrategyConfig,
     repository: SQLiteRepository,
     broker: Broker,
@@ -235,6 +238,15 @@ def managed_equity(
     )
 
 
-def fixed_sizing_equity(config: StrategyConfig) -> Decimal:
-    """Return the non-compounding capital base used for V3.1.1 position sizing."""
+def managed_equity(
+    config: StrategyConfig,
+    repository: SQLiteRepository,
+    broker: Broker,
+) -> Decimal:
+    """Non-compounding V3.1.1 sizing base.
+
+    The repository and broker arguments are intentionally accepted for API compatibility.
+    Actual affordability is enforced separately by available_managed_cash().
+    """
+    del repository, broker
     return config.total_strategy_capital
