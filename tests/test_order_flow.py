@@ -10,14 +10,13 @@ from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import ApprovalError, SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
-from jd_holdings.application.position_manager import PositionManager, tp1_completed_at_key
+from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service import TradingService
 from jd_holdings.core.enums import PositionState
 from jd_holdings.core.execution import max_chase_price
 from jd_holdings.core.strategy import evaluate_entry
-from jd_holdings.core.take_profit import ceil_to_tick
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
@@ -90,32 +89,13 @@ def fill_tp1_completely(repository, broker, monitor):
     tp1["execution"]["filledQuantity"] = str(target)
     tp1["execution"]["averageFilledPrice"] = tp1["price"]
     broker._apply_fill(tp1)
-    events = monitor.run_once(now=datetime(2026, 8, 10, 22, 0, tzinfo=UTC))
-    position = repository.get_position("TQQQ")
-    assert position.cycle_id is not None
-    repository.set_system_value(
-        tp1_completed_at_key("TQQQ", position.cycle_id),
-        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
-    )
-    return events
-
-
-def switch_to_remainder_exit(repository, broker, trading, monitor):
-    quote, premarket = create_approved_entry(repository, trading, repository.config)
-    trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
-    fill_tp1_completely(repository, broker, monitor)
-    monitor.run_once(now=datetime(2026, 9, 15, 22, 0, tzinfo=UTC))
-    return next(
-        order
-        for order in repository.open_orders("TQQQ")
-        if order["purpose"] == "REMAINDER_EXIT"
-    )
+    return monitor.run_once(now=datetime(2026, 8, 10, 22, 0, tzinfo=UTC))
 
 
 def test_two_step_dry_run_order_flow(tmp_path, config):
-    repository, broker, trading, _ = build_services(tmp_path, config)
+    repository, _, trading, _ = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
-    assert quote.quantity == 3
+    assert quote.quantity == 31
     receipt = trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     assert receipt.status == "FILLED"
     position = repository.get_position("TQQQ")
@@ -206,7 +186,7 @@ def test_partial_tp_is_applied_cumulatively_and_recovered(tmp_path, config):
     assert repository.get_order_by_client_id(tp1_local["client_order_id"])["applied"] == 1
 
 
-def test_tp1_completion_persists_clock_and_switches_after_20_sessions(tmp_path, config):
+def test_tp1_completion_keeps_tp2_without_time_based_remainder_exit(tmp_path, config):
     repository, broker, trading, monitor = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
     trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
@@ -215,37 +195,18 @@ def test_tp1_completion_persists_clock_and_switches_after_20_sessions(tmp_path, 
     position = repository.get_position("TQQQ")
     assert position.state == PositionState.PARTIAL_TP_1
     assert any("TP2 주문 재확인" in event for event in events)
-    open_after_tp1 = repository.open_orders("TQQQ")
-    assert [order["purpose"] for order in open_after_tp1] == ["TP2"]
-
-    monitor.run_once(now=datetime(2026, 8, 20, 22, 0, tzinfo=UTC))
     assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
 
     events = monitor.run_once(now=datetime(2026, 9, 15, 22, 0, tzinfo=UTC))
-    remainder = next(
-        order
-        for order in repository.open_orders("TQQQ")
-        if order["purpose"] == "REMAINDER_EXIT"
-    )
-    expected_price = ceil_to_tick(
-        position.average_price
-        * (Decimal("1") + config.take_profit.remainder_exit.target_from_avg)
-    )
-    assert Decimal(str(remainder["price"])) == expected_price
-    assert int(remainder["qty"]) == position.quantity
-    assert any("잔량 +2% 회수주문 전환" in event for event in events)
+    assert not any("거래일 경과" in event for event in events)
+    assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
 
 
-def test_tp2_recovery_does_not_reset_tp1_remainder_clock(tmp_path, config):
+def test_tp2_recovery_keeps_tp2_after_long_elapsed_time(tmp_path, config):
     repository, broker, trading, monitor = build_services(tmp_path, config)
     quote, premarket = create_approved_entry(repository, trading, config)
     trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
     fill_tp1_completely(repository, broker, monitor)
-    position = repository.get_position("TQQQ")
-    repository.set_system_value(
-        tp1_completed_at_key("TQQQ", position.cycle_id),
-        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
-    )
 
     tp2_local = next(
         order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2"
@@ -259,21 +220,20 @@ def test_tp2_recovery_does_not_reset_tp1_remainder_clock(tmp_path, config):
     assert recovered_tp2["client_order_id"] != tp2_local["client_order_id"]
 
     events = monitor.run_once(now=datetime(2026, 9, 8, 22, 0, tzinfo=UTC))
-    assert any("20거래일 경과" in event for event in events)
-    assert [order["purpose"] for order in repository.open_orders("TQQQ")] == [
-        "REMAINDER_EXIT"
-    ]
+    assert not any("20거래일 경과" in event for event in events)
+    assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
 
 
-def test_reconciliation_accepts_open_remainder_exit_after_restart(tmp_path, config):
+def test_reconciliation_accepts_open_tp2_after_restart(tmp_path, config):
     repository, broker, trading, monitor = build_services(tmp_path, config)
-    remainder = switch_to_remainder_exit(repository, broker, trading, monitor)
-    assert remainder["purpose"] == "REMAINDER_EXIT"
-    assert repository.get_position("TQQQ").state == PositionState.PARTIAL_TP_1
+    quote, premarket = create_approved_entry(repository, trading, config)
+    trading.execute(quote.execution_approval_id, quote.execution_token, now=premarket)
+    fill_tp1_completely(repository, broker, monitor)
+    monitor.run_once(now=datetime(2026, 9, 15, 22, 0, tzinfo=UTC))
 
-    issues = ReconciliationService(config, repository, broker).run()
-    assert issues == {}
+    assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
     assert repository.get_position("TQQQ").state == PositionState.PARTIAL_TP_1
+    assert ReconciliationService(config, repository, broker).run() == {}
 
 
 class FailingBroker(DryRunBroker):
