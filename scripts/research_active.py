@@ -15,12 +15,10 @@ from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 BOOSTER_CAPITAL = {
-    "booster_10": 2000,
-    "booster_12_5": 2500,
-    "booster_15": 3000,
-    "booster_20": 4000,
-    "booster_30": 6000,
+    "booster_35": 7000,
     "booster_40": 8000,
+    "booster_45": 9000,
+    "booster_50": 10000,
 }
 
 
