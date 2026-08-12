@@ -12,11 +12,13 @@ from jd_holdings.core.execution import (
     calculate_order_quantity,
 )
 from jd_holdings.core.models import OrderReceipt, OrderRequest
+from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.infrastructure.market_clock import MarketClock, session_is_allowed
 
 from .broker import Broker
 from .database import ApprovalError, SQLiteRepository
 from .idle_cash_manager import IdleCashManager, IdleCashReleasePending
+from .managed_account import available_managed_cash, managed_equity
 from .order_manager import OrderManager, build_client_order_id
 from .position_manager import PositionManager
 from .tp_manager import TakeProfitManager
@@ -368,11 +370,23 @@ class TradingService:
             current_price = self.broker.get_price(signal["symbol"])
             limit = calculate_limit_price(current_price, ceiling, self.config)
             budget = Decimal(str(signal["planned_budget"]))
+            core = self.repository.get_core_position(str(signal["symbol"]))
+            target_weight = Decimal(str(core["target_weight"]))
+            current_target = target_quantity(
+                managed_equity(self.config, self.repository, self.broker),
+                target_weight,
+                limit,
+                self.config.global_.buy_fee,
+            )
+            remaining_target = max(0, current_target - int(core["qty"]))
             quantity = calculate_order_quantity(
-                budget, limit, self.config.global_.buy_fee
+                budget,
+                limit,
+                self.config.global_.buy_fee,
+                maximum_quantity=remaining_target,
             )
             if quantity < 1:
-                raise ApprovalError("계산된 코어 매수수량이 0주입니다")
+                raise ApprovalError("코어 목표수량이 이미 충족되었거나 매수수량이 0주입니다")
             total = Decimal(quantity) * limit * (
                 Decimal("1") + self.config.global_.buy_fee
             )
@@ -382,9 +396,18 @@ class TradingService:
                     signal_id=signal_id,
                     expires_at=datetime.fromisoformat(str(signal["valid_until"])),
                 )
-            buying_power = self.broker.get_buying_power("USD")
-            if total + self.config.idle_cash.cash_buffer > buying_power:
-                raise ApprovalError("실제 달러 매수가능금액이 부족합니다")
+            reserved = self.repository.reserved_cash_release_amount(signal_id)
+            buying_power = available_managed_cash(
+                self.config,
+                self.repository,
+                self.broker,
+                additional_reservation=reserved,
+            )
+            required_buying_power = total
+            if self.config.idle_cash.enabled:
+                required_buying_power += self.config.idle_cash.cash_buffer
+            if required_buying_power > buying_power:
+                raise ApprovalError("JDSS 관리 달러 매수가능금액이 부족합니다")
             return ReviewQuote(
                 signal_id=signal_id,
                 symbol=signal["symbol"],
@@ -424,8 +447,11 @@ class TradingService:
             raise ApprovalError("계산된 매수수량이 0주입니다")
         total = Decimal(quantity) * limit * (Decimal("1") + self.config.global_.buy_fee)
         reserved = self.repository.reserved_cash_release_amount(signal_id)
-        buying_power = max(
-            Decimal("0"), self.broker.get_buying_power("USD") - reserved
+        buying_power = available_managed_cash(
+            self.config,
+            self.repository,
+            self.broker,
+            additional_reservation=reserved,
         )
         if self.idle_cash_manager is not None and allow_cash_release:
             self.idle_cash_manager.ensure_buying_power(
@@ -433,14 +459,17 @@ class TradingService:
                 signal_id=signal_id,
                 expires_at=datetime.fromisoformat(str(signal["valid_until"])),
             )
-            buying_power = max(
-                Decimal("0"), self.broker.get_buying_power("USD") - reserved
+            buying_power = available_managed_cash(
+                self.config,
+                self.repository,
+                self.broker,
+                additional_reservation=reserved,
             )
         required_buying_power = total
         if self.config.idle_cash.enabled:
             required_buying_power += self.config.idle_cash.cash_buffer
         if required_buying_power > buying_power:
-            raise ApprovalError("실제 달러 매수가능금액이 부족합니다")
+            raise ApprovalError("JDSS 관리 달러 매수가능금액이 부족합니다")
         return ReviewQuote(
             signal_id=signal_id,
             symbol=signal["symbol"],
