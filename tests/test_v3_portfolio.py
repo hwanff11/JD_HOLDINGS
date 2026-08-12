@@ -48,18 +48,18 @@ def settings(tmp_path, mode: str = "dry_run") -> RuntimeSettings:
 
 def test_monthly_trend_uses_completed_month_and_strict_cross():
     frame = monthly_frame([100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111])
-    signal = monthly_trend_signal("TQQQ", "QQQ", frame, months=10)
+    signal = monthly_trend_signal("TQQQ", "QQQ", frame, months=6)
 
     assert signal.trade_date.isoformat() == "2026-07-31"
     assert signal.active is True
     assert signal.close == Decimal("111")
-    assert signal.moving_average == Decimal("106.5")
+    assert signal.moving_average == Decimal("108.5")
 
 
 def test_target_quantity_accounts_for_buy_fee():
     assert target_quantity(
-        Decimal("20000"), Decimal("0.15"), Decimal("100"), Decimal("0.001")
-    ) == 29
+        Decimal("20000"), Decimal("0.10"), Decimal("100"), Decimal("0.001")
+    ) == 19
 
 
 def test_month_end_run_recovers_after_restart_and_creates_only_active_buy(tmp_path, config):
@@ -84,12 +84,12 @@ def test_month_end_run_recovers_after_restart_and_creates_only_active_buy(tmp_pa
         trading_mode="dry_run",
     )
 
-    # 8/3에 재시작해도 직전 월말(7/31) 신호를 한 번만 복구한다.
     result = service.run_month_end(datetime(2026, 8, 3, 22, tzinfo=UTC))
     assert result is not None
     assert result.trade_date == "2026-07-31"
     assert len(result.signals) == 1
     assert repository.get_core_position("TQQQ")["trend_active"] == 1
+    assert repository.get_core_position("TQQQ")["target_weight"] == pytest.approx(0.10)
     assert repository.get_core_position("SOXL")["trend_active"] == 0
     assert service.run_month_end(datetime(2026, 8, 4, 22, tzinfo=UTC)) is None
 
@@ -148,17 +148,15 @@ def test_core_buy_keeps_two_step_approval_and_separate_ledger(tmp_path, config):
     )
 
     approval_time = datetime(2026, 8, 4, 12, tzinfo=UTC)
-    review_id, review_token = trading.create_review_approval(
-        signal_id, now=approval_time
-    )
+    review_id, review_token = trading.create_review_approval(signal_id, now=approval_time)
     quote = trading.consume_review(review_id, review_token, now=approval_time)
-    assert quote.quantity == 29
+    assert quote.quantity == 19
     receipt = trading.execute(
         quote.execution_approval_id, quote.execution_token, now=approval_time
     )
 
     assert receipt.status == "FILLED"
-    assert repository.get_core_position("TQQQ")["qty"] == 29
+    assert repository.get_core_position("TQQQ")["qty"] == 19
     assert repository.get_position("TQQQ").quantity == 0
 
 
@@ -208,7 +206,8 @@ def test_portfolio_backtest_executes_month_end_signal_on_next_session(config):
         if trade["component"] == "core" and trade["side"] == "BUY"
     ]
     assert core_buys
-    first_signal_month_end = pd.Timestamp("2026-04-30")
-    assert pd.Timestamp(core_buys[0]["date"]) > first_signal_month_end
+    first_buy = pd.Timestamp(core_buys[0]["date"])
+    preceding_session = index[index.get_loc(first_buy) - 1]
+    assert preceding_session in PortfolioBacktestEngine._month_end_sessions(index)
     assert result.metrics["component_fills"]["core"] == len(core_buys)
     assert result.metrics["component_fills"]["booster"] == 0
