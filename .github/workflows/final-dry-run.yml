@@ -9,6 +9,7 @@ on:
       - "tests/test_idle_cash_manager.py"
       - "tests/test_v3_portfolio.py"
       - "tests/test_v31_operational_faults.py"
+      - "tests/test_v31_runtime_resilience.py"
       - ".github/workflows/final-dry-run.yml"
 
 permissions:
@@ -32,3 +33,4 @@ jobs:
           tests/test_idle_cash_manager.py
           tests/test_v3_portfolio.py
           tests/test_v31_operational_faults.py
+          tests/test_v31_runtime_resilience.py
