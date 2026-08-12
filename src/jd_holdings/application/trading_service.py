@@ -370,6 +370,15 @@ class TradingService:
             current_price = self.broker.get_price(signal["symbol"])
             limit = calculate_limit_price(current_price, ceiling, self.config)
             budget = Decimal(str(signal["planned_budget"]))
+            signal_close = Decimal(str(signal["signal_close"]))
+            planned_per_share = (
+                signal_close
+                * (Decimal("1") + self.config.global_.buy_limit_buffer)
+                * (Decimal("1") + self.config.global_.buy_fee)
+            )
+            planned_quantity = (
+                int(budget / planned_per_share) if planned_per_share > 0 else 0
+            )
             core = self.repository.get_core_position(str(signal["symbol"]))
             target_weight = Decimal(str(core["target_weight"]))
             current_target = target_quantity(
@@ -379,11 +388,12 @@ class TradingService:
                 self.config.global_.buy_fee,
             )
             remaining_target = max(0, current_target - int(core["qty"]))
+            maximum_quantity = min(planned_quantity, remaining_target)
             quantity = calculate_order_quantity(
                 budget,
                 limit,
                 self.config.global_.buy_fee,
-                maximum_quantity=remaining_target,
+                maximum_quantity=maximum_quantity,
             )
             if quantity < 1:
                 raise ApprovalError("코어 목표수량이 이미 충족되었거나 매수수량이 0주입니다")
