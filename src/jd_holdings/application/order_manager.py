@@ -10,6 +10,7 @@ from jd_holdings.settings import RuntimeSettings
 
 from .broker import Broker
 from .database import SQLiteRepository
+from .managed_account import available_managed_cash
 
 LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +61,23 @@ class OrderManager:
                 if existing.get("average_fill_price")
                 else None,
             )
+
+        if request.side.upper() == "BUY":
+            if request.price is None:
+                raise RuntimeError("JDSS 매수는 관리현금 검증 가능한 지정가만 허용합니다")
+            required = (
+                Decimal(request.quantity)
+                * request.price
+                * (Decimal("1") + self.repository.config.global_.buy_fee)
+            )
+            available = available_managed_cash(
+                self.repository.config, self.repository, self.broker
+            )
+            if required > available:
+                raise RuntimeError(
+                    "JDSS 관리현금이 부족하여 매수 주문을 차단했습니다 "
+                    f"(필요={required:.2f}, 사용가능={available:.2f})"
+                )
 
         reserved = self.repository.reserve_order(
             client_order_id=request.client_order_id,
