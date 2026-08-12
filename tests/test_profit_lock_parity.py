@@ -1,4 +1,16 @@
-from scripts.research_profit_lock_parity import _booster_quantity, split_positive_profit
+from __future__ import annotations
+
+import importlib
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+profit_lock = importlib.import_module("scripts.research_profit_lock_parity")
+_booster_quantity = profit_lock._booster_quantity
+split_positive_profit = profit_lock.split_positive_profit
 
 
 def test_split_positive_profit_25_percent() -> None:
