@@ -10,6 +10,7 @@ from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.broker import MarketDataDryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.idle_cash_manager import IdleCashManager
+from jd_holdings.application.managed_account import managed_cash_balance
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.portfolio_service import PortfolioService
@@ -29,8 +30,7 @@ def restore_dry_run_holdings(
     repository: SQLiteRepository,
     broker: MarketDataDryRunBroker,
 ) -> None:
-    """Rebuild the in-memory dry-run account from its persisted JDSS ledger."""
-    used_capital = Decimal("0")
+    """Rebuild the in-memory dry-run broker from the persisted JDSS ledger."""
     for symbol in repository.config.enabled_symbols:
         position = repository.get_position(symbol)
         core = repository.get_core_position(symbol)
@@ -43,7 +43,6 @@ def restore_dry_run_holdings(
             "quantity": total_quantity,
             "averagePurchasePrice": combined_cost / Decimal(total_quantity),
         }
-        used_capital += combined_cost
     if repository.config.idle_cash.enabled:
         cash_state = repository.get_idle_cash_state()
         if cash_state.managed_quantity > 0:
@@ -51,9 +50,55 @@ def restore_dry_run_holdings(
                 "quantity": cash_state.managed_quantity,
                 "averagePurchasePrice": cash_state.average_price,
             }
-            used_capital += cash_state.average_price * cash_state.managed_quantity
-    allocated = repository.config.total_strategy_capital
-    broker.buying_power = max(Decimal("0"), allocated - used_capital)
+
+    # Realized P/L and fees must survive a process restart. Rebuild cash from all
+    # persisted JDSS fills rather than from current position cost bases alone.
+    broker.buying_power = max(
+        Decimal("0"), managed_cash_balance(repository.config, repository)
+    )
+
+    # The dry-run broker is in-memory, while TP/SGOV/open-entry orders are persisted
+    # in SQLite. Restore known DRY broker orders so a normal restart does not create a
+    # false BROKER_DB_OPEN_ORDER_MISMATCH and SAFE_MODE.
+    for local in repository.open_orders():
+        broker_order_id = str(local.get("broker_order_id") or "")
+        if not broker_order_id.startswith("DRY-"):
+            continue
+        status = str(local["status"])
+        if status not in {"PENDING", "PARTIAL_FILLED", "SUBMITTED"}:
+            continue
+        quantity = int(local["qty"])
+        filled = int(local["filled_qty"])
+        average = local.get("average_fill_price")
+        average_decimal = Decimal(str(average)) if average is not None else None
+        broker.orders[broker_order_id] = {
+            "orderId": broker_order_id,
+            "clientOrderId": str(local["client_order_id"]),
+            "symbol": str(local["symbol"]),
+            "side": str(local["side"]),
+            "orderType": str(local["order_type"]),
+            "timeInForce": "DAY",
+            "status": "PENDING" if status == "SUBMITTED" else status,
+            "price": str(local["price"]) if local.get("price") is not None else None,
+            "quantity": str(quantity),
+            "execution": {
+                "filledQuantity": str(filled),
+                "averageFilledPrice": str(average_decimal)
+                if average_decimal is not None
+                else None,
+                "filledAmount": str(average_decimal * filled)
+                if average_decimal is not None and filled > 0
+                else None,
+                "commission": "0",
+                "tax": "0",
+                "filledAt": None,
+                "settlementDate": None,
+            },
+        }
+        try:
+            broker.sequence = max(broker.sequence, int(broker_order_id.rsplit("-", 1)[-1]))
+        except ValueError:
+            pass
 
 
 def configure_logging(log_path: Path) -> None:
