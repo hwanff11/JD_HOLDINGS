@@ -58,15 +58,15 @@ def test_monthly_trend_uses_completed_month_and_strict_cross():
 
 def test_target_quantity_accounts_for_buy_fee():
     assert target_quantity(
-        Decimal("20000"), Decimal("0.10"), Decimal("100"), Decimal("0.001")
-    ) == 19
+        Decimal("50000"), Decimal("0.10"), Decimal("100"), Decimal("0.001")
+    ) == 49
 
 
 def test_month_end_run_recovers_after_restart_and_creates_only_active_buy(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "jdss.db", config)
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     source = FrameSource(
         {
@@ -96,7 +96,7 @@ def test_month_end_run_recovers_after_restart_and_creates_only_active_buy(tmp_pa
 
 def test_v3_core_refuses_live_mode(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "jdss.db", config)
-    broker = DryRunBroker(buying_power=Decimal("20000"))
+    broker = DryRunBroker(buying_power=Decimal("50000"))
     service = PortfolioService(
         config,
         repository,
@@ -114,8 +114,8 @@ def test_v3_core_refuses_live_mode(tmp_path, config):
 def test_core_buy_keeps_two_step_approval_and_separate_ledger(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "jdss.db", config)
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     runtime = settings(tmp_path)
     order_manager = OrderManager(repository, broker, runtime)
@@ -150,17 +150,17 @@ def test_core_buy_keeps_two_step_approval_and_separate_ledger(tmp_path, config):
     approval_time = datetime(2026, 8, 4, 12, tzinfo=UTC)
     review_id, review_token = trading.create_review_approval(signal_id, now=approval_time)
     quote = trading.consume_review(review_id, review_token, now=approval_time)
-    assert quote.quantity == 19
+    assert quote.quantity == 49
     receipt = trading.execute(
         quote.execution_approval_id, quote.execution_token, now=approval_time
     )
 
     assert receipt.status == "FILLED"
-    assert repository.get_core_position("TQQQ")["qty"] == 19
+    assert repository.get_core_position("TQQQ")["qty"] == 49
     assert repository.get_position("TQQQ").quantity == 0
 
 
-def test_portfolio_backtest_executes_month_end_signal_on_next_session(config):
+def test_portfolio_backtest_uses_fixed_principal_and_needs_no_sgov_frame(config):
     index = pd.bdate_range("2025-07-01", "2026-08-05")
     underlying = pd.Series(range(len(index)), index=index, dtype=float) + 100
     leveraged = pd.Series(100.0, index=index)
@@ -169,9 +169,6 @@ def test_portfolio_backtest_executes_month_end_signal_on_next_session(config):
         "SOXL": pd.DataFrame({"open": leveraged, "close": leveraged}),
         "QQQ": pd.DataFrame({"open": underlying, "close": underlying}),
         "SOXX": pd.DataFrame({"open": underlying, "close": underlying}),
-        "SGOV": pd.DataFrame(
-            {"open": pd.Series(100.0, index=index), "close": pd.Series(100.0, index=index)}
-        ),
     }
     booster_results = {
         symbol: BacktestResult(
@@ -211,3 +208,8 @@ def test_portfolio_backtest_executes_month_end_signal_on_next_session(config):
     assert preceding_session in PortfolioBacktestEngine._month_end_sessions(index)
     assert result.metrics["component_fills"]["core"] == len(core_buys)
     assert result.metrics["component_fills"]["booster"] == 0
+    assert result.metrics["capital_ceiling"] == 50000.0
+    assert result.metrics["maximum_invested_cost"] <= 50000.0
+    assert result.metrics["profit_reinvestment"] is False
+    assert result.metrics["idle_cash_enabled"] is False
+    assert result.metrics["idle_cash_income"] == 0.0
