@@ -80,6 +80,7 @@ class OperationalTelegramBotApp(FinalTelegramBotApp):
 
     def __init__(self, *args, **kwargs) -> None:
         self._runtime_error_notice_at: dict[str, float] = {}
+        self._reconciliation_notice_at: dict[str, float] = {}
         super().__init__(*args, **kwargs)
 
     def _send(self, text: str, *, markup=None, chat_id: int | None = None) -> None:
@@ -142,6 +143,26 @@ class OperationalTelegramBotApp(FinalTelegramBotApp):
             )
         except Exception:
             LOGGER.exception("운영 오류 Telegram 알림 전송 실패")
+
+    def _send_reconciliation_alert(
+        self,
+        symbol: str,
+        issues: list[str],
+        *,
+        cooldown_seconds: int = 600,
+    ) -> None:
+        fingerprint = f"{symbol}:{'|'.join(sorted(issues))}"
+        now = time.monotonic()
+        last = self._reconciliation_notice_at.get(fingerprint)
+        if last is not None and now - last < cooldown_seconds:
+            return
+        self._reconciliation_notice_at[fingerprint] = now
+        self._send(
+            f"🚨 <b>[{html.escape(symbol)} SAFE_MODE 경고]</b>\n"
+            + "\n".join(html.escape(issue) for issue in issues)
+            + "\n\n💡 같은 원인은 10분 동안 반복 알림하지 않습니다. "
+            "<code>/errors</code>에서 기록을 확인하세요."
+        )
 
     def _scheduler_loop(self) -> None:
         """Run independent safety jobs so one failure cannot starve the others."""
@@ -209,11 +230,10 @@ class OperationalTelegramBotApp(FinalTelegramBotApp):
 
                 try:
                     mismatches = self.reconciliation_service.run()
+                    if not mismatches:
+                        self._reconciliation_notice_at.clear()
                     for symbol, issues in mismatches.items():
-                        self._send(
-                            f"🚨 <b>[{symbol} SAFE_MODE 경고]</b>\n"
-                            + "\n".join(html.escape(issue) for issue in issues)
-                        )
+                        self._send_reconciliation_alert(symbol, issues)
                 except Exception as exc:
                     self._notify_runtime_error(
                         "RECONCILIATION_ERROR", "계좌 정합성 점검 오류", exc
