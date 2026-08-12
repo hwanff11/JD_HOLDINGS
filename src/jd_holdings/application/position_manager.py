@@ -63,17 +63,11 @@ class PositionManager:
                 f"매수 체결 반영 상태 불일치: {position.state.value} != {expected.value}"
             )
 
-        holdings = self.broker.get_holdings(symbol)
-        holding = next((item for item in holdings if item.get("symbol") == symbol), None)
         fill_qty = int(order["filled_qty"])
         fill_price = Decimal(str(order["average_fill_price"]))
-        if holding:
-            new_qty = int(Decimal(str(holding["quantity"])))
-            new_average = Decimal(str(holding["averagePurchasePrice"]))
-        else:
-            new_qty = position.quantity + fill_qty
-            old_cost = position.average_price * Decimal(position.quantity)
-            new_average = (old_cost + fill_price * fill_qty) / Decimal(new_qty)
+        new_qty = position.quantity + fill_qty
+        old_cost = position.average_price * Decimal(position.quantity)
+        new_average = (old_cost + fill_price * fill_qty) / Decimal(new_qty)
         current_cost = new_average * Decimal(new_qty)
         gross = fill_price * Decimal(fill_qty) * (Decimal("1") + self.config.global_.buy_fee)
         cycle_id = position.cycle_id
@@ -152,15 +146,27 @@ class PositionManager:
             "REPLACED",
         }
         tp_leg = "TP2" if purpose == "REMAINDER_EXIT" else purpose
+        if tp_leg not in {"TP1", "TP2"}:
+            raise RuntimeError(f"지원하지 않는 익절 주문입니다: {purpose}")
+        target_key = f"{tp_leg.lower()}_target_qty"
+        filled_key = f"{tp_leg.lower()}_filled_qty"
+        target_qty = int(plan[target_key])
+        prior_leg_filled = int(plan[filled_key])
+        order_qty = int(order["qty"])
+        base_filled = max(0, target_qty - order_qty)
+        leg_filled = min(target_qty, base_filled + int(order["filled_qty"]))
+        if leg_filled < prior_leg_filled:
+            raise RuntimeError("익절 누적 체결수량이 이전 반영값보다 작습니다")
+        delta_filled = leg_filled - prior_leg_filled
+        if delta_filled > position.quantity:
+            raise RuntimeError("부스터 보유수량보다 많은 익절 체결입니다")
         self.repository.update_tp_fills(
-            int(plan["tp_plan_id"]), leg=tp_leg, filled_qty=int(order["filled_qty"])
+            int(plan["tp_plan_id"]), leg=tp_leg, filled_qty=leg_filled
         )
-        holdings = self.broker.get_holdings(symbol)
-        holding = next((item for item in holdings if item.get("symbol") == symbol), None)
-        quantity = int(Decimal(str(holding["quantity"]))) if holding else 0
-        average = Decimal(str(holding["averagePurchasePrice"])) if holding else Decimal("0")
+        quantity = position.quantity - delta_filled
+        average = position.average_price if quantity > 0 else Decimal("0")
         current_cost = average * quantity
-        if purpose == "TP1" and int(order["filled_qty"]) < int(plan["tp1_target_qty"]):
+        if purpose == "TP1" and leg_filled < target_qty:
             self.repository.transition_position(
                 symbol,
                 expected_state=position.state,
@@ -195,7 +201,7 @@ class PositionManager:
                 "tp1_filled_qty": 0,
                 "tp_plan_id": None,
             }
-        elif purpose == "TP1" and int(order["filled_qty"]) >= int(plan["tp1_target_qty"]):
+        elif purpose == "TP1" and leg_filled >= target_qty:
             new_state = PositionState.PARTIAL_TP_1
             updates = {
                 "qty": quantity,
@@ -204,7 +210,7 @@ class PositionManager:
                 "cash_remaining": max(
                     Decimal("0"), self.config.global_.capital_per_symbol - current_cost
                 ),
-                "tp1_filled_qty": int(order["filled_qty"]),
+                "tp1_filled_qty": leg_filled,
                 "rebuy_recovery_armed": False,
             }
         else:
