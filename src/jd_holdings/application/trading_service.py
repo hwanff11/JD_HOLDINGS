@@ -525,9 +525,17 @@ class TradingService:
             or signal["config_version"] != self.config.config_version
         ):
             return "SIGNAL_VERSION_MISMATCH"
+        symbol = str(signal["symbol"])
+        if self.repository.get_position(symbol).state == PositionState.SAFE_MODE:
+            return "SIGNAL_SAFE_MODE"
+        if (
+            self.config.idle_cash.enabled
+            and self.repository.get_system_value("idle_cash_safe_mode") == "1"
+        ):
+            return "SIGNAL_IDLE_CASH_SAFE_MODE"
         action = str(signal["action"])
         if action == DecisionType.CORE_REBALANCE_BUY.value:
-            core = self.repository.get_core_position(str(signal["symbol"]))
+            core = self.repository.get_core_position(symbol)
             if not bool(core["trend_active"]):
                 return "CORE_TREND_OFF"
             return None
