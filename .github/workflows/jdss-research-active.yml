@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "scripts/research_active.py"
+      - "scripts/research_risk_budget.py"
       - ".github/workflows/jdss-research-active.yml"
 
 permissions:
@@ -60,3 +61,62 @@ jobs:
         with:
           name: active-${{ matrix.variant }}-${{ github.run_id }}
           path: result-${{ matrix.variant }}.json
+
+  risk-budget:
+    name: Risk Budget - ${{ matrix.variant }}
+    if: startsWith(github.head_ref, 'research/v3-active-')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - fixed50
+          - fixed50_harvest
+          - step5
+          - contrib_profit25
+          - contrib_profit50
+          - fixed50_dd
+          - fixed50_harvest_dd
+          - fixed50_corr60
+          - fortress50
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run risk-budget variant
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          python scripts/research_risk_budget.py \
+            --variant "$VARIANT" \
+            --output "risk-$VARIANT.json"
+
+      - name: Print and publish risk-budget result
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          echo "===== JDSS RISK-BUDGET RESULT: $VARIANT ====="
+          python scripts/research_risk_budget.py \
+            --summarize "risk-$VARIANT.json" \
+            | tee risk-summary.md
+          {
+            echo "## Risk Budget: $VARIANT"
+            cat risk-summary.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload detailed result archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: risk-${{ matrix.variant }}-${{ github.run_id }}
+          path: risk-${{ matrix.variant }}.json
