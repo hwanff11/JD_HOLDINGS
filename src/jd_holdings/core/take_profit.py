@@ -34,7 +34,12 @@ def calculate_take_profit(
     else:
         tp1_rate = config.take_profit.tp1_base
         tp2_rate = config.take_profit.tp2_base
-    tp1_quantity = (quantity + 1) // 2
+    tp1_quantity = int(
+        (Decimal(quantity) * config.take_profit.tp1_fraction).to_integral_value(
+            rounding=ROUND_CEILING
+        )
+    )
+    tp1_quantity = max(1, min(quantity, tp1_quantity))
     tp2_quantity = quantity - tp1_quantity
     return TakeProfitPlan(
         average_price=average_price,

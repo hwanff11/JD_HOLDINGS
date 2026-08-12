@@ -67,6 +67,7 @@ class RemainderExitConfig:
 @dataclass(frozen=True)
 class TakeProfitConfig:
     tp1_base: Decimal
+    tp1_fraction: Decimal
     tp2_base: Decimal
     use_atr: bool
     tp1_atr_multiplier: Decimal
@@ -131,6 +132,7 @@ class PortfolioConfig:
     enabled: bool
     total_capital: Decimal
     live_enabled: bool
+    core_initial_weight: Decimal
     core_target_weight: Decimal
     booster_max_weight: Decimal
     trend_months: int
@@ -183,6 +185,15 @@ def _require(data: dict[str, Any], key: str) -> Any:
     return data[key]
 
 
+def _stage_numbers(add_raw: dict[str, Any]) -> tuple[int, ...]:
+    stages = sorted(
+        int(key.removeprefix("stage"))
+        for key in add_raw
+        if key.startswith("stage") and key.removeprefix("stage").isdigit()
+    )
+    return tuple(stages)
+
+
 def load_config(path: str | Path | None = None) -> StrategyConfig:
     config_path = Path(path) if path else Path(__file__).resolve().parents[2] / "strategy.yaml"
     with config_path.open("r", encoding="utf-8") as handle:
@@ -218,8 +229,6 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
         },
     )
     backtest_raw = _require(raw, "backtest")
-    # Archived V1/V2 fixtures remain loadable for reproducible backtests.  The
-    # V3 controller is enabled only when the contract is explicitly present.
     portfolio_raw = raw.get(
         "portfolio",
         {
@@ -227,6 +236,7 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             "total_capital": _decimal(global_raw["capital_per_symbol"])
             * len(raw["symbols"]),
             "live_enabled": False,
+            "core_initial_weight": 0.15,
             "core_target_weight": 0.15,
             "booster_max_weight": 0.05,
             "trend_months": 10,
@@ -238,6 +248,8 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             "rebalance_tolerance_weight": 0.005,
         },
     )
+    core_target_weight = _decimal(portfolio_raw["core_target_weight"])
+    stage_numbers = _stage_numbers(add_raw)
 
     config = StrategyConfig(
         version=str(_require(raw, "version")),
@@ -277,14 +289,17 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             max_stage_per_day=int(add_raw["max_stage_per_day"]),
             stages={
                 stage: StageRule(
-                    min_drop_from_anchor=_decimal(add_raw[f"stage{stage}"]["min_drop_from_anchor"]),
+                    min_drop_from_anchor=_decimal(
+                        add_raw[f"stage{stage}"]["min_drop_from_anchor"]
+                    ),
                     min_score=int(add_raw[f"stage{stage}"]["min_score"]),
                 )
-                for stage in (2, 3, 4)
+                for stage in stage_numbers
             },
         ),
         take_profit=TakeProfitConfig(
             tp1_base=_decimal(tp_raw["tp1_base"]),
+            tp1_fraction=_decimal(tp_raw.get("tp1_fraction", 0.5)),
             tp2_base=_decimal(tp_raw["tp2_base"]),
             use_atr=bool(tp_raw["use_atr"]),
             tp1_atr_multiplier=_decimal(tp_raw["tp1_atr_multiplier"]),
@@ -343,7 +358,10 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
             enabled=bool(portfolio_raw["enabled"]),
             total_capital=_decimal(portfolio_raw["total_capital"]),
             live_enabled=bool(portfolio_raw["live_enabled"]),
-            core_target_weight=_decimal(portfolio_raw["core_target_weight"]),
+            core_initial_weight=_decimal(
+                portfolio_raw.get("core_initial_weight", core_target_weight)
+            ),
+            core_target_weight=core_target_weight,
             booster_max_weight=_decimal(portfolio_raw["booster_max_weight"]),
             trend_months=int(portfolio_raw["trend_months"]),
             signal_schedule=str(portfolio_raw["signal_schedule"]),
@@ -369,10 +387,12 @@ def validate_config(config: StrategyConfig) -> None:
     errors: list[str] = []
     if not 0 <= config.global_.entry_score <= 100:
         errors.append("entry_score는 0~100이어야 합니다")
-    if sum(config.position.stage_weights) != Decimal("1"):
-        errors.append("stage_weights 합계는 1.0이어야 합니다")
-    if config.position.cumulative_weights[-1] != Decimal("1"):
-        errors.append("cumulative_weights 마지막 값은 1.0이어야 합니다")
+    if len(config.position.stage_weights) < 1:
+        errors.append("매수 단계는 하나 이상이어야 합니다")
+    if len(config.position.stage_weights) != len(config.position.cumulative_weights):
+        errors.append("stage_weights와 cumulative_weights 길이가 달라서는 안 됩니다")
+    if not Decimal("0") < sum(config.position.stage_weights) <= Decimal("1"):
+        errors.append("stage_weights 합계는 0 초과 1.0 이하여야 합니다")
     expected_cumulative: list[Decimal] = []
     total = Decimal("0")
     for weight in config.position.stage_weights:
@@ -382,16 +402,20 @@ def validate_config(config: StrategyConfig) -> None:
         expected_cumulative.append(total)
     if tuple(expected_cumulative) != config.position.cumulative_weights:
         errors.append("cumulative_weights가 stage_weights의 누적합과 다릅니다")
-    drops = [
-        config.additional_entry.stages[stage].min_drop_from_anchor for stage in (2, 3, 4)
-    ]
-    scores = [config.additional_entry.stages[stage].min_score for stage in (2, 3, 4)]
-    if not drops[0] < drops[1] < drops[2]:
-        errors.append("추가매수 하락폭은 2차 < 3차 < 4차여야 합니다")
-    if not scores[0] <= scores[1] <= scores[2]:
-        errors.append("추가매수 점수는 2차 <= 3차 <= 4차여야 합니다")
+    expected_additional = tuple(range(2, len(config.position.stage_weights) + 1))
+    if tuple(sorted(config.additional_entry.stages)) != expected_additional:
+        errors.append("추가매수 단계 설정이 position 단계 수와 일치하지 않습니다")
+    rules = [config.additional_entry.stages[stage] for stage in expected_additional]
+    drops = [rule.min_drop_from_anchor for rule in rules]
+    scores = [rule.min_score for rule in rules]
+    if any(left >= right for left, right in zip(drops, drops[1:], strict=False)):
+        errors.append("추가매수 하락폭은 단계가 깊어질수록 커져야 합니다")
+    if any(left > right for left, right in zip(scores, scores[1:], strict=False)):
+        errors.append("추가매수 점수는 단계가 깊어질수록 낮아질 수 없습니다")
     if config.take_profit.tp1_base >= config.take_profit.tp2_base:
         errors.append("TP1은 TP2보다 작아야 합니다")
+    if not Decimal("0") < config.take_profit.tp1_fraction < Decimal("1"):
+        errors.append("TP1 매도비율은 0 초과 1 미만이어야 합니다")
     if config.take_profit.remainder_exit.enabled:
         if config.take_profit.remainder_exit.wait_trading_days <= 0:
             errors.append("잔여청산 대기 거래일은 양수여야 합니다")
@@ -405,13 +429,17 @@ def validate_config(config: StrategyConfig) -> None:
         errors.append("종목별 자금은 양수여야 합니다")
     if config.portfolio.enabled:
         if config.portfolio.live_enabled:
-            errors.append("V3.0.0은 검증 전 live_enabled를 허용하지 않습니다")
+            errors.append("V3은 검증 전 live_enabled를 허용하지 않습니다")
         if config.portfolio.total_capital <= 0:
             errors.append("포트폴리오 총자금은 양수여야 합니다")
+        if not Decimal("0") < config.portfolio.core_initial_weight <= Decimal("0.25"):
+            errors.append("코어 최초비중은 0 초과 25% 이하여야 합니다")
+        if not config.portfolio.core_initial_weight <= config.portfolio.core_target_weight:
+            errors.append("코어 최초비중은 목표비중보다 클 수 없습니다")
         if not Decimal("0") < config.portfolio.core_target_weight <= Decimal("0.25"):
             errors.append("코어 목표비중은 0 초과 25% 이하여야 합니다")
-        if not Decimal("0") <= config.portfolio.booster_max_weight <= Decimal("0.10"):
-            errors.append("부스터 최대비중은 0~10%여야 합니다")
+        if not Decimal("0") <= config.portfolio.booster_max_weight <= Decimal("0.50"):
+            errors.append("부스터 최대비중은 0~50%여야 합니다")
         if config.portfolio.trend_months < 6:
             errors.append("월간 추세기간은 6개월 이상이어야 합니다")
         if set(config.portfolio.core_underlyings) != set(config.enabled_symbols):

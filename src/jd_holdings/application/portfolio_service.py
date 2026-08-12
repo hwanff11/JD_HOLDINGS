@@ -9,10 +9,7 @@ import pandas as pd
 from jd_holdings import __version__
 from jd_holdings.config import StrategyConfig
 from jd_holdings.core.models import OrderRequest
-from jd_holdings.core.twin_core import (
-    monthly_trend_signal,
-    target_quantity,
-)
+from jd_holdings.core.twin_core import monthly_trend_signal, target_quantity
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
@@ -93,7 +90,14 @@ class PortfolioService:
                 frames[underlying].loc[:timestamp],
                 months=self.config.portfolio.trend_months,
             )
-            weight = self.config.portfolio.core_target_weight if trend.active else Decimal("0")
+            core = self.repository.get_core_position(symbol)
+            was_active = bool(core["trend_active"])
+            if not trend.active:
+                weight = Decimal("0")
+            elif was_active:
+                weight = self.config.portfolio.core_target_weight
+            else:
+                weight = self.config.portfolio.core_initial_weight
             self.repository.set_core_target(
                 symbol,
                 active=trend.active,
@@ -102,7 +106,6 @@ class PortfolioService:
             )
             price = self.broker.get_price(symbol)
             target = target_quantity(equity, weight, price, self.config.global_.buy_fee)
-            core = self.repository.get_core_position(symbol)
             difference = target - int(core["qty"])
             tolerance_value = equity * self.config.portfolio.rebalance_tolerance_weight
             if abs(Decimal(difference) * price) < tolerance_value:
@@ -130,7 +133,8 @@ class PortfolioService:
             state = "ON" if trend.active else "OFF"
             events.append(
                 f"{symbol}/{underlying} 월간추세 {state} "
-                f"({trend.close:.2f} / MA{self.config.portfolio.trend_months} {trend.moving_average:.2f})"
+                f"({trend.close:.2f} / MA{self.config.portfolio.trend_months} "
+                f"{trend.moving_average:.2f}, 목표 {weight * 100:.0f}%)"
             )
         self.repository.set_system_value(
             "last_v3_core_signal_trade_date", signal_session.isoformat()

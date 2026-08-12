@@ -9,7 +9,7 @@ from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
-from jd_holdings.application.position_manager import PositionManager, tp1_completed_at_key
+from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service import TradingService
@@ -117,18 +117,9 @@ def test_final_production_flow_end_to_end_with_restart(tmp_path, config):
     position = repository.get_position("TQQQ")
     assert position.state == PositionState.PARTIAL_TP_1
     assert position.quantity > 0
-    assert position.cycle_id is not None
-    repository.set_system_value(
-        tp1_completed_at_key("TQQQ", position.cycle_id),
-        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
-    )
     assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
-    repository.set_system_value(
-        tp1_completed_at_key("TQQQ", position.cycle_id),
-        datetime(2026, 8, 10, 22, 0, tzinfo=UTC).isoformat(),
-    )
 
-    # 3) Simulate a TP2 cancellation/recovery before the 20-session deadline.
+    # 3) Simulate a TP2 cancellation and verify automatic TP2 recovery.
     old_tp2 = next(order for order in repository.open_orders("TQQQ") if order["purpose"] == "TP2")
     broker.orders[old_tp2["broker_order_id"]]["status"] = "CANCELED"
     events = monitor.run_once(now=datetime(2026, 8, 20, 22, 0, tzinfo=UTC))
@@ -138,29 +129,24 @@ def test_final_production_flow_end_to_end_with_restart(tmp_path, config):
     )
     assert recovered_tp2["client_order_id"] != old_tp2["client_order_id"]
 
-    # 4) At 20 completed sessions, switch the remaining shares to avg +2%.
+    # 4) With remainder_exit disabled, elapsed time must not replace TP2.
     events = monitor.run_once(now=datetime(2026, 9, 8, 22, 0, tzinfo=UTC))
-    assert any("20거래일 경과" in event for event in events)
-    remainder = next(
-        order for order in repository.open_orders("TQQQ") if order["purpose"] == "REMAINDER_EXIT"
-    )
-    assert int(remainder["qty"]) == repository.get_position("TQQQ").quantity
+    assert not any("거래일 경과" in event for event in events)
+    assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
 
-    # 5) Recreate all services with the same DB and broker to simulate a process restart.
+    # 5) Recreate services with the same DB and broker to simulate a process restart.
     restarted_repository, _, restarted_monitor = build_services(tmp_path, config, broker)
     assert ReconciliationService(config, restarted_repository, broker).run() == {}
     assert restarted_repository.get_position("TQQQ").state == PositionState.PARTIAL_TP_1
-    assert [order["purpose"] for order in restarted_repository.open_orders("TQQQ")] == [
-        "REMAINDER_EXIT"
-    ]
+    assert [order["purpose"] for order in restarted_repository.open_orders("TQQQ")] == ["TP2"]
 
-    # 6) Fill the remainder exit and verify the cycle returns cleanly to EMPTY.
-    restarted_remainder = next(
+    # 6) Fill TP2 and verify the cycle returns cleanly to EMPTY.
+    restarted_tp2 = next(
         order
         for order in restarted_repository.open_orders("TQQQ")
-        if order["purpose"] == "REMAINDER_EXIT"
+        if order["purpose"] == "TP2"
     )
-    fill_order_at_limit(broker, restarted_remainder)
+    fill_order_at_limit(broker, restarted_tp2)
     restarted_monitor.run_once(now=datetime(2026, 9, 9, 22, 0, tzinfo=UTC))
 
     final_position = restarted_repository.get_position("TQQQ")

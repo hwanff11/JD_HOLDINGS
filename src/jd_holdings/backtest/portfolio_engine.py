@@ -44,7 +44,7 @@ class PortfolioBacktestResult:
 
 
 class PortfolioBacktestEngine:
-    """Production-equivalent shared-account simulation for MONTHLY_H05."""
+    """Production-equivalent shared-account simulation for the active V3 contract."""
 
     def __init__(self, config: StrategyConfig) -> None:
         if not config.portfolio.enabled:
@@ -101,6 +101,7 @@ class PortfolioBacktestEngine:
                 booster_events[pd.Timestamp(event["date"])].append(event)
 
         pending_core: dict[str, float] | None = None
+        core_active_previous = {symbol: False for symbol in self.config.enabled_symbols}
         trades: list[dict[str, Any]] = []
         equity_values: list[float] = []
         exposures: list[float] = []
@@ -177,14 +178,17 @@ class PortfolioBacktestEngine:
                 )
 
             if timestamp in month_ends:
-                pending_core = {
-                    symbol: (
-                        float(self.config.portfolio.core_target_weight)
-                        if bool(trends[symbol].loc[timestamp])
-                        else 0.0
-                    )
-                    for symbol in self.config.enabled_symbols
-                }
+                pending_core = {}
+                for symbol in self.config.enabled_symbols:
+                    active = bool(trends[symbol].loc[timestamp])
+                    if not active:
+                        weight = 0.0
+                    elif core_active_previous[symbol]:
+                        weight = float(self.config.portfolio.core_target_weight)
+                    else:
+                        weight = float(self.config.portfolio.core_initial_weight)
+                    pending_core[symbol] = weight
+                    core_active_previous[symbol] = active
 
             liquidation = sum(
                 quantities[component][symbol] * closes[symbol] * (1 - sell_fee)
