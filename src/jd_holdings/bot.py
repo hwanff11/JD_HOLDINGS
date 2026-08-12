@@ -34,16 +34,16 @@ def restore_dry_run_holdings(
     for symbol in repository.config.enabled_symbols:
         position = repository.get_position(symbol)
         core = repository.get_core_position(symbol)
-        total_quantity = position.quantity + int(core["qty"])
+        core_quantity = int(core["qty"])
+        total_quantity = position.quantity + core_quantity
         if total_quantity <= 0:
             continue
+        combined_cost = position.current_cost_basis + Decimal(str(core["cost_basis"]))
         broker.holdings[symbol] = {
             "quantity": total_quantity,
-            "averagePurchasePrice": position.average_price
-            if position.quantity > 0
-            else Decimal(str(core["avg_price"])),
+            "averagePurchasePrice": combined_cost / Decimal(total_quantity),
         }
-        used_capital += position.current_cost_basis + Decimal(str(core["cost_basis"]))
+        used_capital += combined_cost
     if repository.config.idle_cash.enabled:
         cash_state = repository.get_idle_cash_state()
         if cash_state.managed_quantity > 0:
@@ -78,7 +78,7 @@ def main() -> None:
     data_source = YFinanceDataSource(settings.cache_path)
     market_clock = MarketClock()
     if config.portfolio.enabled and settings.trading_mode == "live":
-        raise RuntimeError("JDSS V3.0.0은 검증 단계이므로 전체 live 모드가 잠겨 있습니다")
+        raise RuntimeError("JDSS V3.1은 운영 검증 전이므로 전체 live 모드가 잠겨 있습니다")
     if settings.trading_mode == "live":
         settings.require_live_trading()
         broker = TossClient()
