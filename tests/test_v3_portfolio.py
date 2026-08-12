@@ -89,7 +89,7 @@ def test_month_end_run_recovers_after_restart_and_creates_only_active_buy(tmp_pa
     assert result.trade_date == "2026-07-31"
     assert len(result.signals) == 1
     assert repository.get_core_position("TQQQ")["trend_active"] == 1
-    assert repository.get_core_position("TQQQ")["target_weight"] == pytest.approx(0.10)
+    assert repository.get_core_position("TQQQ")["target_weight"] == "0.1"
     assert repository.get_core_position("SOXL")["trend_active"] == 0
     assert service.run_month_end(datetime(2026, 8, 4, 22, tzinfo=UTC)) is None
 
