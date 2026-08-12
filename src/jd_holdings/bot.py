@@ -22,7 +22,7 @@ from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
-from jd_holdings.infrastructure.telegram_bot_final import FinalTelegramBotApp
+from jd_holdings.infrastructure.telegram_bot_operational import OperationalTelegramBotApp
 from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import load_runtime_settings
 
@@ -204,7 +204,7 @@ def main() -> None:
         market_clock,
         trading_mode=settings.trading_mode,
     )
-    app = FinalTelegramBotApp(
+    app = OperationalTelegramBotApp(
         config,
         settings,
         repository,
