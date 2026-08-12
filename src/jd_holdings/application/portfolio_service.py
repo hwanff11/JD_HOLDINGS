@@ -8,6 +8,7 @@ import pandas as pd
 
 from jd_holdings import __version__
 from jd_holdings.config import StrategyConfig
+from jd_holdings.core.enums import PositionState
 from jd_holdings.core.models import OrderRequest
 from jd_holdings.core.twin_core import monthly_trend_signal, target_quantity
 from jd_holdings.infrastructure.market_clock import MarketClock
@@ -17,6 +18,8 @@ from .broker import Broker
 from .database import SQLiteRepository
 from .managed_account import managed_equity
 from .order_manager import OrderManager, build_client_order_id
+
+TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
 
 
 @dataclass(frozen=True)
@@ -73,13 +76,16 @@ class PortfolioService:
             common_index = (
                 frame.index if common_index is None else common_index.intersection(frame.index)
             )
-        if common_index is None:
-            return None
+        if common_index is None or common_index.empty:
+            raise ValueError("월간 코어 기초자산의 공통 거래일 데이터가 없습니다")
         timestamp = next(
             (value for value in common_index if value.date() == signal_session), None
         )
         if timestamp is None:
-            return None
+            raise ValueError(
+                "월간 코어 기초자산 데이터에 확정 월말 거래일이 없습니다: "
+                f"{signal_session.isoformat()}"
+            )
 
         equity = self.portfolio_equity()
         signal_ids: list[int] = []
@@ -112,8 +118,13 @@ class PortfolioService:
             if abs(Decimal(difference) * price) < tolerance_value:
                 difference = 0
             if difference < 0:
-                self._sell_core(symbol, -difference, price, trend.trade_date.isoformat())
-                events.append(f"{symbol} 코어 {-difference}주 자동 축소")
+                receipt = self._sell_core(
+                    symbol, -difference, price, trend.trade_date.isoformat()
+                )
+                events.append(
+                    f"{symbol} 코어 위험축소 {-difference}주 주문 "
+                    f"({receipt.status}, {receipt.filled_quantity}/{receipt.quantity}주 체결)"
+                )
             elif difference > 0:
                 signal_id, created = self.repository.create_core_buy_signal(
                     symbol=symbol,
@@ -174,7 +185,7 @@ class PortfolioService:
             )
         return {"equity": equity, "rows": rows}
 
-    def _sell_core(self, symbol: str, quantity: int, price: Decimal, context: str) -> None:
+    def _sell_core(self, symbol: str, quantity: int, price: Decimal, context: str):
         if not self.config.portfolio.risk_reducing_sells_automatic:
             raise RuntimeError("코어 자동 위험축소가 비활성화되어 있습니다")
         client_order_id = build_client_order_id(
@@ -183,17 +194,68 @@ class PortfolioService:
             signal_id=None,
             unique_context=context,
         )
-        receipt = self.order_manager.submit(
-            OrderRequest(
-                client_order_id=client_order_id,
+        try:
+            receipt = self.order_manager.submit(
+                OrderRequest(
+                    client_order_id=client_order_id,
+                    symbol=symbol,
+                    side="SELL",
+                    order_type="LIMIT",
+                    quantity=quantity,
+                    price=price * (Decimal("1") - self.config.global_.buy_limit_buffer),
+                    purpose="CORE_REBALANCE_SELL",
+                ),
+                cycle_id=None,
+            )
+        except Exception as exc:
+            self._enter_symbol_safe_mode(symbol, "CORE_SELL_SUBMISSION_FAILED")
+            self.repository.log_event(
+                "SAFE_MODE",
+                "CORE_SELL_SUBMISSION_FAILED",
+                "코어 위험축소 주문 제출에 실패했습니다",
                 symbol=symbol,
-                side="SELL",
-                order_type="LIMIT",
-                quantity=quantity,
-                price=price * (Decimal("1") - self.config.global_.buy_limit_buffer),
-                purpose="CORE_REBALANCE_SELL",
-            ),
-            cycle_id=None,
-        )
+                context={
+                    "client_order_id": client_order_id,
+                    "quantity": quantity,
+                    "error": str(exc),
+                },
+            )
+            raise
+
         if receipt.filled_quantity > 0:
             self.repository.apply_core_fill(client_order_id)
+        remaining = max(0, receipt.quantity - receipt.filled_quantity)
+        if receipt.status == "UNKNOWN" or (
+            receipt.status in TERMINAL_STATUSES and remaining > 0
+        ):
+            self._enter_symbol_safe_mode(symbol, "CORE_SELL_INCOMPLETE")
+            self.repository.log_event(
+                "SAFE_MODE",
+                "CORE_SELL_INCOMPLETE",
+                "코어 위험축소 주문이 전량 완료되지 않았습니다",
+                symbol=symbol,
+                context={
+                    "client_order_id": client_order_id,
+                    "status": receipt.status,
+                    "filled_quantity": receipt.filled_quantity,
+                    "quantity": receipt.quantity,
+                    "remaining_quantity": remaining,
+                },
+            )
+            raise RuntimeError(
+                f"{symbol} 코어 위험축소가 완료되지 않아 SAFE_MODE로 전환했습니다 "
+                f"({receipt.filled_quantity}/{receipt.quantity}주, {receipt.status})"
+            )
+        return receipt
+
+    def _enter_symbol_safe_mode(self, symbol: str, reason: str) -> None:
+        position = self.repository.get_position(symbol)
+        if position.state == PositionState.SAFE_MODE:
+            return
+        self.repository.transition_position(
+            symbol,
+            expected_state=position.state,
+            new_state=PositionState.SAFE_MODE,
+            reason_code=reason,
+            expected_version=position.version,
+        )
