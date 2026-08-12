@@ -223,23 +223,20 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "3.0.0"
+    assert __version__ == "3.1.0"
     assert project["version"] == __version__
     assert config.config_version == __version__
 
 
 def test_final_bot_uses_v3_portfolio_backtest_path():
-    assert (
-        FinalTelegramBotApp._run_backtest_and_send
-        is TelegramBotApp._run_backtest_and_send
-    )
+    assert FinalTelegramBotApp._run_backtest_and_send is TelegramBotApp._run_backtest_and_send
 
 
 def test_sgov_is_the_only_idle_cash_command():
     assert IDLE_CASH_COMMANDS == ("sgov",)
 
 
-def test_telegram_guide_matches_final_contract():
+def test_telegram_guide_matches_current_contract():
     cards = _guide_cards()
     guide = "\n".join(cards)
     for expected in (
@@ -258,7 +255,14 @@ def test_telegram_guide_matches_final_contract():
         "/sgov",
     ):
         assert expected in guide
-    for expected in ("CCI 5 / 10", "RSI 5 / 14", "EMA 5 / 20 / 60", "볼린저 하단", "ATR 비율", "종가 위치"):
+    for expected in (
+        "CCI 5 / 10",
+        "RSI 5 / 14",
+        "EMA 5 / 20 / 60",
+        "볼린저 하단",
+        "ATR 비율",
+        "종가 위치",
+    ):
         assert expected in guide
     assert len(cards) == 5
     assert all(len(card) < 4096 for card in cards)
