@@ -18,7 +18,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline_6m, stage_10, stage_7_5]
+        variant:
+          - monthly_contrib
+          - monthly_equity
+          - quarterly_profit
+          - step10_quarterly
+          - step10_reserve_sgov
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v7
