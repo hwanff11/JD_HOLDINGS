@@ -18,7 +18,7 @@ from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service import TradingService
+from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
@@ -171,7 +171,7 @@ def main() -> None:
     )
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
-    trading_service = TradingService(
+    trading_service = FinalTradingService(
         config,
         repository,
         broker,
@@ -204,7 +204,7 @@ def main() -> None:
         market_clock,
         trading_mode=settings.trading_mode,
     )
-    FinalTelegramBotApp(
+    app = FinalTelegramBotApp(
         config,
         settings,
         repository,
@@ -217,7 +217,10 @@ def main() -> None:
         account_client,
         idle_cash_manager,
         portfolio_service,
-    ).run()
+    )
+    if mismatches:
+        app.notify_startup_reconciliation(mismatches)
+    app.run()
 
 
 if __name__ == "__main__":
