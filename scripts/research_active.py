@@ -62,6 +62,25 @@ def build_regimes(variant, spy, qqq, config):
     spy_i = calculate_indicators(spy, config)
     qqq_i = calculate_indicators(qqq, config)
     common = spy_i.index.intersection(qqq_i.index)
+    required = [
+        "previous_close",
+        "cci5",
+        "cci10",
+        "rsi5",
+        "rsi14",
+        "ema5",
+        "ema20",
+        "ema60",
+        "bb_lower",
+        "atr14",
+        "atr_pct",
+        "volume_ratio",
+        "close_position",
+    ]
+    common = common[
+        spy_i.loc[common, required].notna().all(axis=1)
+        & qqq_i.loc[common, required].notna().all(axis=1)
+    ]
     regimes = {}
     for timestamp in common:
         s = snapshot_from_row("SPY", timestamp, spy_i.loc[timestamp])
