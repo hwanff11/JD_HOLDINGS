@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline_6m, stage_10, stage_7_5]
+        variant: [main_current, evolved_no_rebuy, evolved_rebuy]
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v7
