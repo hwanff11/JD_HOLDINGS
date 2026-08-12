@@ -12,7 +12,6 @@ from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
-
 BOOSTER_CAPITAL = {
     "booster_5": 1000,
     "booster_7_5": 1500,
@@ -46,8 +45,14 @@ def run(variant: str, output: str) -> None:
     text = Path("strategy.yaml").read_text(encoding="utf-8")
     text = text.replace("trend_months: 10", "trend_months: 6", 1)
     text = text.replace("capital_per_symbol: 1000", f"capital_per_symbol: {booster_capital}", 1)
-    text = text.replace("booster_max_weight: 0.05", f"booster_max_weight: {booster_capital / 20000:.3f}", 1)
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as handle:
+    text = text.replace(
+        "booster_max_weight: 0.05",
+        f"booster_max_weight: {booster_capital / 20000:.3f}",
+        1,
+    )
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".yaml", delete=False, encoding="utf-8"
+    ) as handle:
         handle.write(text)
         config_path = handle.name
 
