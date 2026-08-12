@@ -12,6 +12,7 @@ from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service import TradingService
+from jd_holdings.bot import restore_dry_run_orders
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
@@ -123,3 +124,30 @@ def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path,
     quote = trading.consume_review(review_id, review_token, now=approval_time)
 
     assert quote.quantity == 9
+
+
+def test_restart_sequence_uses_completed_historical_dry_orders(tmp_path, config):
+    repository = SQLiteRepository(tmp_path / "jdss.db", config)
+    assert repository.reserve_order(
+        client_order_id="COMPLETED-HISTORY",
+        signal_id=None,
+        cycle_id=None,
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        price=Decimal("100"),
+        quantity=1,
+        purpose="ENTRY_1",
+    )
+    repository.update_order(
+        "COMPLETED-HISTORY",
+        status="FILLED",
+        broker_order_id="DRY-00000042",
+        filled_qty=1,
+        average_fill_price=Decimal("100"),
+    )
+    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("19900"))
+
+    restore_dry_run_orders(repository, broker)
+
+    assert broker.sequence == 42
