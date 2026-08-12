@@ -11,6 +11,7 @@ from jd_holdings.application.managed_account import (
     available_managed_cash,
     managed_cash_balance,
     managed_equity,
+    raw_managed_cash_balance,
 )
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.reconciliation import ReconciliationService
@@ -34,7 +35,7 @@ def test_managed_equity_and_cash_exclude_personal_account_assets(tmp_path, confi
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     broker = DryRunBroker(
         {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("50000"),
+        buying_power=Decimal("90000"),
     )
     broker.holdings["TQQQ"] = {
         "quantity": 7,
@@ -45,14 +46,14 @@ def test_managed_equity_and_cash_exclude_personal_account_assets(tmp_path, confi
         "averagePurchasePrice": Decimal("99"),
     }
 
-    assert managed_cash_balance(config, repository) == Decimal("20000")
-    assert available_managed_cash(config, repository, broker) == Decimal("20000")
-    assert managed_equity(config, repository, broker) == Decimal("20000")
+    assert managed_cash_balance(config, repository) == Decimal("50000")
+    assert available_managed_cash(config, repository, broker) == Decimal("50000")
+    assert managed_equity(config, repository, broker) == Decimal("50000")
 
 
-def test_central_buy_gate_reserves_managed_cash_not_personal_cash(tmp_path, config):
+def test_central_buy_gate_reserves_fixed_principal_not_personal_cash(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
-    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("50000"))
+    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("90000"))
     manager = OrderManager(repository, broker, _settings(tmp_path))
 
     first = OrderRequest(
@@ -60,29 +61,29 @@ def test_central_buy_gate_reserves_managed_cash_not_personal_cash(tmp_path, conf
         symbol="TQQQ",
         side="BUY",
         order_type="LIMIT",
-        quantity=100,
+        quantity=300,
         price=Decimal("99"),
         purpose="ENTRY_1",
     )
     receipt = manager.submit(first, cycle_id=None)
     assert receipt.status == "PENDING"
-    assert broker.get_buying_power("USD") == Decimal("50000")
+    assert broker.get_buying_power("USD") == Decimal("90000")
 
     second = OrderRequest(
         client_order_id="MANAGED-SECOND",
         symbol="TQQQ",
         side="BUY",
         order_type="LIMIT",
-        quantity=110,
+        quantity=250,
         price=Decimal("99"),
         purpose="ENTRY_1",
     )
-    with pytest.raises(RuntimeError, match="JDSS 관리현금"):
+    with pytest.raises(RuntimeError, match="고정 관리원금"):
         manager.submit(second, cycle_id=None)
     assert repository.get_order_by_client_id("MANAGED-SECOND") is None
 
 
-def test_realized_pnl_and_fees_survive_dry_run_restart(tmp_path, config):
+def test_realized_profit_is_excluded_from_future_jdss_buying_power(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     for client_id, side, price in (
         ("BUY-ROUNDTRIP", "BUY", Decimal("100")),
@@ -107,23 +108,40 @@ def test_realized_pnl_and_fees_survive_dry_run_restart(tmp_path, config):
             average_fill_price=price,
         )
 
-    expected = Decimal("20000") - Decimal("1000") * Decimal("1.001")
-    expected += Decimal("1100") * Decimal("0.999")
-    assert managed_cash_balance(config, repository) == expected
+    raw_expected = Decimal("50000") - Decimal("1000") * Decimal("1.001")
+    raw_expected += Decimal("1100") * Decimal("0.999")
+    assert raw_managed_cash_balance(config, repository) == raw_expected
+    assert raw_expected == Decimal("50097.900")
+    assert managed_cash_balance(config, repository) == Decimal("50000")
 
     broker = DryRunBroker(
-        {"TQQQ": Decimal("110"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
+        {"TQQQ": Decimal("110"), "SOXL": Decimal("50")},
         buying_power=Decimal("999999"),
     )
     restore_dry_run_holdings(repository, broker)
-    assert broker.get_buying_power("USD") == expected
+    assert broker.get_buying_power("USD") == Decimal("50000")
+
+
+def test_existing_positions_reduce_remaining_fixed_principal(tmp_path, config):
+    repository = SQLiteRepository(tmp_path / "managed.db", config)
+    with repository.transaction() as connection:
+        connection.execute(
+            """
+            UPDATE positions
+            SET qty = 400, current_cost_basis = '40000', updated_at = CURRENT_TIMESTAMP
+            WHERE symbol = 'TQQQ'
+            """
+        )
+    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("90000"))
+
+    assert available_managed_cash(config, repository, broker) == Decimal("10000")
 
 
 def test_reconciliation_fails_safe_for_open_order_without_broker_id(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     assert repository.reserve_order(
         client_order_id="STRANDED-LOCAL",
@@ -170,8 +188,8 @@ def test_restart_skips_ambiguous_partial_order_but_keeps_sequence(tmp_path, conf
         )
 
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     restore_dry_run_orders(repository, broker)
 
@@ -203,7 +221,7 @@ def test_sgov_partial_restart_sets_idle_cash_safe_mode_instead_of_crashing(
         filled_qty=1,
         average_fill_price=Decimal("100"),
     )
-    broker = DryRunBroker({"SGOV": Decimal("100")}, buying_power=Decimal("19900"))
+    broker = DryRunBroker({"SGOV": Decimal("100")}, buying_power=Decimal("49900"))
     restore_dry_run_orders(repository, broker)
     manager = IdleCashManager(
         config,
