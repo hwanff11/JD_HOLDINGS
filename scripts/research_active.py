@@ -44,7 +44,11 @@ def patch_tp1_ratio() -> None:
 
     def adjusted(average_price, quantity, atr_pct, config, tick_size=Decimal("0.01")):
         plan = original(average_price, quantity, atr_pct, config, tick_size)
-        tp1_qty = int((Decimal(quantity) * Decimal("0.30")).to_integral_value(rounding=ROUND_CEILING))
+        tp1_qty = int(
+            (Decimal(quantity) * Decimal("0.30")).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+        )
         tp1_qty = max(1, min(quantity, tp1_qty))
         return replace(plan, tp1_quantity=tp1_qty, tp2_quantity=quantity - tp1_qty)
 
@@ -56,11 +60,17 @@ def load_research_config(variant: str):
     text = text.replace("trend_months: 10", "trend_months: 6", 1)
     text = text.replace("tp2_base: 0.06", "tp2_base: 0.10", 1)
     if variant == "baseline":
-        text = text.replace("remainder_exit:\n    enabled: true", "remainder_exit:\n    enabled: false", 1)
+        text = text.replace(
+            "remainder_exit:\n    enabled: true",
+            "remainder_exit:\n    enabled: false",
+            1,
+        )
     elif variant == "remainder_40":
         text = text.replace("wait_trading_days: 20", "wait_trading_days: 40", 1)
 
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as handle:
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".yaml", delete=False, encoding="utf-8"
+    ) as handle:
         handle.write(text)
         config_path = handle.name
     config = load_config(config_path)
@@ -118,14 +128,22 @@ def run(variant: str, output: str) -> None:
             frames[underlying] = data_source.daily(underlying, warmup_start, end)
 
     patch_stage10_core()
-    result = PortfolioBacktestEngine(config).run(frames, booster_results, start=start, end=end, slippage=0.001)
+    result = PortfolioBacktestEngine(config).run(
+        frames,
+        booster_results,
+        start=start,
+        end=end,
+        slippage=0.001,
+    )
     payload = result.to_dict()
     payload["research"] = {
         "variant": variant,
         "remainder_enabled": bool(config.take_profit.remainder_exit.enabled),
         "remainder_wait_days": int(config.take_profit.remainder_exit.wait_trading_days),
     }
-    Path(output).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(output).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def summarize(path: str) -> None:
