@@ -63,22 +63,29 @@ def restore_dry_run_orders(
     repository: SQLiteRepository,
     broker: MarketDataDryRunBroker,
 ) -> None:
-    """Restore only DRY orders whose broker state can be proven after restart."""
+    """Restore provable open DRY orders and never reuse a historical broker id."""
     max_sequence = broker.sequence
+    with repository.transaction() as connection:
+        historical_ids = connection.execute(
+            "SELECT broker_order_id FROM orders WHERE broker_order_id LIKE 'DRY-%'"
+        ).fetchall()
+    for row in historical_ids:
+        broker_order_id = str(row["broker_order_id"] or "")
+        try:
+            max_sequence = max(max_sequence, int(broker_order_id.removeprefix("DRY-")))
+        except ValueError:
+            continue
+
     for local in repository.open_orders():
         broker_order_id = str(local.get("broker_order_id") or "")
         if not broker_order_id.startswith("DRY-"):
             continue
-        try:
-            max_sequence = max(max_sequence, int(broker_order_id.removeprefix("DRY-")))
-        except ValueError:
-            pass
 
         local_status = str(local.get("status") or "PENDING")
         filled_qty = int(local.get("filled_qty") or 0)
         if local_status == "UNKNOWN":
-            # UNKNOWN remains a lost-response safety stop, but its sequence is still
-            # consumed so a future dry-run order cannot reuse the broker id.
+            # UNKNOWN remains a lost-response safety stop. Its historical broker id was
+            # already consumed above so a future dry-run order cannot reuse it.
             continue
         if local_status == "PARTIAL_FILLED" or filled_qty > 0:
             # The in-memory broker cannot prove whether the persisted partial fill was
