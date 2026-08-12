@@ -21,6 +21,13 @@ class YFinanceDataSource:
         self._lock = Lock()
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
+            # The hardened systemd unit makes the user's home read-only. yfinance
+            # otherwise tries ~/.cache/py-yfinance for timezone/cookie/ISIN caches
+            # and logs cache failures on every fresh process. Keep all yfinance
+            # internal caches under JDSS_CACHE_PATH, which systemd explicitly allows.
+            yfinance_cache = self.cache_dir / "yfinance"
+            yfinance_cache.mkdir(parents=True, exist_ok=True)
+            yf.set_tz_cache_location(str(yfinance_cache))
 
     def daily(
         self,
