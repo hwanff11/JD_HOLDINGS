@@ -53,9 +53,13 @@ class OrderMonitor:
         for local in self.repository.open_orders():
             if not local.get("broker_order_id"):
                 continue
-            receipt = self.order_manager.refresh_order(local["client_order_id"])
             purpose = str(local["purpose"])
             symbol = str(local["symbol"])
+            try:
+                receipt = self.order_manager.refresh_order(local["client_order_id"])
+            except KeyError:
+                self._handle_missing_broker_order(local, events)
+                continue
             if purpose in {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}:
                 if receipt.filled_quantity > 0:
                     self.repository.apply_core_fill(str(local["client_order_id"]))
@@ -69,7 +73,11 @@ class OrderMonitor:
                     and elapsed >= self.config.global_.buy_fill_timeout_seconds
                 ):
                     self.broker.cancel_order(receipt.broker_order_id)
-                    receipt = self.order_manager.refresh_order(local["client_order_id"])
+                    try:
+                        receipt = self.order_manager.refresh_order(local["client_order_id"])
+                    except KeyError:
+                        self._handle_missing_broker_order(local, events)
+                        continue
                 if receipt.status in TERMINAL_STATUSES:
                     if receipt.filled_quantity > 0:
                         signal = self.repository.get_signal(int(local["signal_id"]))
@@ -114,6 +122,45 @@ class OrderMonitor:
 
         self._switch_due_remainder_exits(current, events)
         return events
+
+    def _handle_missing_broker_order(self, order: dict, events: list[str]) -> None:
+        symbol = str(order["symbol"])
+        purpose = str(order["purpose"])
+        context = {
+            "client_order_id": str(order["client_order_id"]),
+            "broker_order_id": str(order.get("broker_order_id") or ""),
+            "purpose": purpose,
+            "status": str(order["status"]),
+        }
+        if symbol == self.config.idle_cash.symbol and purpose.startswith("SGOV_"):
+            self.repository.set_system_value("idle_cash_safe_mode", "1")
+            self.repository.log_event(
+                "SAFE_MODE",
+                "SGOV_BROKER_ORDER_MISSING",
+                "DB에는 열린 SGOV 주문이 있으나 broker에서 확인할 수 없습니다",
+                symbol=symbol,
+                context=context,
+            )
+            events.append("SGOV 열린 주문 확인 불가: SAFE_MODE")
+            return
+        if symbol in self.config.enabled_symbols:
+            position = self.repository.get_position(symbol)
+            if position.state != PositionState.SAFE_MODE:
+                self.repository.transition_position(
+                    symbol,
+                    expected_state=position.state,
+                    new_state=PositionState.SAFE_MODE,
+                    reason_code="BROKER_ORDER_MISSING",
+                    expected_version=position.version,
+                )
+            self.repository.log_event(
+                "SAFE_MODE",
+                "BROKER_ORDER_MISSING",
+                "DB에는 열린 전략 주문이 있으나 broker에서 확인할 수 없습니다",
+                symbol=symbol,
+                context=context,
+            )
+            events.append(f"{symbol} 열린 주문 확인 불가: SAFE_MODE")
 
     def _refresh_tp2_after_tp1(self, symbol: str, events: list[str]) -> None:
         settled = self.tp_manager.cancel_open_tp_orders(symbol)
