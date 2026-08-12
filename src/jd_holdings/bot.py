@@ -57,20 +57,18 @@ def restore_dry_run_holdings(
         Decimal("0"), managed_cash_balance(repository.config, repository)
     )
 
-    # The dry-run broker is in-memory, while TP/SGOV/open-entry orders are persisted
-    # in SQLite. Restore known DRY broker orders so a normal restart does not create a
-    # false BROKER_DB_OPEN_ORDER_MISMATCH and SAFE_MODE.
+    # A zero-fill PENDING/SUBMITTED DRY order can be reconstructed exactly. A
+    # PARTIAL_FILLED order cannot be proven from the in-memory broker after a restart,
+    # so it is intentionally left unrestored and Reconciliation moves the sleeve to
+    # SAFE_MODE instead of guessing the remaining broker state.
     for local in repository.open_orders():
         broker_order_id = str(local.get("broker_order_id") or "")
         if not broker_order_id.startswith("DRY-"):
             continue
         status = str(local["status"])
-        if status not in {"PENDING", "PARTIAL_FILLED", "SUBMITTED"}:
+        if status not in {"PENDING", "SUBMITTED"} or int(local["filled_qty"]) != 0:
             continue
         quantity = int(local["qty"])
-        filled = int(local["filled_qty"])
-        average = local.get("average_fill_price")
-        average_decimal = Decimal(str(average)) if average is not None else None
         broker.orders[broker_order_id] = {
             "orderId": broker_order_id,
             "clientOrderId": str(local["client_order_id"]),
@@ -78,22 +76,20 @@ def restore_dry_run_holdings(
             "side": str(local["side"]),
             "orderType": str(local["order_type"]),
             "timeInForce": "DAY",
-            "status": "PENDING" if status == "SUBMITTED" else status,
+            "status": "PENDING",
             "price": str(local["price"]) if local.get("price") is not None else None,
             "quantity": str(quantity),
             "execution": {
-                "filledQuantity": str(filled),
-                "averageFilledPrice": str(average_decimal)
-                if average_decimal is not None
-                else None,
-                "filledAmount": str(average_decimal * filled)
-                if average_decimal is not None and filled > 0
-                else None,
+                "filledQuantity": "0",
+                "averageFilledPrice": None,
+                "filledAmount": None,
                 "commission": "0",
                 "tax": "0",
                 "filledAt": None,
                 "settlementDate": None,
             },
+            "_appliedFilledQuantity": "0",
+            "_appliedFilledAmount": "0",
         }
         try:
             broker.sequence = max(broker.sequence, int(broker_order_id.rsplit("-", 1)[-1]))
