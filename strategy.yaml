@@ -1,13 +1,14 @@
-version: JDSS-3.0.0-TWIN-H05
-config_version: "3.0.0"
+version: JDSS-3.1.0-TWIN-H40-S3
+config_version: "3.1.0"
 
 portfolio:
   enabled: true
   total_capital: 20000
   live_enabled: false
+  core_initial_weight: 0.10
   core_target_weight: 0.15
-  booster_max_weight: 0.05
-  trend_months: 10
+  booster_max_weight: 0.40
+  trend_months: 6
   signal_schedule: month_end
   execution_schedule: next_session
   core_underlyings:
@@ -18,7 +19,7 @@ portfolio:
   rebalance_tolerance_weight: 0.005
 
 global:
-  capital_per_symbol: 1000
+  capital_per_symbol: 8000
   buy_fee: 0.001
   sell_fee: 0.001
   approval_required: true
@@ -61,7 +62,7 @@ market_regime:
     enabled: true
     benchmark_candidates: [SOXX, SMH]
     benchmark_long_ema: 60
-    blocked_stages: [1, 3, 4]
+    blocked_stages: [1, 3]
     rule: any_benchmark_below_ema60
     missing_data_policy: warn_and_allow
 
@@ -102,8 +103,8 @@ scoring:
     WATCH: 50
 
 position:
-  stage_weights: [0.40, 0.30, 0.20, 0.10]
-  cumulative_weights: [0.40, 0.70, 0.90, 1.00]
+  stage_weights: [0.40, 0.30, 0.20]
+  cumulative_weights: [0.40, 0.70, 0.90]
 
 exposure:
   score_82_87: 1.00
@@ -121,18 +122,16 @@ additional_entry:
   stage3:
     min_drop_from_anchor: 0.05
     min_score: 55
-  stage4:
-    min_drop_from_anchor: 0.07
-    min_score: 55
 
 take_profit:
   tp1_base: 0.04
-  tp2_base: 0.06
+  tp1_fraction: 0.30
+  tp2_base: 0.10
   use_atr: false
   tp1_atr_multiplier: 0.0
   tp2_atr_multiplier: 0.0
   remainder_exit:
-    enabled: true
+    enabled: false
     wait_trading_days: 20
     target_from_avg: 0.02
 
