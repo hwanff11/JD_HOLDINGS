@@ -8,15 +8,16 @@ import pytest
 from jd_holdings.core.remainder_exit import remainder_exit_due, remainder_exit_price
 
 
-def test_remainder_exit_due_uses_configured_trading_days(config):
-    rule = config.take_profit.remainder_exit
+def test_remainder_exit_due_uses_configured_trading_days_when_enabled(config):
+    rule = replace(config.take_profit.remainder_exit, enabled=True)
     assert not remainder_exit_due(19, rule)
     assert remainder_exit_due(20, rule)
     assert remainder_exit_due(21, rule)
 
 
 def test_remainder_exit_disabled_never_becomes_due(config):
-    rule = replace(config.take_profit.remainder_exit, enabled=False)
+    rule = config.take_profit.remainder_exit
+    assert rule.enabled is False
     assert not remainder_exit_due(20, rule)
     assert not remainder_exit_due(200, rule)
 
