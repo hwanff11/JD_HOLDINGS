@@ -151,6 +151,72 @@ fi
 "$target_dir/venv/bin/python" -m pip install "$release_dir"
 "$target_dir/venv/bin/jdss" --config "$release_dir/strategy.yaml" validate-config
 
+# Freeze the old process before checking a strategy-version transition so no
+# new order/cycle can appear between the preflight and the symlink switch.
+sudo systemctl stop "$service_name" || true
+if [[ -f "$target_dir/current/strategy.yaml" && -f "$target_dir/shared/data/jdss.db" ]]; then
+  if ! "$remote_python" - \
+    "$target_dir/current/strategy.yaml" \
+    "$release_dir/strategy.yaml" \
+    "$target_dir/shared/data/jdss.db" <<'PY'
+import re
+import sqlite3
+import sys
+from pathlib import Path
+
+old_path, new_path, db_path = map(Path, sys.argv[1:])
+pattern = re.compile(r'^config_version:\s*["\']?([^"\'\s]+)', re.MULTILINE)
+
+
+def version(path: Path) -> str:
+    match = pattern.search(path.read_text(encoding="utf-8"))
+    if match is None:
+        raise SystemExit(f"config_version을 읽을 수 없습니다: {path}")
+    return match.group(1)
+
+
+old_version = version(old_path)
+new_version = version(new_path)
+if old_version == new_version:
+    raise SystemExit(0)
+
+connection = sqlite3.connect(db_path)
+connection.row_factory = sqlite3.Row
+active_positions = connection.execute(
+    "SELECT symbol, state, qty FROM positions WHERE state <> 'EMPTY' OR qty <> 0"
+).fetchall()
+open_orders = connection.execute(
+    """
+    SELECT symbol, purpose, status FROM orders
+    WHERE status IN ('CREATED', 'SUBMITTED', 'PENDING', 'PARTIAL_FILLED', 'UNKNOWN')
+    """
+).fetchall()
+if active_positions or open_orders:
+    print(
+        f"전략 버전 변경 {old_version} -> {new_version} 중 진행 상태가 있어 배포를 차단합니다.",
+        file=sys.stderr,
+    )
+    for row in active_positions:
+        print(
+            f"active booster: {row['symbol']} state={row['state']} qty={row['qty']}",
+            file=sys.stderr,
+        )
+    for row in open_orders:
+        print(
+            f"open order: {row['symbol']} purpose={row['purpose']} status={row['status']}",
+            file=sys.stderr,
+        )
+    print("기존 전략 사이클/미체결 주문을 안전하게 종료한 뒤 다시 배포하세요.", file=sys.stderr)
+    raise SystemExit(42)
+print(f"전략 버전 변경 사전점검 통과: {old_version} -> {new_version}")
+PY
+  then
+    sudo systemctl start "$service_name" || true
+    echo "전략 버전 변경 사전점검 실패로 기존 서비스를 복구했습니다." >&2
+    exit 1
+  fi
+fi
+
 ln -sfn "$release_dir" "$target_dir/current.new"
 mv -Tf "$target_dir/current.new" "$target_dir/current"
 sudo install -m 0644 "$remote_service" "/etc/systemd/system/${service_name}.service"

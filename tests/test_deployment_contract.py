@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_deploy_script_has_valid_bash_syntax():
+    subprocess.run(["bash", "-n", str(ROOT / "deploy.sh")], check=True)
 
 
 def test_systemd_uses_shared_writable_runtime_paths():
@@ -36,6 +41,16 @@ def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
     assert deploy.count('sudo systemctl restart "$service_name"') == 1
     assert 'pip install --upgrade pip' in deploy
     assert "git push origin main || true" not in deploy
+
+
+def test_deploy_blocks_version_change_with_active_strategy_state():
+    deploy = (ROOT / "deploy.sh").read_text(encoding="utf-8")
+    assert 'sudo systemctl stop "$service_name"' in deploy
+    assert "old_version == new_version" in deploy
+    assert "state <> 'EMPTY' OR qty <> 0" in deploy
+    assert "'CREATED', 'SUBMITTED', 'PENDING', 'PARTIAL_FILLED', 'UNKNOWN'" in deploy
+    assert "전략 버전 변경 사전점검 실패로 기존 서비스를 복구했습니다" in deploy
+    assert 'sudo systemctl start "$service_name" || true' in deploy
 
 
 def test_github_deploy_attaches_verified_sha_to_local_main():

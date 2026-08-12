@@ -28,7 +28,18 @@ JDSS_LIVE_CONFIRMATION=
 
 권장 경로는 GitHub Actions `Deploy Oracle Dry Run` 한 가지다. GitHub Environment `oracle-dry-run`에 `ORACLE_SSH_KEY`, `ORACLE_HOST` secret과 필요한 variable을 보관한다. 비밀값은 저장소 파일이나 ChatGPT 대화에 복사하지 않는다.
 
-워크플로는 최신 `main`을 체크아웃하고 원격 `main`과 일치하는지 검증한 뒤 Ruff·pytest·설정·버전을 확인한다. 성공한 커밋만 commit별 릴리스 경로에 배치하고 서버 `.env`를 다시 `dry_run`으로 강제한 뒤 `current` 링크를 교체하고 서비스를 한 번 재시작한다. 마지막에는 Toss 조회 전용 smoke test를 실행한다.
+워크플로는 최신 `main`을 체크아웃하고 원격 `main`과 일치하는지 검증한 뒤 Ruff·pytest·설정·버전을 확인한다. 성공한 커밋만 commit별 릴리스 경로에 배치하고 서버 `.env`를 다시 `dry_run`으로 강제한다.
+
+### 전략 버전 변경 사전점검
+
+`config_version`이 기존 서버와 달라지는 배포(V3.0→V3.1 등)는 기존 사이클에 새 전략의 자금 한도나 단계 규칙이 중간 적용되는 것을 금지한다.
+
+배포 스크립트는 새 코드를 검증한 뒤 기존 서비스를 정지하고 DB의 최종 상태를 다시 확인한다. 다음 중 하나라도 있으면 버전 변경을 중단하고 기존 서비스를 다시 시작한다.
+
+- `positions`에 `EMPTY`가 아닌 부스터 사이클 또는 수량이 남아 있음
+- `CREATED`, `SUBMITTED`, `PENDING`, `PARTIAL_FILLED`, `UNKNOWN` 상태의 미완료 주문이 존재함
+
+코어 보유수량 자체는 이 사전점검의 차단 대상이 아니다. V3.1 코어는 다음 완료 월말 신호부터 6개월 추세와 10→15% 규칙으로 이어간다. 진행 중인 부스터와 미체결 주문은 기존 전략 계약으로 안전하게 끝낸 뒤 버전 변경 배포를 다시 실행한다.
 
 ChatGPT 연결에서 수동 Actions dispatch가 제공되지 않으면 저장소 소유자가 제목을 `[deploy-oracle-dry-run]`으로 시작하는 이슈를 생성하는 ChatOps 경로를 사용한다. Actions는 실행 시점의 최신 `main`을 다시 검증하므로 오래된 PR SHA를 임의로 배포하지 않는다.
 
@@ -62,6 +73,16 @@ DB, `.env`, 로그와 yfinance 캐시는 `shared`에 남고 commit별 코드 릴
 
 systemd 서비스는 `JDSS_CACHE_PATH`를 shared 캐시로, `JDSS_CONFIG_PATH`를 `/home/ubuntu/JD_HOLDINGS/current/strategy.yaml`로 지정한다. 서비스는 `UMask=0077` 등 운영 사용자 전용 권한과 기존 보안 hardening을 유지하며 세부 기준은 [`SECURITY.md`](SECURITY.md)를 따른다.
 
+### dry-run cold restart
+
+Oracle dry-run 브로커는 외부 주문 서버가 없는 메모리 시뮬레이터다. 프로세스가 재시작되면 DB의 코어·부스터·SGOV 관리수량과 DRY 미체결 주문을 메모리 브로커에 복원한 뒤 Reconciliation을 수행한다.
+
+- `UNKNOWN` 주문은 정상 주문으로 복원하지 않는다. lost-response 안전장치를 유지해 SAFE_MODE 원인으로 남긴다.
+- PENDING 지정가는 이후 주문 모니터 조회 때 최신 dry-run 현재가로 다시 체결 가능 여부를 평가한다. 따라서 TP 가격이 나중에 도달해도 체결 시뮬레이션이 진행된다.
+- TP 부분체결 후 재주문은 누적 체결량을 유지한다.
+
+Oracle dry-run은 주문·승인·복구·정합성 확인용이다. 닫힌 과거 사이클의 실현손익까지 영속하는 별도 simulated-cash 원장은 없으므로 장기간 서버 잔고를 전략 성과자료로 사용하지 않는다. 성과 평가는 정식 백테스트 결과를 기준으로 한다.
+
 ## 4. 배포 후 검증
 
 ```bash
@@ -80,6 +101,7 @@ V3.1에서 특히 확인할 내용은 다음과 같다.
 - `/guide`: H40 자금 상한 40%와 S3 정상 최대 신규투입 36%가 구분되는지
 - `/sgov`: JDSS 관리 SGOV와 비관리 SGOV가 분리되고 SAFE_MODE가 없는지
 - SGOV 현금화 후 최종 승인 자동 재개, 활성 의도 중 재예치 차단, 60초 미체결 재가격
+- 재시작 전후 DRY 미체결 TP 주문과 Reconciliation 일치
 - `/bt`: V3.1 통합 포트폴리오 결과와 코어·부스터 체결수 표시
 - `jdss toss-smoke`: TQQQ·SOXL·SGOV 시세와 조회 전용 인증 성공
 

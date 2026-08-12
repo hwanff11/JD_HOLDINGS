@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import logging.handlers
 import os
@@ -56,6 +57,64 @@ def restore_dry_run_holdings(
     broker.buying_power = max(Decimal("0"), allocated - used_capital)
 
 
+def restore_dry_run_orders(
+    repository: SQLiteRepository,
+    broker: MarketDataDryRunBroker,
+) -> None:
+    """Restore persisted DRY orders so restart reconciliation sees the same open book."""
+    max_sequence = broker.sequence
+    for local in repository.open_orders():
+        broker_order_id = str(local.get("broker_order_id") or "")
+        if not broker_order_id.startswith("DRY-"):
+            continue
+        if str(local.get("status")) == "UNKNOWN":
+            # UNKNOWN must remain a safety stop; reconstructing it as a known order
+            # would silently weaken the lost-response guard.
+            continue
+        try:
+            raw = json.loads(str(local.get("raw_json") or "{}"))
+        except json.JSONDecodeError:
+            raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+        local_status = str(local.get("status") or "PENDING")
+        status = local_status if local_status in {"PENDING", "PARTIAL_FILLED"} else "PENDING"
+        filled_qty = int(local.get("filled_qty") or 0)
+        average_fill = local.get("average_fill_price")
+        raw.update(
+            {
+                "orderId": broker_order_id,
+                "clientOrderId": str(local["client_order_id"]),
+                "symbol": str(local["symbol"]).upper(),
+                "side": str(local["side"]).upper(),
+                "orderType": str(local["order_type"]).upper(),
+                "timeInForce": raw.get("timeInForce", "DAY"),
+                "status": status,
+                "price": local.get("price"),
+                "quantity": str(local["qty"]),
+                "execution": {
+                    "filledQuantity": str(filled_qty),
+                    "averageFilledPrice": (
+                        str(average_fill) if average_fill is not None else None
+                    ),
+                    "filledAmount": raw.get("execution", {}).get("filledAmount")
+                    if isinstance(raw.get("execution"), dict)
+                    else None,
+                    "commission": "0",
+                    "tax": "0",
+                    "filledAt": None,
+                    "settlementDate": None,
+                },
+            }
+        )
+        broker.orders[broker_order_id] = raw
+        try:
+            max_sequence = max(max_sequence, int(broker_order_id.removeprefix("DRY-")))
+        except ValueError:
+            pass
+    broker.sequence = max_sequence
+
+
 def configure_logging(log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
@@ -88,6 +147,7 @@ def main() -> None:
             buying_power=config.total_strategy_capital,
         )
         restore_dry_run_holdings(repository, broker)
+        restore_dry_run_orders(repository, broker)
     account_client = (
         TossClient()
         if os.getenv("TOSS_APP_KEY") and os.getenv("TOSS_APP_SECRET")

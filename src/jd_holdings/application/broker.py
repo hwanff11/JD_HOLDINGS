@@ -133,7 +133,7 @@ class DryRunBroker:
 
     def cancel_order(self, order_id: str) -> str:
         order = self.orders[order_id]
-        if order["status"] == "PENDING":
+        if order["status"] in {"PENDING", "PARTIAL_FILLED"}:
             order["status"] = "CANCELED"
         return order_id
 
@@ -158,11 +158,16 @@ class DryRunBroker:
             limit = Decimal(str(order["price"]))
             fillable = current <= limit if order["side"] == "BUY" else current >= limit
             if fillable:
-                order["status"] = "FILLED"
-                order["execution"]["filledQuantity"] = order["quantity"]
-                order["execution"]["averageFilledPrice"] = str(current)
-                order["execution"]["filledAmount"] = str(current * Decimal(str(order["quantity"])))
-                self._apply_fill(order)
+                self._fill_pending_order(order, current)
+
+    def _fill_pending_order(self, order: dict[str, Any], price: Decimal) -> None:
+        if order["status"] != "PENDING":
+            return
+        order["status"] = "FILLED"
+        order["execution"]["filledQuantity"] = order["quantity"]
+        order["execution"]["averageFilledPrice"] = str(price)
+        order["execution"]["filledAmount"] = str(price * Decimal(str(order["quantity"])))
+        self._apply_fill(order)
 
     def _apply_fill(self, order: dict[str, Any]) -> None:
         symbol = order["symbol"]
@@ -218,3 +223,13 @@ class MarketDataDryRunBroker(DryRunBroker):
         value = Decimal(str(price))
         self.prices[symbol.upper()] = value
         return value
+
+    def get_order(self, order_id: str) -> dict[str, Any]:
+        order = self.orders[order_id]
+        if order["status"] == "PENDING" and order["orderType"] == "LIMIT":
+            current = self.get_price(order["symbol"])
+            limit = Decimal(str(order["price"]))
+            fillable = current <= limit if order["side"] == "BUY" else current >= limit
+            if fillable:
+                self._fill_pending_order(order, current)
+        return dict(order)
