@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
+from dataclasses import replace
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from jd_holdings.backtest.portfolio_engine import PortfolioBacktestEngine
@@ -43,16 +45,9 @@ def patch_stage10_core() -> None:
     PortfolioBacktestEngine._rebalance_core = staged
 
 
-def run(variant: str, output: str) -> None:
-    booster_capital = BOOSTER_CAPITAL[variant]
+def load_research_config(booster_capital: int):
     text = Path("strategy.yaml").read_text(encoding="utf-8")
     text = text.replace("trend_months: 10", "trend_months: 6", 1)
-    text = text.replace("capital_per_symbol: 1000", f"capital_per_symbol: {booster_capital}", 1)
-    text = text.replace(
-        "booster_max_weight: 0.05",
-        f"booster_max_weight: {booster_capital / 20000:.3f}",
-        1,
-    )
     with tempfile.NamedTemporaryFile(
         "w", suffix=".yaml", delete=False, encoding="utf-8"
     ) as handle:
@@ -60,6 +55,23 @@ def run(variant: str, output: str) -> None:
         config_path = handle.name
 
     config = load_config(config_path)
+    booster_weight = Decimal(str(booster_capital)) / config.portfolio.total_capital
+    return replace(
+        config,
+        global_=replace(
+            config.global_,
+            capital_per_symbol=Decimal(str(booster_capital)),
+        ),
+        portfolio=replace(
+            config.portfolio,
+            booster_max_weight=booster_weight,
+        ),
+    )
+
+
+def run(variant: str, output: str) -> None:
+    booster_capital = BOOSTER_CAPITAL[variant]
+    config = load_research_config(booster_capital)
     data_source = YFinanceDataSource("data/cache")
     market_clock = MarketClock()
     start = "2011-01-01"
