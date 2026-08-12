@@ -228,6 +228,7 @@ def simulate_hybrid(
     frames,
     config,
 ) -> pd.DataFrame:
+    """Combine a capped $50k JDSS sleeve with monthly QQQ accumulation."""
     index = v31_curve.index
     first_sessions = first_sessions_by_month(index)
     scenario_start_period = index[0].to_period("M")
