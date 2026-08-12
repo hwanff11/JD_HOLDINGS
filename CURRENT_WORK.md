@@ -5,7 +5,7 @@
 ## 현재 작업
 
 - 기준 브랜치: `main`
-- 최신 main 코드: `008fe10dc6060bde02d27220fd854a698ba24005`
+- 마지막 전략·운영 코드 기준 SHA: `008fe10dc6060bde02d27220fd854a698ba24005` (이후 문서 전용 커밋은 더 최신일 수 있음)
 - 현재 전략: `JDSS-3.1.0-TWIN-H40-S3` / `3.1.0`
 - PR #62에서 연구 후보를 정식 구현·문서·테스트에 반영하고 main에 승격
 - PR #65에서 Oracle dry-run 배포 검증을 V3.1 계약으로 최신화
@@ -55,8 +55,8 @@
   - JDSS V3 Dry Run run `31560691290` (#100) 성공
   - Security run `31560691262` (#158) 성공
 - 연구 동일 조건 비교: V3.0 Total +678.07%, CAGR 14.05%, MDD -28.29%, Sharpe 0.835, Sortino 1.004 → V3.1 최종 후보 Total +1372.96%, CAGR 18.81%, MDD -26.04%, Sharpe 0.940, Sortino 1.197
-- V3.1 main production 재검증: Issue #64, `JDSS V3 Backtest` run `31559442771` 성공
-  - 전략 main SHA `54baca27e612d123b44d7a9fa1a036d2e42c0a44`
+- V3.1 production 재검증: Issue #64, `JDSS V3 Backtest` run `31559442771` 성공
+  - 전략 코드 SHA `54baca27e612d123b44d7a9fa1a036d2e42c0a44`
   - Total +1372.96%, CAGR 18.81%, MDD -26.04%, Sharpe 0.940, 평균노출 31.87%
   - 코어 체결 320건, 부스터 체결 443건, SGOV 추정수익 `$21,538.41`
   - 연구 최종 후보와 핵심 성과가 정확히 일치하여 research → production 엔진 동등성 확인
@@ -64,13 +64,13 @@
 
 ## 배포 상태
 
-- GitHub `main`: V3.1.0, SHA `008fe10dc6060bde02d27220fd854a698ba24005`
+- GitHub main의 V3.1 전략·운영 코드 기준 SHA: `008fe10dc6060bde02d27220fd854a698ba24005`; 문서 전용 커밋은 이 SHA 이후에도 존재할 수 있다.
 - 기존 GitHub Release: `v3.0.0`, target `df640d16c485b770d9c57c570f5a13b3bdb4e2de`
 - Oracle 배포 SHA: `df640d16c485b770d9c57c570f5a13b3bdb4e2de` — 아직 V3.0 dry-run
 - `jd_holdings_bot` Oracle 서비스는 V3.1 배포 성공이 확인되기 전까지 V3.0 코드로 간주한다.
 - V3.1 배포 workflow는 현재 V3.1 전략 식별자·config 3.1.0·live 잠금을 검증한다.
 - V3.0→V3.1 배포 시 진행 중 부스터 사이클 또는 미완료 주문이 있으면 자동 중단하고 기존 서비스를 복구한다.
-- 운영 SHA의 최종 확인 기준은 Oracle `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 Actions 결과다.
+- 실제 현재 브랜치 head와 운영 SHA의 최종 확인은 GitHub `main` 및 Oracle `/home/ubuntu/JD_HOLDINGS/current` 링크와 배포 Actions 결과를 사용한다.
 
 ## live 전 필수 보완
 
