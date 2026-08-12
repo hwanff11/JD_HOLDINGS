@@ -9,10 +9,8 @@ import pytest
 from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
-from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
-from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.core.enums import PositionState
@@ -228,13 +226,19 @@ class _Reconciliation:
         return {}
 
 
-def test_portfolio_scheduler_failure_does_not_starve_monitoring(tmp_path, config):
+def test_portfolio_scheduler_failure_does_not_starve_monitoring(
+    tmp_path, config, monkeypatch
+):
     repository = SQLiteRepository(tmp_path / "runtime.db", config)
     analysis = _Analysis()
     monitor = _Monitor()
     reconciliation = _Reconciliation()
     errors: list[str] = []
 
+    monkeypatch.setattr(
+        "jd_holdings.infrastructure.telegram_bot_operational._is_toss_order_maintenance_window",
+        lambda _now: False,
+    )
     app = object.__new__(OperationalTelegramBotApp)
     app.config = config
     app.repository = repository
@@ -247,6 +251,7 @@ def test_portfolio_scheduler_failure_does_not_starve_monitoring(tmp_path, config
     app._stop = _OneCycleStop()
     app._last_monitor = -1_000_000_000.0
     app._last_idle_cash_sweep = -1_000_000_000.0
+    app._reconciliation_notice_at = {}
     app._send = lambda *args, **kwargs: None
     app.notify_new_signals = lambda results: None
     app._notify_runtime_error = lambda event_type, title, exc: errors.append(event_type)
