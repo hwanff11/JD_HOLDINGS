@@ -89,7 +89,9 @@ V3.1에서 특히 확인할 내용은 다음과 같다.
 
 ## 5. 릴리스 이력과 다음 릴리스
 
-기존 `v3.0.0` GitHub Release는 과거 운영 기준으로 보존한다. V3.1을 정식 GitHub Release로 만들 경우 패키지·설정 버전, 전략 식별자, `live_enabled: false`, 최신 `main`의 CI·Security·Dry Run·백테스트 결과를 확인한 뒤 별도 릴리스 절차를 실행한다.
+기존 `v3.0.0` GitHub Release는 과거 운영 기준으로 보존한다. 해당 릴리스에 사용한 **버전 전용 ChatOps workflow는 재실행과 운영 혼선을 막기 위해** 릴리스 완료 후 제거했다.
+
+V3.1을 정식 GitHub Release로 만들 경우 패키지·설정 버전, 전략 식별자, `live_enabled: false`, 최신 `main`의 CI·Security·Dry Run·백테스트 결과를 확인한 뒤 별도 릴리스 절차를 실행한다.
 
 릴리스 여부와 Oracle 배포 여부는 같은 의미가 아니다. `main`에 V3.1이 병합돼도 `CURRENT_WORK.md`에 V3.1 Oracle 배포 성공이 기록되기 전까지 서버는 기존 배포 버전을 사용한다고 판단한다.
 
