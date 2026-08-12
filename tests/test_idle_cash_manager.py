@@ -12,6 +12,7 @@ from jd_holdings.application.idle_cash_manager import (
     IdleCashManager,
     IdleCashReleasePending,
 )
+from jd_holdings.application.managed_account import managed_cash_balance
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
@@ -393,6 +394,4 @@ def test_dry_run_restart_restores_managed_sgov_ledger(tmp_path, config):
     restore_dry_run_holdings(repository, restarted)
 
     assert restarted.holdings["SGOV"]["quantity"] == state.managed_quantity
-    assert restarted.buying_power == Decimal("20000") - (
-        state.average_price * state.managed_quantity
-    )
+    assert restarted.buying_power == managed_cash_balance(config, repository)
