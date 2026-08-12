@@ -58,6 +58,16 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     assert "actions/runs/" in workflow
 
 
+def test_github_deploy_validates_current_v31_contract():
+    workflow = (ROOT / ".github/workflows/deploy-oracle-dry-run.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "JDSS-3.1.0-TWIN-H40-S3" in workflow
+    assert 'config_version: "3.1.0"' in workflow
+    assert "JDSS-3.0.0-TWIN-H05" not in workflow
+    assert "live_enabled: false" in workflow
+
+
 def test_workflows_use_node24_actions():
     for name in (
         "ci.yml",
