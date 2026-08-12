@@ -38,6 +38,16 @@ def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
     assert "git push origin main || true" not in deploy
 
 
+def test_deploy_blocks_version_change_with_active_strategy_state():
+    deploy = (ROOT / "deploy.sh").read_text(encoding="utf-8")
+    assert 'sudo systemctl stop "$service_name"' in deploy
+    assert "old_version == new_version" in deploy
+    assert "state <> 'EMPTY' OR qty <> 0" in deploy
+    assert "'CREATED', 'SUBMITTED', 'PENDING', 'PARTIAL_FILLED', 'UNKNOWN'" in deploy
+    assert "전략 버전 변경 사전점검 실패로 기존 서비스를 복구했습니다" in deploy
+    assert 'sudo systemctl start "$service_name" || true' in deploy
+
+
 def test_github_deploy_attaches_verified_sha_to_local_main():
     workflow = (ROOT / ".github/workflows/deploy-oracle-dry-run.yml").read_text(
         encoding="utf-8"
