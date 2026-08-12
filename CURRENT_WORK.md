@@ -6,9 +6,9 @@
 
 - 기준 브랜치: `main`
 - 현재 전략: `JDSS-3.1.0-TWIN-H40-S3` / config `3.1.0`
-- 현재 runtime 코드 SHA: `dc168a18f6cb6a91ffedab1246d30d825f8e5ef1`
-- Oracle 배포 SHA: `dc168a18f6cb6a91ffedab1246d30d825f8e5ef1`
-- Oracle `jd_holdings_bot`: **V3.1 forced dry-run**, 실제 systemd restart/fault-injection 검증 완료
+- 현재 runtime 코드 SHA: `9231a0513e28491e3e993bcf5144936c9b7634b0`
+- Oracle 배포 SHA: `9231a0513e28491e3e993bcf5144936c9b7634b0`
+- Oracle `jd_holdings_bot`: **V3.1 forced dry-run**
 - live 잠금 유지
 
 ## 전략 기준
@@ -34,19 +34,16 @@
   - Sharpe 0.940
   - 평균노출 31.87%
   - 코어 체결 320건 / 부스터 체결 443건
-- 이는 전략 계산의 동등성을 뜻한다. 승인 지연·미체결·부분체결·API 장애·재시작 같은 현실 변수는 아래 Oracle dry-run 검증으로 별도 확인한다.
+- 전략 계산의 동등성을 뜻하며 승인 지연·미체결·API 장애·재시작 같은 현실 변수는 Oracle dry-run에서 별도 검증한다.
 
 ## 운영 안전장치
 
 - 실제 bot entrypoint: `FinalTradingService` + `OperationalTelegramBotApp`
-- 코어 BUY `REJECTED`/`CANCELED`: 유효시간 내 재승인
-- 코어 BUY 부분체결 후 취소: 체결분 보존, 잔여 목표만 재승인
 - BUY 결과 `UNKNOWN`: 성공을 추정하거나 재주문하지 않고 SAFE_MODE
 - 코어 위험축소 SELL 거절·UNKNOWN·부분체결 종료: SAFE_MODE + 신규매수 차단
 - 월간 코어, 일일 부스터, 주문/TP 감시, SGOV, Reconciliation은 작업별 예외 격리
 - 운영 오류: 회전 파일 로그(traceback) + SQLite `event_logs` + Telegram 요약
 - 동일 Telegram 오류 10분 rate-limit, DB/파일 로그는 계속 기록
-- PENDING / PARTIAL_FILLED / REJECTED·CANCELED / UNKNOWN을 `접수 / 부분체결 / 미완료 / 결과 확인 필요`로 구분
 - managed cash/equity와 미체결 BUY 예약을 사용해 개인 현금까지 전략자금으로 쓰지 않음
 - 개인 TQQQ/SOXL과 JDSS TQQQ/SOXL의 동일 계좌 혼합은 지원하지 않음
 
@@ -55,66 +52,57 @@
 - PR #72 운영 로직 감사: merge `1519285cec5326d930e41df3a9caaeed421187a2`
 - PR #77 Oracle runtime verifier: merge `a2261f37e608706340373dac489082fa3d18781e`
 - PR #79 Oracle yfinance writable cache 보강: merge `dc168a18f6cb6a91ffedab1246d30d825f8e5ef1`
-  - CI #430: SUCCESS
-  - JDSS V3 Dry Run #137: SUCCESS
-  - Security #210: SUCCESS
-  - 배포 사전 전체 pytest: **170 passed**
-- 전략수식·주문판단·백테스트 계산은 PR #79에서 변경하지 않았다.
+- PR #83 SGOV Reconciliation 시세 의존성 제거: merge/runtime `9231a0513e28491e3e993bcf5144936c9b7634b0`
+  - Ruff: SUCCESS
+  - 전체 pytest: **172 passed**
+  - `JDSS-3.1.0-TWIN-H40-S3 / 3.1.0` config validation: SUCCESS
+- PR #83은 전략수식·주문판단을 변경하지 않고 dry-run holdings/Reconciliation의 불필요한 Yahoo 현재가 의존성만 제거했다.
 
-## Oracle 배포·실제 프로세스 검증
+## Oracle 배포·운영 검증
 
 ### 최신 배포
 
-- Deploy Oracle Dry Run run `31572957555`: **SUCCESS**
-- 배포 SHA: `dc168a18f6cb6a91ffedab1246d30d825f8e5ef1`
-- `JDSS-3.1.0-TWIN-H40-S3 / 3.1.0` config validation 성공
+- Deploy Oracle Dry Run run `31580042160`: **SUCCESS**
+- 배포 SHA: `9231a0513e28491e3e993bcf5144936c9b7634b0`
 - systemd: `jd_holdings_bot`
-- 모드: **forced `dry_run`**, live confirmation empty
-- Toss read-only smoke: 인증/가격조회 정상
+- 모드: **forced `dry_run`**, live 잠금 유지
+- Toss read-only smoke: 인증 성공
+- smoke 가격조회: TQQQ / SOXL / SGOV 성공
 
-### 실제 Oracle runtime 검증
+### SGOV Reconciliation 오류 수정
 
-최종 Verify Oracle V3.1 Runtime run `31573086250`: **SUCCESS**
+- 기존 증상: `RECONCILIATION_ERROR: yfinance 현재가 조회 실패: SGOV` 및 자동 점검 경고 반복
+- 원인: dry-run `get_holdings()`가 수량 정합성 점검 중 `lastPrice` 표시를 위해 Yahoo 1분봉을 조회하여, SGOV 시세가 일시적으로 비면 Reconciliation 전체가 실패했다.
+- 수정: Reconciliation용 holdings 조회를 실시간 Yahoo 시세와 분리했다. 보유수량·주문 정합성은 시세 장애와 무관하게 검사한다.
+- 실제 현재가가 필요한 주문/평가 경로의 `get_price()` 실패 처리는 유지하여 안전장치를 약화하지 않았다.
+- Yahoo 가격 공급 실패 상황에서도 holdings 경로가 동작하고 `get_price()`는 실패하는 회귀 테스트를 추가했다.
+- 배포 후 Toss read-only smoke에서 SGOV 가격조회도 정상 확인했다.
 
-- 미국장 `closed` 확인 후에만 실제 서비스 재시작 수행
-- 재시작 전 safety state: clean
-- 실제 PID: `199138 -> 199267`
-- 재시작 전후 positions/core/SGOV/trades/open-orders fingerprint: **동일**
-- startup Reconciliation age: `29.8s`, SAFE_MODE: clear
-- Oracle 서버 격리환경에서 production fault-injection: **20 tests passed**
-  - 코어 BUY rejected / partial / unknown
-  - 불완전 core sell SAFE_MODE
-  - runtime 오류·Telegram rate-limit
-  - cold restart/order sequence/managed account 안전성
-- 서버 log/journal 정상
-- Telegram transport: 정상, configured recipient 1개에 검증 메시지 전달
-- Toss read-only smoke 재통과
-- 최종 결과: `ORACLE_V31_RUNTIME_VERIFY=PASS`
+### 실제 runtime 재시작 검증 상태
 
-### 검증 중 발견·수정한 사항
-
-- 1차 Oracle runtime run `31572203952` 자체는 PASS했지만, systemd `ProtectHome=read-only` 환경에서 yfinance가 기본 홈 cache를 쓰지 못해 TzCache/CookieCache INFO 경고를 남겼다.
-- PR #79에서 yfinance 내부 cache를 `JDSS_CACHE_PATH/yfinance`로 이동했다.
-- 최신 runtime을 재배포한 뒤 최종 run `31573086250`의 새 프로세스 journal에서는 해당 cache 실패 경고가 재발하지 않았다.
+- 직전 PR #79 기준 Verify Oracle V3.1 Runtime run `31573086250`: **SUCCESS**, `ORACLE_V31_RUNTIME_VERIFY=PASS`
+- PR #83 배포 후 Verify run `31580238889`는 서버 시장 세션이 `pre_market`이어서 운영 안전규칙에 따라 파괴적 systemd 재시작 전에 의도적으로 중단됐다.
+- 따라서 해당 run 실패는 SGOV 코드 오류가 아니다. 장중/프리마켓에 운영 안전장치를 우회하지 않았다.
 
 ## 문서 상태
 
-- `docs/STRATEGY_GUIDE.md`: 코어·부스터·SGOV·SAFE_MODE를 쉬운 설명과 Mermaid 흐름도로 정리
-- `docs/TELEGRAM_BOT_GUIDE.md`: 주문 상태·SAFE_MODE·오류 알림·운영자 행동 순서 정리
-- `docs/BACKTEST_REPORT.md`: research / production / 실제 운영 dry-run 차이와 parity 기준 정리
+- `docs/STRATEGY_GUIDE.md`: 코어·부스터·SGOV·SAFE_MODE 설명
+- `docs/TELEGRAM_BOT_GUIDE.md`: 주문 상태·SAFE_MODE·오류 알림·운영자 행동 순서
+- `docs/BACKTEST_REPORT.md`: research / production / 실제 운영 dry-run 차이와 parity 기준
 - `docs/JDSS_FINAL_SPEC.md` + `strategy.yaml`: V3.1 공식 전략 계약
 
 ## live 전 남은 필수사항
 
-1. 실제 Toss 주문에서 발생하는 `PARTIAL_FILLED`/`UNKNOWN`의 API 상태변화와 체결 이벤트를 실주문 전용 검증계정 또는 별도 승인된 방식으로 관찰한다.
-2. 코어 위험축소 SELL의 미체결·부분체결·취소 후 자동 재가격/재제출 정책은 Toss 실제 동작을 확인한 뒤 결정한다. 현재는 안전하게 SAFE_MODE로 멈춘다.
+1. 실제 Toss 주문에서 발생하는 `PARTIAL_FILLED`/`UNKNOWN`의 API 상태변화와 체결 이벤트를 승인된 방식으로 관찰한다.
+2. 코어 위험축소 SELL의 미체결·부분체결·취소 후 자동 재가격/재제출 정책은 Toss 실제 동작 확인 후 결정한다. 현재는 SAFE_MODE로 멈춘다.
 3. live 운영계좌는 개인 TQQQ·SOXL과 분리한다.
 4. live 잠금은 별도 승인·검증 전까지 유지한다.
 
 ## 다음 작업
 
-- V3.1 Oracle dry-run은 현재 정상 운영·검증 완료 상태다.
-- 당분간 Telegram 신호·주문·Reconciliation·로그를 dry-run으로 관찰한다.
+- Oracle V3.1 forced dry-run을 계속 운영한다.
+- 배포 시각 이후 Telegram에서 동일한 `yfinance 현재가 조회 실패: SGOV` Reconciliation 오류가 재발하는지 관찰한다.
+- 미국장이 `closed`인 안전 시간대에 필요하면 최신 SHA의 full Oracle runtime verifier를 다시 수행한다.
 - 전략 연구를 재개할 경우 production 백테스트를 기준으로 비교한다.
 - live 전환은 위 남은 필수사항을 해결한 뒤 별도 결정한다.
 
