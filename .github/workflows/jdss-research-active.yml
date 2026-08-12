@@ -6,6 +6,7 @@ on:
     paths:
       - "scripts/research_active.py"
       - "scripts/research_risk_budget.py"
+      - "scripts/research_profit_frontier.py"
       - ".github/workflows/jdss-research-active.yml"
 
 permissions:
@@ -120,3 +121,59 @@ jobs:
         with:
           name: risk-${{ matrix.variant }}-${{ github.run_id }}
           path: risk-${{ matrix.variant }}.json
+
+  profit-frontier:
+    name: Profit Frontier - ${{ matrix.frontier }}
+    if: startsWith(github.head_ref, 'research/v3-active-')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        frontier:
+          - direct30
+          - direct35
+          - direct40
+          - direct45
+          - step5_profit25
+          - step5_profit35
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run frontier variant
+        env:
+          FRONTIER: ${{ matrix.frontier }}
+        run: |
+          python -m scripts.research_profit_frontier \
+            --frontier "$FRONTIER" \
+            --output "frontier-$FRONTIER.json"
+
+      - name: Print and publish frontier result
+        env:
+          FRONTIER: ${{ matrix.frontier }}
+        run: |
+          echo "===== JDSS PROFIT FRONTIER: $FRONTIER ====="
+          python -m scripts.research_profit_frontier \
+            --summarize "frontier-$FRONTIER.json" \
+            | tee frontier-summary.md
+          {
+            echo "## Profit Frontier: $FRONTIER"
+            cat frontier-summary.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload detailed result archive
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontier-${{ matrix.frontier }}-${{ github.run_id }}
+          path: frontier-${{ matrix.frontier }}.json
