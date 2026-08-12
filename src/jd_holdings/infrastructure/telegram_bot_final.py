@@ -12,7 +12,8 @@ def _v31_guide_cards() -> tuple[str, ...]:
             "• 총 전략자금 <code>$20,000</code>을 코어·부스터·SGOV로 함께 관리합니다.\n"
             "• <b>월간 코어</b>: QQQ·SOXX 월말 종가가 6개월 이동평균 위이면 "
             "TQQQ·SOXL을 첫 달 10%, 추세 유지 시 15%까지 운용합니다.\n"
-            "• <b>JDSS 부스터</b>: 종목별 최대 <code>$8,000</code>, 총자금의 최대 40%입니다.\n"
+            "• <b>JDSS 부스터</b>: 자금 상한은 종목별 <code>$8,000</code>(40%)이고, "
+            "S3의 정상 한 사이클 최대 신규투입은 <code>$7,200</code>(36%)입니다.\n"
             "• 코어·부스터 매수는 모두 2단계 Telegram 승인이 필요합니다.\n"
             "• live는 계속 잠겨 있으며 dry-run만 허용합니다."
         ),
@@ -52,11 +53,36 @@ def _v31_guide_cards() -> tuple[str, ...]:
     )
 
 
+def _v31_runtime_text(text: str) -> str:
+    """Translate legacy V3.0 presentation labels still shared by the base bot."""
+    replacements = (
+        ("JDSS V3.0 MONTHLY_H05", "JDSS V3.1 TWIN-H40-S3"),
+        ("JDSS V3 MONTHLY_H05", "JDSS V3.1 TWIN-H40-S3"),
+        ("V3 MONTHLY_H05 포트폴리오", "V3.1 TWIN-H40-S3 포트폴리오"),
+        ("월간 10개월 추세 · 종목당 15%", "월간 6개월 추세 · 첫 ON 10%, 지속 15%"),
+        (
+            "JDSS 점수 전략 · 종목당 최대 5%",
+            "JDSS 점수 전략 · 자금 상한 40%, S3 최대 36%",
+        ),
+        ("JDSS 5% 부스터", "JDSS H40-S3 부스터"),
+        (
+            "코어 규칙 : 10개월 추세 ON · 목표 15%",
+            "코어 규칙 : 6개월 추세 ON · 첫 ON 10%, 지속 15%",
+        ),
+    )
+    for old, new in replacements:
+        text = text.replace(old, new)
+    return text
+
+
 # TelegramBotApp methods resolve the guide function from telegram_bot's module globals.
-# Patch that single presentation hook here so the final runtime guide follows V3.1
-# without duplicating the full Telegram implementation.
+# Keep the final runtime guide on the adopted V3.1 contract without duplicating the
+# full Telegram implementation.
 telegram_bot_module._guide_cards = _v31_guide_cards
 
 
 class FinalTelegramBotApp(TelegramBotApp):
     """Production entry point for the JDSS V3.1 Telegram application."""
+
+    def _send(self, text: str, *, markup=None, chat_id: int | None = None) -> None:
+        super()._send(_v31_runtime_text(text), markup=markup, chat_id=chat_id)
