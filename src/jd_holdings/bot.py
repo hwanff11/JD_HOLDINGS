@@ -11,6 +11,7 @@ from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.broker import MarketDataDryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.idle_cash_manager import IdleCashManager
+from jd_holdings.application.managed_account import managed_cash_balance
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.portfolio_service import PortfolioService
@@ -31,7 +32,6 @@ def restore_dry_run_holdings(
     broker: MarketDataDryRunBroker,
 ) -> None:
     """Rebuild the in-memory dry-run account from its persisted JDSS ledger."""
-    used_capital = Decimal("0")
     for symbol in repository.config.enabled_symbols:
         position = repository.get_position(symbol)
         core = repository.get_core_position(symbol)
@@ -44,7 +44,6 @@ def restore_dry_run_holdings(
             "quantity": total_quantity,
             "averagePurchasePrice": combined_cost / Decimal(total_quantity),
         }
-        used_capital += combined_cost
     if repository.config.idle_cash.enabled:
         cash_state = repository.get_idle_cash_state()
         if cash_state.managed_quantity > 0:
@@ -52,35 +51,54 @@ def restore_dry_run_holdings(
                 "quantity": cash_state.managed_quantity,
                 "averagePurchasePrice": cash_state.average_price,
             }
-            used_capital += cash_state.average_price * cash_state.managed_quantity
-    allocated = repository.config.total_strategy_capital
-    broker.buying_power = max(Decimal("0"), allocated - used_capital)
+
+    # Reconstruct cash from all persisted fills so realized P/L and fees survive
+    # restart. Current position cost bases alone cannot reproduce closed-cycle cash.
+    broker.buying_power = max(
+        Decimal("0"), managed_cash_balance(repository.config, repository)
+    )
 
 
 def restore_dry_run_orders(
     repository: SQLiteRepository,
     broker: MarketDataDryRunBroker,
 ) -> None:
-    """Restore persisted DRY orders so restart reconciliation sees the same open book."""
+    """Restore provable open DRY orders and never reuse a historical broker id."""
     max_sequence = broker.sequence
+    with repository.transaction() as connection:
+        historical_ids = connection.execute(
+            "SELECT broker_order_id FROM orders WHERE broker_order_id LIKE 'DRY-%'"
+        ).fetchall()
+    for row in historical_ids:
+        broker_order_id = str(row["broker_order_id"] or "")
+        try:
+            max_sequence = max(max_sequence, int(broker_order_id.removeprefix("DRY-")))
+        except ValueError:
+            continue
+
     for local in repository.open_orders():
         broker_order_id = str(local.get("broker_order_id") or "")
         if not broker_order_id.startswith("DRY-"):
             continue
-        if str(local.get("status")) == "UNKNOWN":
-            # UNKNOWN must remain a safety stop; reconstructing it as a known order
-            # would silently weaken the lost-response guard.
+
+        local_status = str(local.get("status") or "PENDING")
+        filled_qty = int(local.get("filled_qty") or 0)
+        if local_status == "UNKNOWN":
+            # UNKNOWN remains a lost-response safety stop. Its historical broker id was
+            # already consumed above so a future dry-run order cannot reuse it.
             continue
+        if local_status == "PARTIAL_FILLED" or filled_qty > 0:
+            # The in-memory broker cannot prove whether the persisted partial fill was
+            # already reflected in each sleeve ledger at the exact crash point. Do not
+            # guess. Leaving it unrestored makes Reconciliation enter SAFE_MODE.
+            continue
+
         try:
             raw = json.loads(str(local.get("raw_json") or "{}"))
         except json.JSONDecodeError:
             raw = {}
         if not isinstance(raw, dict):
             raw = {}
-        local_status = str(local.get("status") or "PENDING")
-        status = local_status if local_status in {"PENDING", "PARTIAL_FILLED"} else "PENDING"
-        filled_qty = int(local.get("filled_qty") or 0)
-        average_fill = local.get("average_fill_price")
         raw.update(
             {
                 "orderId": broker_order_id,
@@ -89,29 +107,23 @@ def restore_dry_run_orders(
                 "side": str(local["side"]).upper(),
                 "orderType": str(local["order_type"]).upper(),
                 "timeInForce": raw.get("timeInForce", "DAY"),
-                "status": status,
+                "status": "PENDING",
                 "price": local.get("price"),
                 "quantity": str(local["qty"]),
                 "execution": {
-                    "filledQuantity": str(filled_qty),
-                    "averageFilledPrice": (
-                        str(average_fill) if average_fill is not None else None
-                    ),
-                    "filledAmount": raw.get("execution", {}).get("filledAmount")
-                    if isinstance(raw.get("execution"), dict)
-                    else None,
+                    "filledQuantity": "0",
+                    "averageFilledPrice": None,
+                    "filledAmount": None,
                     "commission": "0",
                     "tax": "0",
                     "filledAt": None,
                     "settlementDate": None,
                 },
+                "_appliedFilledQuantity": "0",
+                "_appliedFilledAmount": "0",
             }
         )
         broker.orders[broker_order_id] = raw
-        try:
-            max_sequence = max(max_sequence, int(broker_order_id.removeprefix("DRY-")))
-        except ValueError:
-            pass
     broker.sequence = max_sequence
 
 

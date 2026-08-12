@@ -122,6 +122,8 @@ class DryRunBroker:
                 "filledAt": None,
                 "settlementDate": None,
             },
+            "_appliedFilledQuantity": "0",
+            "_appliedFilledAmount": "0",
         }
         self.orders[order_id] = order
         if fillable:
@@ -153,51 +155,97 @@ class DryRunBroker:
     def fill_open_orders(self, symbol: str) -> None:
         current = self.get_price(symbol)
         for order in self.orders.values():
-            if order["symbol"] != symbol.upper() or order["status"] != "PENDING":
+            if order["symbol"] != symbol.upper() or order["status"] not in {
+                "PENDING",
+                "PARTIAL_FILLED",
+            }:
                 continue
             limit = Decimal(str(order["price"]))
             fillable = current <= limit if order["side"] == "BUY" else current >= limit
             if fillable:
-                self._fill_pending_order(order, current)
+                self._fill_remaining_order(order, current)
 
-    def _fill_pending_order(self, order: dict[str, Any], price: Decimal) -> None:
-        if order["status"] != "PENDING":
+    def _fill_remaining_order(self, order: dict[str, Any], price: Decimal) -> None:
+        if order["status"] not in {"PENDING", "PARTIAL_FILLED"}:
             return
+        total_quantity = int(Decimal(str(order["quantity"])))
+        prior_quantity = int(Decimal(str(order["execution"]["filledQuantity"])))
+        remaining = total_quantity - prior_quantity
+        if remaining <= 0:
+            order["status"] = "FILLED"
+            return
+        prior_average_raw = order["execution"].get("averageFilledPrice")
+        prior_average = (
+            Decimal(str(prior_average_raw))
+            if prior_average_raw is not None and prior_quantity > 0
+            else Decimal("0")
+        )
+        cumulative_notional = prior_average * prior_quantity + price * remaining
+        cumulative_average = cumulative_notional / total_quantity
         order["status"] = "FILLED"
-        order["execution"]["filledQuantity"] = order["quantity"]
-        order["execution"]["averageFilledPrice"] = str(price)
-        order["execution"]["filledAmount"] = str(price * Decimal(str(order["quantity"])))
+        order["execution"]["filledQuantity"] = str(total_quantity)
+        order["execution"]["averageFilledPrice"] = str(cumulative_average)
+        order["execution"]["filledAmount"] = str(cumulative_notional)
         self._apply_fill(order)
 
     def _apply_fill(self, order: dict[str, Any]) -> None:
+        """Apply only the un-applied delta from a cumulative execution snapshot."""
         symbol = order["symbol"]
-        quantity = int(Decimal(order["execution"]["filledQuantity"]))
-        price = Decimal(order["execution"]["averageFilledPrice"])
-        existing = self.holdings.get(symbol, {"quantity": 0, "averagePurchasePrice": Decimal("0")})
+        cumulative_quantity = int(Decimal(str(order["execution"]["filledQuantity"])))
+        average_raw = order["execution"].get("averageFilledPrice")
+        cumulative_average = (
+            Decimal(str(average_raw))
+            if average_raw is not None and cumulative_quantity > 0
+            else Decimal("0")
+        )
+        amount_raw = order["execution"].get("filledAmount")
+        cumulative_notional = (
+            Decimal(str(amount_raw))
+            if amount_raw is not None
+            else cumulative_average * cumulative_quantity
+        )
+        applied_quantity = int(Decimal(str(order.get("_appliedFilledQuantity", "0"))))
+        applied_notional = Decimal(str(order.get("_appliedFilledAmount", "0")))
+        delta_quantity = cumulative_quantity - applied_quantity
+        delta_notional = cumulative_notional - applied_notional
+        if delta_quantity < 0 or delta_notional < 0:
+            raise RuntimeError("dry-run 누적 체결값이 이전 적용값보다 작습니다")
+        if delta_quantity == 0:
+            return
+
+        existing = self.holdings.get(
+            symbol, {"quantity": 0, "averagePurchasePrice": Decimal("0")}
+        )
         old_qty = int(existing["quantity"])
         if order["side"] == "BUY":
-            new_qty = old_qty + quantity
+            new_qty = old_qty + delta_quantity
             old_cost = Decimal(str(existing["averagePurchasePrice"])) * old_qty
-            average = (old_cost + price * quantity) / new_qty
+            average = (old_cost + delta_notional) / new_qty
             self.holdings[symbol] = {
                 "quantity": new_qty,
                 "averagePurchasePrice": average,
             }
-            self.buying_power -= price * quantity
+            self.buying_power -= delta_notional
         else:
-            new_qty = max(0, old_qty - quantity)
+            if delta_quantity > old_qty:
+                raise RuntimeError("dry-run 보유수량보다 많은 누적 매도 체결입니다")
+            new_qty = old_qty - delta_quantity
             self.holdings[symbol] = {
                 "quantity": new_qty,
                 "averagePurchasePrice": (
                     existing["averagePurchasePrice"] if new_qty else Decimal("0")
                 ),
             }
-            self.buying_power += price * quantity
+            self.buying_power += delta_notional
+
+        order["_appliedFilledQuantity"] = str(cumulative_quantity)
+        order["_appliedFilledAmount"] = str(cumulative_notional)
 
     @staticmethod
     def _receipt(order: dict[str, Any], client_order_id: str) -> OrderReceipt:
         execution = order["execution"]
         price = execution.get("averageFilledPrice")
+        raw = {key: value for key, value in order.items() if not key.startswith("_")}
         return OrderReceipt(
             client_order_id=client_order_id,
             broker_order_id=order["orderId"],
@@ -205,7 +253,7 @@ class DryRunBroker:
             quantity=int(Decimal(order["quantity"])),
             filled_quantity=int(Decimal(execution["filledQuantity"])),
             average_fill_price=Decimal(price) if price is not None else None,
-            raw=dict(order),
+            raw=raw,
         )
 
 
@@ -226,10 +274,10 @@ class MarketDataDryRunBroker(DryRunBroker):
 
     def get_order(self, order_id: str) -> dict[str, Any]:
         order = self.orders[order_id]
-        if order["status"] == "PENDING" and order["orderType"] == "LIMIT":
+        if order["status"] in {"PENDING", "PARTIAL_FILLED"} and order["orderType"] == "LIMIT":
             current = self.get_price(order["symbol"])
             limit = Decimal(str(order["price"]))
             fillable = current <= limit if order["side"] == "BUY" else current >= limit
             if fillable:
-                self._fill_pending_order(order, current)
+                self._fill_remaining_order(order, current)
         return dict(order)

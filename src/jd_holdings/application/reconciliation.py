@@ -10,6 +10,20 @@ from .broker import Broker
 from .database import SQLiteRepository
 
 
+def _missing_broker_id_issue(
+    orders: list[dict], prefix: str = "", *, exclude_unknown: bool = False
+) -> str | None:
+    stranded = [
+        str(order["status"])
+        for order in orders
+        if not order.get("broker_order_id")
+        and (not exclude_unknown or str(order["status"]) != "UNKNOWN")
+    ]
+    if not stranded:
+        return None
+    return f"{prefix}OPEN_ORDER_WITHOUT_BROKER_ID:{','.join(sorted(set(stranded)))}"
+
+
 class ReconciliationService:
     def __init__(
         self,
@@ -51,10 +65,13 @@ class ReconciliationService:
                     )
             local_orders = self.repository.open_orders(symbol)
             if any(
-                order["status"] == "UNKNOWN" and not order.get("broker_order_id")
+                str(order["status"]) == "UNKNOWN" and not order.get("broker_order_id")
                 for order in local_orders
             ):
                 issues.append("UNKNOWN_ORDER_WITHOUT_BROKER_ID")
+            missing_id = _missing_broker_id_issue(local_orders, exclude_unknown=True)
+            if missing_id:
+                issues.append(missing_id)
             try:
                 broker_orders = self.broker.list_orders(status="OPEN", symbol=symbol)
                 local_broker_ids = {
@@ -91,8 +108,6 @@ class ReconciliationService:
             holding = broker_holdings.get(cash_symbol)
             broker_qty = int(Decimal(str(holding["quantity"]))) if holding else 0
             issues: list[str] = []
-            # 계좌에 이미 있던 개인 SGOV는 자동 인수하지 않는다. JDSS 원장 수량이
-            # 실제 계좌 수량을 초과할 때만 자금관리 정합성 위반이다.
             if state.managed_quantity > broker_qty:
                 issues.append(
                     f"SGOV_MANAGED_QTY_EXCEEDS_BROKER:{state.managed_quantity}>{broker_qty}"
@@ -103,10 +118,15 @@ class ReconciliationService:
                 if str(order["purpose"]).startswith("SGOV_")
             ]
             if any(
-                order["status"] == "UNKNOWN" and not order.get("broker_order_id")
+                str(order["status"]) == "UNKNOWN" and not order.get("broker_order_id")
                 for order in local_orders
             ):
                 issues.append("SGOV_UNKNOWN_ORDER_WITHOUT_BROKER_ID")
+            missing_id = _missing_broker_id_issue(
+                local_orders, "SGOV_", exclude_unknown=True
+            )
+            if missing_id:
+                issues.append(missing_id)
             try:
                 broker_orders = self.broker.list_orders(status="OPEN", symbol=cash_symbol)
                 local_ids = {

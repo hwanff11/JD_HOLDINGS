@@ -10,6 +10,7 @@ from jd_holdings.settings import RuntimeSettings
 
 from .broker import Broker
 from .database import SQLiteRepository
+from .managed_account import reserve_buy_order_with_managed_cash
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,17 +62,34 @@ class OrderManager:
                 else None,
             )
 
-        reserved = self.repository.reserve_order(
-            client_order_id=request.client_order_id,
-            signal_id=request.signal_id,
-            cycle_id=cycle_id,
-            symbol=request.symbol,
-            side=request.side,
-            order_type=request.order_type,
-            price=request.price,
-            quantity=request.quantity,
-            purpose=request.purpose,
-        )
+        if request.side.upper() == "BUY":
+            if request.price is None:
+                raise RuntimeError("JDSS 매수는 관리현금 검증 가능한 지정가만 허용합니다")
+            reserved = reserve_buy_order_with_managed_cash(
+                self.repository.config,
+                self.repository,
+                self.broker,
+                client_order_id=request.client_order_id,
+                signal_id=request.signal_id,
+                cycle_id=cycle_id,
+                symbol=request.symbol,
+                order_type=request.order_type,
+                price=request.price,
+                quantity=request.quantity,
+                purpose=request.purpose,
+            )
+        else:
+            reserved = self.repository.reserve_order(
+                client_order_id=request.client_order_id,
+                signal_id=request.signal_id,
+                cycle_id=cycle_id,
+                symbol=request.symbol,
+                side=request.side,
+                order_type=request.order_type,
+                price=request.price,
+                quantity=request.quantity,
+                purpose=request.purpose,
+            )
         if not reserved:
             raise RuntimeError("주문 멱등키 예약에 실패했습니다")
         if self.settings.trading_mode == "live":
