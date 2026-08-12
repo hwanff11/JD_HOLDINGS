@@ -18,6 +18,8 @@ from jd_holdings.core.enums import PositionState
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
+APPROVAL_TIME = datetime(2026, 8, 4, 12, tzinfo=UTC)
+
 
 class FrameSource:
     def __init__(self, frames: dict[str, pd.DataFrame]) -> None:
@@ -85,10 +87,9 @@ def test_core_quote_never_exceeds_signal_time_planned_quantity(tmp_path, config)
     repository, broker, trading, signal_id = _build_core_signal(tmp_path, config)
     del repository
     broker.set_price("TQQQ", Decimal("90"))
-    approval_time = datetime(2026, 8, 4, 12, tzinfo=UTC)
 
-    review_id, review_token = trading.create_review_approval(signal_id, now=approval_time)
-    quote = trading.consume_review(review_id, review_token, now=approval_time)
+    review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+    quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
 
     assert quote.quantity == 19
 
@@ -120,10 +121,9 @@ def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path,
         "averagePurchasePrice": Decimal("100"),
     }
     broker.buying_power = Decimal("19000")
-    approval_time = datetime(2026, 8, 4, 12, tzinfo=UTC)
 
-    review_id, review_token = trading.create_review_approval(signal_id, now=approval_time)
-    quote = trading.consume_review(review_id, review_token, now=approval_time)
+    review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+    quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
 
     assert quote.quantity == 9
 
@@ -140,7 +140,7 @@ def test_core_signal_is_invalidated_when_symbol_is_in_safe_mode(tmp_path, config
     )
 
     with pytest.raises(ApprovalError, match="SIGNAL_SAFE_MODE"):
-        trading.create_review_approval(signal_id)
+        trading.create_review_approval(signal_id, now=APPROVAL_TIME)
 
     assert repository.get_signal(signal_id)["status"] == "INVALID"
 
@@ -150,7 +150,7 @@ def test_core_signal_is_invalidated_when_idle_cash_is_in_safe_mode(tmp_path, con
     repository.set_system_value("idle_cash_safe_mode", "1")
 
     with pytest.raises(ApprovalError, match="SIGNAL_IDLE_CASH_SAFE_MODE"):
-        trading.create_review_approval(signal_id)
+        trading.create_review_approval(signal_id, now=APPROVAL_TIME)
 
     assert repository.get_signal(signal_id)["status"] == "INVALID"
 
