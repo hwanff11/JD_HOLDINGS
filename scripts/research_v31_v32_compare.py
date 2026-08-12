@@ -17,7 +17,6 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 from scripts.research_active import (
     BOOSTER_MAX_WEIGHT,
     INITIAL_CAPITAL,
-    MONTHLY_CONTRIBUTION_KRW,
     SLIPPAGE,
     STAGE_WEIGHTS,
     TP1_FRACTION,
@@ -328,7 +327,10 @@ def overall_stats(curve: pd.DataFrame) -> dict:
         "total_paid_in_usd": round(total_paid_in, 2),
         "final_equity_usd": round(final_equity, 2),
         "investment_profit_usd": round(final_equity - total_paid_in, 2),
-        "twr_cagr_pct": round((float(curve["twr"].iloc[-1]) ** (1.0 / years) - 1.0) * 100.0, 2),
+        "twr_cagr_pct": round(
+            (float(curve["twr"].iloc[-1]) ** (1.0 / years) - 1.0) * 100.0,
+            2,
+        ),
         "twr_mdd_pct": round(maximum_drawdown(curve["twr"]) * 100.0, 2),
         "xirr_pct": round(xirr_value * 100.0, 2) if xirr_value is not None else None,
     }
