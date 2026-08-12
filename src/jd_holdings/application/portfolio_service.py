@@ -15,6 +15,7 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 from .broker import Broker
 from .database import SQLiteRepository
+from .managed_account import managed_equity
 from .order_manager import OrderManager, build_client_order_id
 
 
@@ -51,7 +52,7 @@ class PortfolioService:
         if not self.config.portfolio.enabled:
             return None
         if self.trading_mode == "live" or self.config.portfolio.live_enabled:
-            raise RuntimeError("JDSS V3 코어는 live 모드가 잠겨 있습니다")
+            raise RuntimeError("JDSS V3.1 코어는 live 모드가 잠겨 있습니다")
         current = now or datetime.now(UTC)
         completed = self.market_clock.latest_completed_session(
             current, delay_minutes=self.config.scheduler.signal_delay_minutes
@@ -146,18 +147,8 @@ class PortfolioService:
         )
 
     def portfolio_equity(self) -> Decimal:
-        value = self.broker.get_buying_power("USD")
-        symbols = (*self.config.enabled_symbols, self.config.idle_cash.symbol)
-        for symbol in symbols:
-            holdings = self.broker.get_holdings(symbol)
-            quantity = sum(
-                Decimal(str(item.get("quantity", "0")))
-                for item in holdings
-                if str(item.get("symbol", "")).upper() == symbol
-            )
-            if quantity > 0:
-                value += quantity * self.broker.get_price(symbol)
-        return value
+        """Current JDSS-managed equity, excluding unrelated personal account assets."""
+        return managed_equity(self.config, self.repository, self.broker)
 
     def snapshot(self) -> dict[str, object]:
         equity = self.portfolio_equity()
