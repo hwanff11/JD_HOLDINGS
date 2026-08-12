@@ -1,25 +1,29 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from jd_holdings.config import StrategyConfig
 
 from .broker import Broker
 from .database import SQLiteRepository
 
+OPEN_ORDER_STATUSES = ("CREATED", "SUBMITTED", "PENDING", "PARTIAL_FILLED", "UNKNOWN")
 
-def managed_cash_balance(config: StrategyConfig, repository: SQLiteRepository) -> Decimal:
-    """Reconstruct JDSS-owned cash from initial allocation and persisted fills."""
+
+def _managed_cash_from_connection(
+    config: StrategyConfig, connection: Any
+) -> Decimal:
     balance = config.total_strategy_capital
-    with repository.transaction() as connection:
-        rows = connection.execute(
-            """
-            SELECT side, filled_qty, average_fill_price, price
-            FROM orders
-            WHERE filled_qty > 0
-            ORDER BY order_id
-            """
-        ).fetchall()
+    rows = connection.execute(
+        """
+        SELECT side, filled_qty, average_fill_price, price
+        FROM orders
+        WHERE filled_qty > 0
+        ORDER BY order_id
+        """
+    ).fetchall()
     for row in rows:
         quantity = int(row["filled_qty"])
         raw_price = row["average_fill_price"] or row["price"]
@@ -37,23 +41,43 @@ def managed_cash_balance(config: StrategyConfig, repository: SQLiteRepository) -
     return balance
 
 
-def reserved_open_buy_amount(
-    config: StrategyConfig, repository: SQLiteRepository
+def _reserved_open_buy_from_connection(
+    config: StrategyConfig, connection: Any
 ) -> Decimal:
-    """Cash committed to locally open BUY orders but not filled yet."""
+    placeholders = ",".join("?" for _ in OPEN_ORDER_STATUSES)
+    rows = connection.execute(
+        f"""
+        SELECT price, qty, filled_qty
+        FROM orders
+        WHERE side = 'BUY' AND status IN ({placeholders}) AND price IS NOT NULL
+        """,  # nosec B608 - placeholders are generated from a fixed constant tuple.
+        OPEN_ORDER_STATUSES,
+    ).fetchall()
     reserved = Decimal("0")
-    for order in repository.open_orders():
-        if str(order["side"]).upper() != "BUY" or order.get("price") is None:
-            continue
-        remaining = max(0, int(order["qty"]) - int(order["filled_qty"]))
+    for row in rows:
+        remaining = max(0, int(row["qty"]) - int(row["filled_qty"]))
         if remaining <= 0:
             continue
         reserved += (
             Decimal(remaining)
-            * Decimal(str(order["price"]))
+            * Decimal(str(row["price"]))
             * (Decimal("1") + config.global_.buy_fee)
         )
     return reserved
+
+
+def managed_cash_balance(config: StrategyConfig, repository: SQLiteRepository) -> Decimal:
+    """Reconstruct JDSS-owned cash from initial allocation and persisted fills."""
+    with repository.transaction() as connection:
+        return _managed_cash_from_connection(config, connection)
+
+
+def reserved_open_buy_amount(
+    config: StrategyConfig, repository: SQLiteRepository
+) -> Decimal:
+    """Cash committed to locally open BUY orders but not filled yet."""
+    with repository.transaction() as connection:
+        return _reserved_open_buy_from_connection(config, connection)
 
 
 def available_managed_cash(
@@ -64,13 +88,66 @@ def available_managed_cash(
     additional_reservation: Decimal = Decimal("0"),
 ) -> Decimal:
     """Spendable cash bounded by JDSS ownership, reservations, and broker liquidity."""
-    ledger_available = (
-        managed_cash_balance(config, repository)
-        - reserved_open_buy_amount(config, repository)
-        - additional_reservation
-    )
+    with repository.transaction() as connection:
+        ledger_available = (
+            _managed_cash_from_connection(config, connection)
+            - _reserved_open_buy_from_connection(config, connection)
+            - additional_reservation
+        )
     broker_available = broker.get_buying_power("USD") - additional_reservation
     return max(Decimal("0"), min(ledger_available, broker_available))
+
+
+def reserve_buy_order_with_managed_cash(
+    config: StrategyConfig,
+    repository: SQLiteRepository,
+    broker: Broker,
+    *,
+    client_order_id: str,
+    signal_id: int | None,
+    cycle_id: str | None,
+    symbol: str,
+    order_type: str,
+    price: Decimal,
+    quantity: int,
+    purpose: str,
+) -> bool:
+    """Atomically validate JDSS cash and reserve a BUY order in one DB transaction."""
+    broker_available = broker.get_buying_power("USD")
+    required = Decimal(quantity) * price * (Decimal("1") + config.global_.buy_fee)
+    now = datetime.now(UTC).isoformat()
+    with repository.transaction() as connection:
+        ledger_available = (
+            _managed_cash_from_connection(config, connection)
+            - _reserved_open_buy_from_connection(config, connection)
+        )
+        available = max(Decimal("0"), min(ledger_available, broker_available))
+        if required > available:
+            raise RuntimeError(
+                "JDSS 관리현금이 부족하여 매수 주문을 차단했습니다 "
+                f"(필요={required:.2f}, 사용가능={available:.2f})"
+            )
+        cursor = connection.execute(
+            """
+            INSERT OR IGNORE INTO orders(
+                client_order_id, signal_id, cycle_id, symbol, side, order_type,
+                price, qty, status, purpose, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'BUY', ?, ?, ?, 'CREATED', ?, ?, ?)
+            """,
+            (
+                client_order_id,
+                signal_id,
+                cycle_id,
+                symbol.upper(),
+                order_type,
+                str(price),
+                quantity,
+                purpose,
+                now,
+                now,
+            ),
+        )
+        return cursor.rowcount == 1
 
 
 def managed_market_value(
