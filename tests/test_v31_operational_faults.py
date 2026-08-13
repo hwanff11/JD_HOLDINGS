@@ -21,7 +21,7 @@ from jd_holdings.infrastructure.telegram_bot_operational import (
 from jd_holdings.settings import RuntimeSettings
 
 APPROVAL_TIME = datetime(2026, 8, 4, 12, tzinfo=UTC)
-SIGNAL_DATE = date(2026, 7, 31)
+SIGNAL_DATE = date(2026, 8, 3)
 
 
 class RejectedBroker(DryRunBroker):
