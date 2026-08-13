@@ -101,7 +101,7 @@ def main() -> None:
     parser.add_argument("--slippage", type=float, default=0.001)
     args = parser.parse_args()
 
-    config = load_config(ROOT / "configs" / "strategy.yaml")
+    config = load_config(ROOT / "strategy.yaml")
     frames = _prepare_frames(config, "2026-08-12", refresh=False)
     loose = _config_with_thresholds(config, 55, 45, 45)
     strict = _config_with_thresholds(config, 55, 65, 65)
