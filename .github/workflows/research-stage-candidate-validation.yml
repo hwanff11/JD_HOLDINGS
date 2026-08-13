@@ -1,0 +1,84 @@
+name: JDSS V3.1.1 Stage Candidate Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_stage_candidate_validation.py"
+      - ".github/workflows/research-stage-candidate-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint focused validation
+        run: |
+          ruff format --check scripts/research_stage_candidate_validation.py
+          ruff check scripts/research_stage_candidate_validation.py
+      - name: Run focused validation
+        run: |
+          mkdir -p reports
+          python -m scripts.research_stage_candidate_validation \
+            --output reports/stage_candidate_validation.json
+      - name: Publish summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("reports/stage_candidate_validation.json").read_text(encoding="utf-8"))
+          lines = [
+              "# 55/55/55 vs 55/60/50 focused validation",
+              "",
+              f"- Research end: {report['research_end']}",
+              "- Candidate was identified after viewing 2023+ OOS; this is robustness validation, not a new untouched holdout.",
+              "",
+              "## Slippage stress",
+              "",
+              "| Slippage | Period | Base CAGR/MDD | Candidate CAGR/MDD | Sharpe base→candidate |",
+              "|---|---|---:|---:|---:|",
+          ]
+          for slip, periods in report["slippage_stress"].items():
+              for period, values in periods.items():
+                  base = values["baseline"]
+                  cand = values["candidate"]
+                  lines.append(
+                      f"| {slip} | {period} | {base['cagr_pct']:.2f}% / {base['mdd_pct']:.2f}% | "
+                      f"{cand['cagr_pct']:.2f}% / {cand['mdd_pct']:.2f}% | "
+                      f"{base['sharpe']:.3f} → {cand['sharpe']:.3f} |"
+                  )
+          lines += ["", "## Exact economic differences at 10bp", ""]
+          for symbol, values in report["exact_full_diff_at_10bp"].items():
+              lines.append(
+                  f"- {symbol}: changed trades {values['changed_trade_count']}, "
+                  f"changed cycle records {values['changed_cycle_records']}, "
+                  f"changed S2/S3 signals {values['changed_stage_signal_count']}"
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          Path("reports/stage_candidate_validation_summary.md").write_text(summary, encoding="utf-8")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write(summary)
+          PY
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage-candidate-validation-${{ github.run_id }}
+          path: |
+            reports/stage_candidate_validation.json
+            reports/stage_candidate_validation_summary.md
