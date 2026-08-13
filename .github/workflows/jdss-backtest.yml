@@ -74,7 +74,29 @@ jobs:
           args=(backtest --symbol "$INPUT_SYMBOL" --start "$INPUT_START" --slippage "$INPUT_SLIPPAGE" --output reports/backtest.json)
           if [[ -n "$INPUT_END" ]]; then args+=(--end "$INPUT_END"); fi
           jdss "${args[@]}"
-      - name: Print and publish V3 summary
+      - name: Validate canonical V3.2.2 portfolio
+        if: ${{ (inputs.symbol || 'ALL') == 'ALL' && (inputs.start || '2011-01-01') == '2011-01-01' && inputs.end == '' && (inputs.slippage || '0.0010') == '0.0010' }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("reports/backtest.json").read_text(encoding="utf-8"))
+          assert report["strategy_version"] == "JDSS-3.2.2-RS6M-ONEWAY-HWM75"
+          assert report["config_version"] == "3.2.2"
+          metrics = report["v322_portfolio"]["metrics"]
+          assert 22.0 <= metrics["cagr_pct"] <= 22.8, metrics
+          assert -31.6 <= metrics["mdd_pct"] <= -30.3, metrics
+          assert 0.94 <= metrics["sharpe"] <= 1.07, metrics
+          assert metrics["initial_risk_budget"] == 50000.0
+          assert metrics["hwm_reinvestment_fraction"] == 0.75
+          assert metrics["profit_reinvestment"] == "HWM75_CONTROLLED"
+          assert metrics["idle_cash_enabled"] is False
+          assert metrics["component_fills"]["allocation"] > 0
+          assert 70 <= metrics["average_exposure_pct"] <= 90
+          print("V3.2.2 canonical backtest contract OK", metrics)
+          PY
+      - name: Print and publish V3.2.2 summary
         env:
           INPUT_SYMBOL: ${{ inputs.symbol || 'ALL' }}
           INPUT_START: ${{ inputs.start || '2011-01-01' }}
@@ -85,28 +107,32 @@ jobs:
           import json, os
           from pathlib import Path
           report = json.loads(Path("reports/backtest.json").read_text(encoding="utf-8"))
-          lines = ["# JDSS V3 백테스트 결과", "", f"- 종목: {os.environ['INPUT_SYMBOL']}",
+          lines = ["# JDSS V3.2.2 백테스트 결과", "", f"- 종목: {os.environ['INPUT_SYMBOL']}",
                    f"- 기간: {os.environ['INPUT_START']} ~ {os.environ['INPUT_END'] or '최신 완결 거래일'}",
                    f"- 슬리피지: {os.environ['INPUT_SLIPPAGE']}", f"- 전략 버전: {report['strategy_version']}", "",
-                   "| 구분 | Total Return | CAGR | MDD | 거래 횟수 |", "|---|---:|---:|---:|---:|"]
+                   "| 구분 | Total Return | CAGR | MDD | 완료 사이클 |", "|---|---:|---:|---:|---:|"]
           for symbol, result in report["results"].items():
               m = result["metrics"]
-              lines.append(f"| {symbol} | {m['total_return_pct']:+.2f}% | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | {m['closed_cycles']} |")
+              lines.append(f"| {symbol} virtual JDSS | {m['total_return_pct']:+.2f}% | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | {m['closed_cycles']} |")
           portfolio = report.get("portfolio_metrics", {})
           if portfolio:
-              lines += ["", "## 포트폴리오", "", f"- Total Return: {portfolio['total_return_pct']:+.2f}%",
+              lines += ["", "## V3.2.2 통합 포트폴리오", "", f"- Total Return: {portfolio['total_return_pct']:+.2f}%",
                         f"- CAGR: {portfolio['cagr_pct']:+.2f}%", f"- MDD: {portfolio['mdd_pct']:.2f}%"]
-          v3 = report.get("v3_portfolio", {}).get("metrics", {})
+          v3 = report.get("v322_portfolio", {}).get("metrics", {})
           if v3:
-              lines += [f"- Sharpe: {v3['sharpe']:.3f}", f"- 평균 노출: {v3['average_exposure_pct']:.2f}%",
-                        f"- 코어 체결: {v3['component_fills']['core']}", f"- 부스터 체결: {v3['component_fills']['booster']}",
-                        f"- 고정 원금 상한: ${v3.get('capital_ceiling', 0):,.2f}",
-                        f"- 최대 원가 투입: ${v3.get('maximum_invested_cost', 0):,.2f}",
+              lines += [f"- Sharpe: {v3['sharpe']:.3f}", f"- Sortino: {v3['sortino']:.3f}",
+                        f"- 평균 노출: {v3['average_exposure_pct']:.2f}%",
+                        f"- Allocation 체결: {v3['component_fills']['allocation']}",
+                        f"- 시작 위험예산: ${v3['initial_risk_budget']:,.2f}",
+                        f"- HWM 재투자율: {v3['hwm_reinvestment_fraction'] * 100:.0f}%",
+                        f"- 최대 sizing base: ${v3['maximum_sizing_base']:,.2f}",
+                        f"- 최종 sizing base: ${v3['final_sizing_base']:,.2f}",
+                        f"- 반도체 RS 활성일: {v3['semiconductor_active_days_pct']:.2f}%",
                         f"- SGOV: {'ON' if v3.get('idle_cash_enabled') else 'OFF'}"]
-              half = v3.get("half_year_returns_pct", {})
-              if half:
-                  lines += ["", "## 반기별 수익률", "", "| 반기 | 수익률 |", "|---|---:|"]
-                  lines += [f"| {period} | {value:+.2f}% |" for period, value in half.items()]
+              annual = v3.get("annual_returns_pct", {})
+              if annual:
+                  lines += ["", "## 연도별 수익률", "", "| 연도 | 수익률 |", "|---|---:|"]
+                  lines += [f"| {period} | {value:+.2f}% |" for period, value in annual.items()]
           summary = "\n".join(lines) + "\n"
           Path("reports/backtest.md").write_text(summary, encoding="utf-8")
           print("===== JDSS BACKTEST RESULT =====")

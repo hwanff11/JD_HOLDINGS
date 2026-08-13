@@ -5,18 +5,22 @@ from decimal import Decimal
 from typing import Any
 
 from jd_holdings.config import StrategyConfig
+from jd_holdings.core.v322_allocation import V322Policy, hwm_risk_budget
 
 from .broker import Broker
 from .database import SQLiteRepository
 
 OPEN_ORDER_STATUSES = ("CREATED", "SUBMITTED", "PENDING", "PARTIAL_FILLED", "UNKNOWN")
+HIGH_WATER_KEY = "v322_high_water_equity"
+RISK_BUDGET_KEY = "v322_risk_budget"
 
 
 def _raw_managed_cash_from_connection(
     config: StrategyConfig, connection: Any
 ) -> Decimal:
-    """Reconstruct JDSS cash before applying the fixed-principal spending ceiling."""
-    balance = config.total_strategy_capital
+    """Reconstruct all USD cash owned by JDSS, including retained profits."""
+    policy = V322Policy.from_config(config)
+    balance = policy.initial_capital
     rows = connection.execute(
         """
         SELECT side, filled_qty, average_fill_price, price
@@ -45,7 +49,7 @@ def _raw_managed_cash_from_connection(
 def _managed_cost_basis_from_connection(
     config: StrategyConfig, connection: Any
 ) -> Decimal:
-    """Return principal currently deployed by JDSS-owned sleeves."""
+    """Return capital currently deployed by JDSS-owned positions."""
     booster_rows = connection.execute("SELECT current_cost_basis FROM positions").fetchall()
     core_rows = connection.execute("SELECT cost_basis FROM core_positions").fetchall()
     total = sum(
@@ -58,11 +62,7 @@ def _managed_cost_basis_from_connection(
     )
     if config.idle_cash.enabled:
         idle = connection.execute(
-            """
-            SELECT managed_qty, avg_price
-            FROM idle_cash_state
-            WHERE symbol = ?
-            """,
+            "SELECT managed_qty, avg_price FROM idle_cash_state WHERE symbol = ?",
             (config.idle_cash.symbol,),
         ).fetchone()
         if idle:
@@ -70,11 +70,14 @@ def _managed_cost_basis_from_connection(
     return max(Decimal("0"), total)
 
 
-def _principal_cash_ceiling_from_connection(
-    config: StrategyConfig, connection: Any
-) -> Decimal:
-    invested = _managed_cost_basis_from_connection(config, connection)
-    return max(Decimal("0"), config.total_strategy_capital - invested)
+def _system_decimal(connection: Any, key: str, default: Decimal) -> Decimal:
+    row = connection.execute("SELECT value FROM system_state WHERE key = ?", (key,)).fetchone()
+    return Decimal(str(row["value"])) if row else default
+
+
+def _risk_budget_from_connection(config: StrategyConfig, connection: Any) -> Decimal:
+    policy = V322Policy.from_config(config)
+    return _system_decimal(connection, RISK_BUDGET_KEY, policy.initial_capital)
 
 
 def _reserved_open_buy_from_connection(
@@ -86,7 +89,7 @@ def _reserved_open_buy_from_connection(
         SELECT price, qty, filled_qty
         FROM orders
         WHERE side = 'BUY' AND status IN ({placeholders}) AND price IS NOT NULL
-        """,  # nosec B608 - placeholders are generated from a fixed constant tuple.
+        """,  # nosec B608 - placeholders come from a fixed constant tuple.
         OPEN_ORDER_STATUSES,
     ).fetchall()
     reserved = Decimal("0")
@@ -105,7 +108,6 @@ def _reserved_open_buy_from_connection(
 def raw_managed_cash_balance(
     config: StrategyConfig, repository: SQLiteRepository
 ) -> Decimal:
-    """JDSS cash including realized P/L, before excluding profits above principal."""
     with repository.transaction() as connection:
         return _raw_managed_cash_from_connection(config, connection)
 
@@ -113,27 +115,62 @@ def raw_managed_cash_balance(
 def managed_principal_cost_basis(
     config: StrategyConfig, repository: SQLiteRepository
 ) -> Decimal:
-    """Cost basis currently occupying the fixed JDSS principal budget."""
     with repository.transaction() as connection:
         return _managed_cost_basis_from_connection(config, connection)
 
 
 def managed_cash_balance(config: StrategyConfig, repository: SQLiteRepository) -> Decimal:
-    """JDSS cash that remains inside the fixed principal budget.
+    """All JDSS USD cash, including the 25% of HWM profit excluded from risk sizing."""
+    return max(Decimal("0"), raw_managed_cash_balance(config, repository))
 
-    Realized profit above the configured strategy principal stays in the broker account
-    but is excluded from JDSS spending. Losses are never topped up from unrelated cash.
-    """
+
+def current_v322_capital_state(
+    config: StrategyConfig, repository: SQLiteRepository
+) -> tuple[Decimal, Decimal]:
+    policy = V322Policy.from_config(config)
     with repository.transaction() as connection:
-        raw = _raw_managed_cash_from_connection(config, connection)
-        ceiling = _principal_cash_ceiling_from_connection(config, connection)
-        return max(Decimal("0"), min(raw, ceiling))
+        high_water = _system_decimal(
+            connection, HIGH_WATER_KEY, policy.initial_capital
+        )
+        risk_budget = _system_decimal(
+            connection, RISK_BUDGET_KEY, policy.initial_capital
+        )
+    return high_water, risk_budget
+
+
+def record_v322_equity(
+    config: StrategyConfig,
+    repository: SQLiteRepository,
+    marked_equity: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Advance HWM only from a completed-session marked equity observation."""
+    policy = V322Policy.from_config(config)
+    if marked_equity < 0:
+        raise ValueError("marked_equity는 0 이상이어야 합니다")
+    now = datetime.now(UTC).isoformat()
+    with repository.transaction() as connection:
+        previous = _system_decimal(
+            connection, HIGH_WATER_KEY, policy.initial_capital
+        )
+        high_water = max(previous, marked_equity, policy.initial_capital)
+        risk_budget = hwm_risk_budget(high_water, marked_equity, policy)
+        for key, value in (
+            (HIGH_WATER_KEY, high_water),
+            (RISK_BUDGET_KEY, risk_budget),
+        ):
+            connection.execute(
+                """
+                INSERT INTO system_state(key, value, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+                """,
+                (key, str(value), now),
+            )
+    return high_water, risk_budget
 
 
 def reserved_open_buy_amount(
     config: StrategyConfig, repository: SQLiteRepository
 ) -> Decimal:
-    """Cash committed to locally open BUY orders but not filled yet."""
     with repository.transaction() as connection:
         return _reserved_open_buy_from_connection(config, connection)
 
@@ -145,12 +182,15 @@ def available_managed_cash(
     *,
     additional_reservation: Decimal = Decimal("0"),
 ) -> Decimal:
-    """Spendable cash bounded by fixed principal, reservations, and broker liquidity."""
+    """Spendable cash bounded by HWM75 risk budget, reservations and broker liquidity."""
     with repository.transaction() as connection:
         raw_cash = _raw_managed_cash_from_connection(config, connection)
-        principal_cash = _principal_cash_ceiling_from_connection(config, connection)
+        invested = _managed_cost_basis_from_connection(config, connection)
+        risk_budget = _risk_budget_from_connection(config, connection)
         reserved = _reserved_open_buy_from_connection(config, connection)
-        ledger_available = min(raw_cash, principal_cash) - reserved - additional_reservation
+        cash_available = raw_cash - reserved - additional_reservation
+        risk_available = risk_budget - invested - reserved - additional_reservation
+        ledger_available = min(cash_available, risk_available)
     broker_available = broker.get_buying_power("USD") - additional_reservation
     return max(Decimal("0"), min(ledger_available, broker_available))
 
@@ -169,20 +209,23 @@ def reserve_buy_order_with_managed_cash(
     quantity: int,
     purpose: str,
 ) -> bool:
-    """Atomically enforce the fixed-principal ceiling and reserve a BUY order."""
+    """Atomically enforce HWM75 deployable-risk ceiling and reserve a BUY."""
     broker_available = broker.get_buying_power("USD")
     required = Decimal(quantity) * price * (Decimal("1") + config.global_.buy_fee)
     now = datetime.now(UTC).isoformat()
     with repository.transaction() as connection:
         raw_cash = _raw_managed_cash_from_connection(config, connection)
-        principal_cash = _principal_cash_ceiling_from_connection(config, connection)
+        invested = _managed_cost_basis_from_connection(config, connection)
+        risk_budget = _risk_budget_from_connection(config, connection)
         reserved = _reserved_open_buy_from_connection(config, connection)
-        ledger_available = min(raw_cash, principal_cash) - reserved
-        available = max(Decimal("0"), min(ledger_available, broker_available))
+        available = max(
+            Decimal("0"),
+            min(raw_cash - reserved, risk_budget - invested - reserved, broker_available),
+        )
         if required > available:
             raise RuntimeError(
-                "JDSS 고정 관리원금이 부족하여 매수 주문을 차단했습니다 "
-                f"(필요={required:.2f}, 사용가능={available:.2f})"
+                "JDSS HWM75 위험예산이 부족하여 매수 주문을 차단했습니다 "
+                f"(필요={required:.2f}, 사용가능={available:.2f}, 위험예산={risk_budget:.2f})"
             )
         cursor = connection.execute(
             """
@@ -212,14 +255,16 @@ def managed_market_value(
     repository: SQLiteRepository,
     broker: Broker,
 ) -> Decimal:
-    """Market value of positions explicitly owned by JDSS ledgers only."""
+    """Market value of every position explicitly owned by the JDSS ledgers."""
     value = Decimal("0")
+    for core in repository.core_positions():
+        quantity = int(core["qty"])
+        if quantity > 0:
+            value += Decimal(quantity) * broker.get_price(str(core["symbol"]))
     for symbol in config.enabled_symbols:
         booster = repository.get_position(symbol)
-        core = repository.get_core_position(symbol)
-        quantity = booster.quantity + int(core["qty"])
-        if quantity > 0:
-            value += Decimal(quantity) * broker.get_price(symbol)
+        if booster.quantity > 0:
+            value += Decimal(booster.quantity) * broker.get_price(symbol)
     if config.idle_cash.enabled:
         idle = repository.get_idle_cash_state()
         if idle.managed_quantity > 0:
@@ -232,7 +277,7 @@ def marked_managed_equity(
     repository: SQLiteRepository,
     broker: Broker,
 ) -> Decimal:
-    """Marked JDSS sleeve value, excluding personal assets and locked realized profit."""
+    """Full JDSS marked equity, including profit retained outside the risk budget."""
     return managed_cash_balance(config, repository) + managed_market_value(
         config, repository, broker
     )
@@ -243,10 +288,9 @@ def managed_equity(
     repository: SQLiteRepository,
     broker: Broker,
 ) -> Decimal:
-    """Non-compounding V3.1.1 sizing base.
-
-    The repository and broker arguments are intentionally accepted for API compatibility.
-    Actual affordability is enforced separately by available_managed_cash().
-    """
-    del repository, broker
-    return config.total_strategy_capital
+    """Current HWM75 deployable sizing base, capped by current marked equity."""
+    _, risk_budget = current_v322_capital_state(config, repository)
+    return max(
+        Decimal("0"),
+        min(risk_budget, marked_managed_equity(config, repository, broker)),
+    )

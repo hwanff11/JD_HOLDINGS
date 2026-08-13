@@ -67,7 +67,7 @@ def test_dry_run_can_cancel_partial_order():
     assert broker.orders[receipt.broker_order_id]["status"] == "CANCELED"
 
 
-def test_cold_restart_restores_holdings_and_open_tp_order_for_reconciliation(tmp_path, config):
+def test_cold_restart_restores_legacy_state_but_reconciliation_blocks_it(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "cold-restart.db", config)
     cycle_id = "JDSS-TQQQ-COLD"
     tp_plan_id = repository.create_tp_plan(
@@ -94,72 +94,49 @@ def test_cold_restart_restores_holdings_and_open_tp_order_for_reconciliation(tmp
             """,
             (PositionState.HOLDING_1ST.value, cycle_id, tp_plan_id),
         )
-    assert repository.reserve_order(
-        client_order_id="JDSS-TQQQ-TP1-r0",
-        signal_id=None,
-        cycle_id=cycle_id,
-        symbol="TQQQ",
-        side="SELL",
-        order_type="LIMIT",
-        price=Decimal("104"),
-        quantity=3,
-        purpose="TP1",
-    )
-    raw = {
-        "orderId": "DRY-00000007",
-        "clientOrderId": "JDSS-TQQQ-TP1-r0",
-        "symbol": "TQQQ",
-        "side": "SELL",
-        "orderType": "LIMIT",
-        "timeInForce": "DAY",
-        "status": "PENDING",
-        "price": "104",
-        "quantity": "3",
-        "execution": {
-            "filledQuantity": "0",
-            "averageFilledPrice": None,
-            "filledAmount": None,
-            "commission": "0",
-            "tax": "0",
-            "filledAt": None,
-            "settlementDate": None,
-        },
-    }
-    repository.update_order(
-        "JDSS-TQQQ-TP1-r0",
-        status="PENDING",
-        broker_order_id="DRY-00000007",
-        filled_qty=0,
-        raw=raw,
-    )
-    assert repository.reserve_order(
-        client_order_id="JDSS-TQQQ-TP2-r0",
-        signal_id=None,
-        cycle_id=cycle_id,
-        symbol="TQQQ",
-        side="SELL",
-        order_type="LIMIT",
-        price=Decimal("110"),
-        quantity=7,
-        purpose="TP2",
-    )
-    raw2 = dict(raw)
-    raw2.update(
-        {
-            "orderId": "DRY-00000008",
-            "clientOrderId": "JDSS-TQQQ-TP2-r0",
-            "price": "110",
-            "quantity": "7",
-            "execution": dict(raw["execution"]),
+    for suffix, price, quantity, broker_id in (
+        ("TP1", Decimal("104"), 3, "DRY-00000007"),
+        ("TP2", Decimal("110"), 7, "DRY-00000008"),
+    ):
+        client_id = f"JDSS-TQQQ-{suffix}-r0"
+        assert repository.reserve_order(
+            client_order_id=client_id,
+            signal_id=None,
+            cycle_id=cycle_id,
+            symbol="TQQQ",
+            side="SELL",
+            order_type="LIMIT",
+            price=price,
+            quantity=quantity,
+            purpose=suffix,
+        )
+        raw = {
+            "orderId": broker_id,
+            "clientOrderId": client_id,
+            "symbol": "TQQQ",
+            "side": "SELL",
+            "orderType": "LIMIT",
+            "timeInForce": "DAY",
+            "status": "PENDING",
+            "price": str(price),
+            "quantity": str(quantity),
+            "execution": {
+                "filledQuantity": "0",
+                "averageFilledPrice": None,
+                "filledAmount": None,
+                "commission": "0",
+                "tax": "0",
+                "filledAt": None,
+                "settlementDate": None,
+            },
         }
-    )
-    repository.update_order(
-        "JDSS-TQQQ-TP2-r0",
-        status="PENDING",
-        broker_order_id="DRY-00000008",
-        filled_qty=0,
-        raw=raw2,
-    )
+        repository.update_order(
+            client_id,
+            status="PENDING",
+            broker_order_id=broker_id,
+            filled_qty=0,
+            raw=raw,
+        )
 
     source = MutablePriceSource(Decimal("100"))
     broker = MarketDataDryRunBroker(source, buying_power=config.total_strategy_capital)
@@ -168,9 +145,14 @@ def test_cold_restart_restores_holdings_and_open_tp_order_for_reconciliation(tmp
 
     assert int(broker.holdings["TQQQ"]["quantity"]) == 10
     assert broker.sequence == 8
-    restored_ids = {order["orderId"] for order in broker.list_orders(status="OPEN", symbol="TQQQ")}
+    restored_ids = {
+        order["orderId"] for order in broker.list_orders(status="OPEN", symbol="TQQQ")
+    }
     assert restored_ids == {"DRY-00000007", "DRY-00000008"}
-    assert ReconciliationService(config, repository, broker).run() == {}
+    mismatches = ReconciliationService(config, repository, broker).run()
+    assert "V322_DIRECT_BOOSTER_STATE_PRESENT" in mismatches["TQQQ"][0]
+    assert "V322_DIRECT_TP_PLAN_PRESENT" in mismatches["TQQQ"]
+    assert repository.get_position("TQQQ").state == PositionState.SAFE_MODE
 
 
 def test_cold_restart_does_not_convert_unknown_order_into_known_broker_order(tmp_path, config):

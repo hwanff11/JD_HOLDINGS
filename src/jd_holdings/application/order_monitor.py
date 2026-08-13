@@ -215,6 +215,9 @@ class OrderMonitor:
         )
 
     def _enter_symbol_safe_mode(self, symbol: str, reason: str) -> None:
+        if symbol not in self.config.enabled_symbols:
+            self.repository.set_system_value("v322_portfolio_safe_mode", "1")
+            return
         position = self.repository.get_position(symbol)
         if position.state == PositionState.SAFE_MODE:
             return
@@ -245,6 +248,17 @@ class OrderMonitor:
                 context=context,
             )
             events.append("SGOV 열린 주문 확인 불가: SAFE_MODE")
+            return
+        if purpose in CORE_PURPOSES:
+            self._enter_symbol_safe_mode(symbol, "BROKER_ORDER_MISSING")
+            self.repository.log_event(
+                "SAFE_MODE",
+                "BROKER_ORDER_MISSING",
+                "DB에는 열린 V3.2.2 allocation 주문이 있으나 broker에서 확인할 수 없습니다",
+                symbol=symbol,
+                context=context,
+            )
+            events.append(f"{symbol} allocation 열린 주문 확인 불가: SAFE_MODE")
             return
         if symbol in self.config.enabled_symbols:
             position = self.repository.get_position(symbol)

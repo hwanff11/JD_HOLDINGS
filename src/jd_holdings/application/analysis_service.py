@@ -12,6 +12,7 @@ from jd_holdings.core.models import IndicatorSnapshot, ScoreResult, TradeDecisio
 from jd_holdings.core.regime import evaluate_regime
 from jd_holdings.core.scoring import calculate_score
 from jd_holdings.core.strategy import evaluate_rebuy_recovery, evaluate_strategy
+from jd_holdings.core.v322_allocation import V322_CONFIG_VERSION
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
@@ -42,7 +43,15 @@ class AnalysisService:
         self.data_source = data_source
         self.market_clock = market_clock or MarketClock()
 
-    def analyze_all(self, now: datetime | None = None) -> list[AnalysisResult]:
+    def analyze_all(
+        self,
+        now: datetime | None = None,
+        *,
+        create_signals: bool | None = None,
+    ) -> list[AnalysisResult]:
+        """Analyze JDSS scores; V3.2.2 uses them as a virtual overlay only."""
+        if create_signals is None:
+            create_signals = self.config.config_version != V322_CONFIG_VERSION
         current = now or datetime.now(UTC)
         completed = self.market_clock.latest_completed_session(
             current, delay_minutes=self.config.scheduler.signal_delay_minutes
@@ -77,7 +86,17 @@ class AnalysisService:
             target = calculate_indicators(
                 self.data_source.daily(symbol, start, completed, refresh=True), self.config
             )
-            results.append(self._analyze(symbol, completed, target, spy, qqq, sector_frames))
+            results.append(
+                self._analyze(
+                    symbol,
+                    completed,
+                    target,
+                    spy,
+                    qqq,
+                    sector_frames,
+                    create_signals=create_signals,
+                )
+            )
         self.repository.set_system_value("last_analysis_trade_date", completed.isoformat())
         self.repository.set_system_value("last_analysis_at", current.astimezone(UTC).isoformat())
         return results
@@ -140,7 +159,17 @@ class AnalysisService:
             )
         return history
 
-    def _analyze(self, symbol, completed, target, spy, qqq, sector_frames=None) -> AnalysisResult:
+    def _analyze(
+        self,
+        symbol,
+        completed,
+        target,
+        spy,
+        qqq,
+        sector_frames=None,
+        *,
+        create_signals: bool = True,
+    ) -> AnalysisResult:
         timestamp = next(
             (
                 index
@@ -150,7 +179,9 @@ class AnalysisService:
             None,
         )
         if timestamp is None:
-            raise ValueError(f"{symbol}/SPY/QQQ 완결 일봉 거래일이 일치하지 않습니다: {completed}")
+            raise ValueError(
+                f"{symbol}/SPY/QQQ 완결 일봉 거래일이 일치하지 않습니다: {completed}"
+            )
         snapshot = snapshot_from_row(symbol, timestamp, target.loc[timestamp])
         spy_snapshot = snapshot_from_row("SPY", timestamp, spy.loc[timestamp])
         qqq_snapshot = snapshot_from_row("QQQ", timestamp, qqq.loc[timestamp])
@@ -166,7 +197,9 @@ class AnalysisService:
                 name = str(benchmark).upper()
                 frame = frames.get(name)
                 if frame is not None and timestamp in frame.index:
-                    sector_benchmarks[name] = snapshot_from_row(name, timestamp, frame.loc[timestamp])
+                    sector_benchmarks[name] = snapshot_from_row(
+                        name, timestamp, frame.loc[timestamp]
+                    )
                 elif frame is not None:
                     self.repository.log_event(
                         "WARNING",
@@ -177,7 +210,8 @@ class AnalysisService:
                     )
 
         if (
-            self.config.rebuy.enabled
+            create_signals
+            and self.config.rebuy.enabled
             and position.state.value == "PARTIAL_TP_1"
             and not position.rebuy_recovery_armed
             and evaluate_rebuy_recovery(snapshot, self.config)
@@ -199,7 +233,7 @@ class AnalysisService:
         )
         signal_id = None
         created = False
-        if decision.allowed:
+        if create_signals and decision.allowed:
             self.repository.invalidate_active_signals(
                 symbol,
                 reason="SUPERSEDED_BY_LATEST_ANALYSIS",
@@ -226,7 +260,7 @@ class AnalysisService:
                     symbol=symbol,
                     context={"signal_id": signal_id, "trade_date": completed.isoformat()},
                 )
-        else:
+        elif create_signals:
             invalidated = self.repository.invalidate_active_signals(
                 symbol, reason="CURRENT_ENTRY_GATES_FAILED"
             )

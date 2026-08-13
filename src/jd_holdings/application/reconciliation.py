@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from jd_holdings.config import StrategyConfig
 from jd_holdings.core.enums import PositionState
+from jd_holdings.core.v322_allocation import ALLOCATION_SYMBOLS
 
 from .broker import Broker
 from .database import SQLiteRepository
@@ -34,35 +35,55 @@ class ReconciliationService:
         self.config = config
         self.repository = repository
         self.broker = broker
+        self._ensure_allocation_rows()
+
+    def _ensure_allocation_rows(self) -> None:
+        underlyings = {"QQQ": "QQQ", "TQQQ": "QQQ", "SOXL": "SOXX"}
+        now = datetime.now(UTC).isoformat()
+        with self.repository.transaction() as connection:
+            for symbol in ALLOCATION_SYMBOLS:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO core_positions(
+                        symbol, underlying, target_weight, updated_at
+                    ) VALUES (?, ?, '0', ?)
+                    """,
+                    (symbol, underlyings[symbol], now),
+                )
 
     def run(self) -> dict[str, list[str]]:
         broker_holdings = {item["symbol"]: item for item in self.broker.get_holdings()}
         result: dict[str, list[str]] = {}
-        for symbol in self.config.enabled_symbols:
-            position = self.repository.get_position(symbol)
+        allocation_problem = False
+        for symbol in ALLOCATION_SYMBOLS:
+            core = self.repository.get_core_position(symbol)
+            core_qty = int(core["qty"])
+            booster_qty = 0
+            booster_state = PositionState.EMPTY
+            if symbol in self.config.enabled_symbols:
+                position = self.repository.get_position(symbol)
+                booster_qty = position.quantity
+                booster_state = position.state
             holding = broker_holdings.get(symbol)
             broker_qty = int(Decimal(str(holding["quantity"]))) if holding else 0
-            core_qty = int(self.repository.get_core_position(symbol)["qty"])
-            expected_total = position.quantity + core_qty
+            expected_total = core_qty + booster_qty
             issues: list[str] = []
+
+            if booster_qty > 0 or booster_state != PositionState.EMPTY:
+                issues.append(
+                    f"V322_DIRECT_BOOSTER_STATE_PRESENT:{booster_state.value}:{booster_qty}"
+                )
             if expected_total != broker_qty:
                 issues.append(f"BROKER_DB_QTY_MISMATCH:{broker_qty}!={expected_total}")
-            if position.state == PositionState.EMPTY and core_qty == 0 and broker_qty > 0:
-                issues.append("DB_EMPTY_BROKER_POSITION")
-            if (position.state != PositionState.EMPTY or core_qty > 0) and broker_qty == 0:
+            if expected_total == 0 and broker_qty > 0:
+                issues.append("UNMANAGED_PERSONAL_ALLOCATION_SYMBOL")
+            if expected_total > 0 and broker_qty == 0:
                 issues.append("DB_POSITION_BROKER_EMPTY")
-            plan = self.repository.active_tp_plan(symbol)
-            if broker_qty > 0 and plan:
-                expected_tp = (
-                    int(plan["tp1_target_qty"])
-                    - int(plan["tp1_filled_qty"])
-                    + int(plan["tp2_target_qty"])
-                    - int(plan["tp2_filled_qty"])
-                )
-                if expected_tp != position.quantity:
-                    issues.append(
-                        f"TP_PLAN_QTY_MISMATCH:{expected_tp}!={position.quantity}"
-                    )
+
+            plan = self.repository.active_tp_plan(symbol) if symbol in self.config.enabled_symbols else None
+            if plan is not None:
+                issues.append("V322_DIRECT_TP_PLAN_PRESENT")
+
             local_orders = self.repository.open_orders(symbol)
             if any(
                 str(order["status"]) == "UNKNOWN" and not order.get("broker_order_id")
@@ -86,22 +107,30 @@ class ReconciliationService:
                     issues.append("BROKER_DB_OPEN_ORDER_MISMATCH")
             except Exception as exc:
                 issues.append(f"BROKER_OPEN_ORDER_LOOKUP_FAILED:{type(exc).__name__}")
+
             if issues:
+                allocation_problem = True
                 result[symbol] = issues
-                if position.state != PositionState.SAFE_MODE:
-                    self.repository.transition_position(
-                        symbol,
-                        expected_state=position.state,
-                        new_state=PositionState.SAFE_MODE,
-                        reason_code="BROKER_DB_MISMATCH",
-                        expected_version=position.version,
-                    )
+                if symbol in self.config.enabled_symbols:
+                    position = self.repository.get_position(symbol)
+                    if position.state != PositionState.SAFE_MODE:
+                        self.repository.transition_position(
+                            symbol,
+                            expected_state=position.state,
+                            new_state=PositionState.SAFE_MODE,
+                            reason_code="BROKER_DB_MISMATCH",
+                            expected_version=position.version,
+                        )
                 self.repository.log_event(
                     "SAFE_MODE",
                     "RECONCILIATION_FAILED",
                     ";".join(issues),
                     symbol=symbol,
                 )
+
+        self.repository.set_system_value(
+            "v322_portfolio_safe_mode", "1" if allocation_problem else "0"
+        )
         if self.config.idle_cash.enabled:
             cash_symbol = self.config.idle_cash.symbol
             state = self.repository.get_idle_cash_state()

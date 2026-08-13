@@ -1,39 +1,24 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
-import pandas as pd
 import pytest
 
+from jd_holdings import __version__
 from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import ApprovalError, SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
-from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service import TradingService
+from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.bot import restore_dry_run_orders
 from jd_holdings.core.enums import PositionState
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
 APPROVAL_TIME = datetime(2026, 8, 4, 12, tzinfo=UTC)
-
-
-class FrameSource:
-    def __init__(self, frames: dict[str, pd.DataFrame]) -> None:
-        self.frames = frames
-
-    def daily(self, symbol, start, end, *, refresh=False):
-        del start, end, refresh
-        return self.frames[symbol]
-
-
-def _monthly_frame(values: list[float]) -> pd.DataFrame:
-    index = pd.date_range("2025-08-31", periods=len(values), freq="ME")
-    index = index[:-1].append(pd.DatetimeIndex([pd.Timestamp("2026-07-31")]))
-    return pd.DataFrame({"close": values}, index=index)
+SIGNAL_DATE = date(2026, 8, 3)
 
 
 def _settings(tmp_path) -> RuntimeSettings:
@@ -50,28 +35,27 @@ def _settings(tmp_path) -> RuntimeSettings:
 def _build_core_signal(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "jdss.db", config)
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     order_manager = OrderManager(repository, broker, _settings(tmp_path))
     market_clock = MarketClock()
-    portfolio = PortfolioService(
-        config,
-        repository,
-        broker,
-        order_manager,
-        FrameSource(
-            {
-                "QQQ": _monthly_frame(list(range(100, 112))),
-                "SOXX": _monthly_frame(list(range(112, 100, -1))),
-            }
-        ),
-        market_clock,
-        trading_mode="dry_run",
+    repository.set_core_target(
+        "TQQQ",
+        active=True,
+        target_weight=Decimal("0.10"),
+        signal_trade_date=SIGNAL_DATE,
     )
-    run = portfolio.run_month_end(datetime(2026, 8, 3, 22, tzinfo=UTC))
-    assert run is not None and len(run.signals) == 1
-    trading = TradingService(
+    signal_id, created = repository.create_core_buy_signal(
+        symbol="TQQQ",
+        trade_date=SIGNAL_DATE,
+        signal_close=Decimal("100"),
+        planned_budget=Decimal("5000"),
+        valid_until=market_clock.next_session_close(SIGNAL_DATE),
+        code_version=__version__,
+    )
+    assert created
+    trading = FinalTradingService(
         config,
         repository,
         broker,
@@ -80,7 +64,7 @@ def _build_core_signal(tmp_path, config):
         TakeProfitManager(repository, broker, order_manager),
         market_clock,
     )
-    return repository, broker, trading, run.signals[0]
+    return repository, broker, trading, signal_id
 
 
 def test_core_quote_never_exceeds_signal_time_planned_quantity(tmp_path, config):
@@ -120,7 +104,7 @@ def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path,
         "quantity": 10,
         "averagePurchasePrice": Decimal("100"),
     }
-    broker.buying_power = Decimal("19000")
+    broker.buying_power = Decimal("49000")
 
     review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
     quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
@@ -145,7 +129,7 @@ def test_core_signal_is_invalidated_when_symbol_is_in_safe_mode(tmp_path, config
     assert repository.get_signal(signal_id)["status"] == "INVALID"
 
 
-def test_disabled_idle_cash_safe_mode_flag_does_not_block_core(tmp_path, config):
+def test_disabled_idle_cash_safe_mode_flag_does_not_block_allocation(tmp_path, config):
     repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
     repository.set_system_value("idle_cash_safe_mode", "1")
 
@@ -175,7 +159,7 @@ def test_restart_sequence_uses_completed_historical_dry_orders(tmp_path, config)
         filled_qty=1,
         average_fill_price=Decimal("100"),
     )
-    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("19900"))
+    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("49900"))
 
     restore_dry_run_orders(repository, broker)
 

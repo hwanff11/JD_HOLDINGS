@@ -17,7 +17,6 @@ from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
     _format_idle_cash_event,
-    _guide_cards,
     _is_toss_order_maintenance_window,
     _profit_loss,
     _regime_label,
@@ -25,7 +24,10 @@ from jd_holdings.infrastructure.telegram_bot import (
     parse_backtest_request,
     parse_history_request,
 )
-from jd_holdings.infrastructure.telegram_bot_final import FinalTelegramBotApp
+from jd_holdings.infrastructure.telegram_bot_final import (
+    FinalTelegramBotApp,
+    _v322_guide_cards,
+)
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
@@ -223,7 +225,7 @@ def test_final_code_version_matches_strategy_release(config):
     project = tomllib.loads(
         (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
-    assert __version__ == "3.1.1"
+    assert __version__ == "3.2.2"
     assert project["version"] == __version__
     assert config.config_version == __version__
 
@@ -237,32 +239,28 @@ def test_sgov_legacy_command_parser_remains_backward_compatible():
 
 
 def test_telegram_guide_matches_current_contract():
-    cards = _guide_cards()
+    cards = _v322_guide_cards()
     guide = "\n".join(cards)
     for expected in (
-        "V3.1.1",
+        "V3.2.2",
+        "QQQ",
+        "0.5 / 1.0 / 1.25 / 1.5x",
+        "30%",
+        "SOXX",
+        "126거래일",
         "$50,000",
-        "6개월",
-        "10%",
-        "15%",
-        "$20,000",
-        "$18,000",
-        "40%",
-        "55점",
-        "-2%",
-        "-5%",
-        "+4%",
-        "+10%",
-        "재투자",
-        "SGOV",
-        "QQQ/QQQM",
+        "75%",
+        "최대 5%",
+        "2단계 승인",
+        "forced dry-run",
+        "SAFE_MODE",
     ):
         assert expected in guide
     assert len(cards) == 5
     assert all(len(card) < 4096 for card in cards)
     for rejected in (
         "10개월 이동평균",
-        "최대 5%",
+        "V3.1.1",
         "$8,000",
         "$7,200",
         "-7%",

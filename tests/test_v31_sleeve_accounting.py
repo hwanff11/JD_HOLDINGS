@@ -71,7 +71,7 @@ def _approved_entry(repository, trading, config):
     return quote
 
 
-def test_booster_ledger_stays_separate_when_core_shares_exist(tmp_path, config):
+def test_legacy_booster_ledger_is_detected_when_allocation_shares_exist(tmp_path, config):
     repository, broker, order_manager, position_manager, _, trading = _services(tmp_path, config)
     with repository.transaction() as connection:
         connection.execute(
@@ -111,7 +111,12 @@ def test_booster_ledger_stays_separate_when_core_shares_exist(tmp_path, config):
     assert position.state == PositionState.PARTIAL_TP_1
     assert int(repository.get_core_position("TQQQ")["qty"]) == 10
     assert int(broker.holdings["TQQQ"]["quantity"]) == 10 + position.quantity
-    assert ReconciliationService(config, repository, broker).run() == {}
+    mismatches = ReconciliationService(config, repository, broker).run()
+    assert any(
+        issue.startswith("V322_DIRECT_BOOSTER_STATE_PRESENT")
+        for issue in mismatches["TQQQ"]
+    )
+    assert "V322_DIRECT_TP_PLAN_PRESENT" in mismatches["TQQQ"]
 
 
 def test_replaced_tp1_preserves_previous_partial_fill_count(tmp_path, config):

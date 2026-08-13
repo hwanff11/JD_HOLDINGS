@@ -31,18 +31,31 @@ def restore_dry_run_holdings(
     repository: SQLiteRepository,
     broker: MarketDataDryRunBroker,
 ) -> None:
-    """Rebuild the in-memory dry-run account from its persisted JDSS ledger."""
+    """Rebuild the in-memory dry-run account from the persisted V3.2.2 ledger."""
+    totals: dict[str, tuple[int, Decimal]] = {}
+    for core in repository.core_positions():
+        quantity = int(core["qty"])
+        if quantity <= 0:
+            continue
+        symbol = str(core["symbol"])
+        cost = Decimal(str(core["cost_basis"] or "0"))
+        old_qty, old_cost = totals.get(symbol, (0, Decimal("0")))
+        totals[symbol] = (old_qty + quantity, old_cost + cost)
+    # Direct JDSS quantities should stay zero in V3.2.2. Include them during
+    # recovery so a stale/corrupt ledger cannot silently disappear before reconciliation.
     for symbol in repository.config.enabled_symbols:
         position = repository.get_position(symbol)
-        core = repository.get_core_position(symbol)
-        core_quantity = int(core["qty"])
-        total_quantity = position.quantity + core_quantity
-        if total_quantity <= 0:
+        if position.quantity <= 0:
             continue
-        combined_cost = position.current_cost_basis + Decimal(str(core["cost_basis"]))
+        old_qty, old_cost = totals.get(symbol, (0, Decimal("0")))
+        totals[symbol] = (
+            old_qty + position.quantity,
+            old_cost + position.current_cost_basis,
+        )
+    for symbol, (quantity, cost) in totals.items():
         broker.holdings[symbol] = {
-            "quantity": total_quantity,
-            "averagePurchasePrice": combined_cost / Decimal(total_quantity),
+            "quantity": quantity,
+            "averagePurchasePrice": cost / Decimal(quantity),
         }
     if repository.config.idle_cash.enabled:
         cash_state = repository.get_idle_cash_state()
@@ -51,9 +64,6 @@ def restore_dry_run_holdings(
                 "quantity": cash_state.managed_quantity,
                 "averagePurchasePrice": cash_state.average_price,
             }
-
-    # Reconstruct only cash still inside the fixed JDSS principal budget.
-    # Realized profit above the principal ceiling remains personal/unmanaged cash.
     broker.buying_power = max(
         Decimal("0"), managed_cash_balance(repository.config, repository)
     )
@@ -80,14 +90,12 @@ def restore_dry_run_orders(
         broker_order_id = str(local.get("broker_order_id") or "")
         if not broker_order_id.startswith("DRY-"):
             continue
-
         local_status = str(local.get("status") or "PENDING")
         filled_qty = int(local.get("filled_qty") or 0)
         if local_status == "UNKNOWN":
             continue
         if local_status == "PARTIAL_FILLED" or filled_qty > 0:
             continue
-
         try:
             raw = json.loads(str(local.get("raw_json") or "{}"))
         except json.JSONDecodeError:
@@ -144,7 +152,7 @@ def main() -> None:
     data_source = YFinanceDataSource(settings.cache_path)
     market_clock = MarketClock()
     if config.portfolio.enabled and settings.trading_mode == "live":
-        raise RuntimeError("JDSS V3.1.1은 운영 검증 전이므로 전체 live 모드가 잠겨 있습니다")
+        raise RuntimeError("JDSS V3.2.2는 검증된 릴리즈라도 live 모드가 별도 승인 전까지 잠겨 있습니다")
     if settings.trading_mode == "live":
         settings.require_live_trading()
         broker = TossClient()
@@ -186,13 +194,8 @@ def main() -> None:
         position_manager,
         tp_manager,
     )
-    reconciliation_service = ReconciliationService(config, repository, broker)
-    if idle_cash_manager is not None:
-        idle_cash_manager.refresh_orders()
-    mismatches = reconciliation_service.run()
-    if mismatches:
-        logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
-    analysis_service = AnalysisService(config, repository, data_source, market_clock)
+    # Constructing the service first ensures the QQQ allocation ledger row exists
+    # before startup reconciliation runs.
     portfolio_service = PortfolioService(
         config,
         repository,
@@ -202,6 +205,13 @@ def main() -> None:
         market_clock,
         trading_mode=settings.trading_mode,
     )
+    reconciliation_service = ReconciliationService(config, repository, broker)
+    if idle_cash_manager is not None:
+        idle_cash_manager.refresh_orders()
+    mismatches = reconciliation_service.run()
+    if mismatches:
+        logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
+    analysis_service = AnalysisService(config, repository, data_source, market_clock)
     app = OperationalTelegramBotApp(
         config,
         settings,

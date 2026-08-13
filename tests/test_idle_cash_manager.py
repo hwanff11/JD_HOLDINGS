@@ -63,9 +63,9 @@ def test_sweep_deposits_only_allocated_idle_cash(tmp_path, config):
 
     state = repository.get_idle_cash_state()
     assert events and "예치" in events[0]
-    assert state.managed_quantity == 197
-    assert broker.get_buying_power("USD") == Decimal("30300")
-    assert broker.get_holdings("SGOV")[0]["quantity"] == "197"
+    assert state.managed_quantity == 496
+    assert broker.get_buying_power("USD") == Decimal("400")
+    assert broker.get_holdings("SGOV")[0]["quantity"] == "496"
     sweep_order = next(order for order in broker.orders.values() if order["side"] == "BUY")
     assert Decimal(str(sweep_order["price"])) == Decimal("100.01")
 
