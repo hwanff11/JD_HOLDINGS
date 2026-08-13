@@ -69,6 +69,11 @@ SOXX 대신 SMH로 proxy를 바꾼 강건성 테스트에서도 핵심 결과가
 - 목표비중 증가는 Telegram 2단계 승인 후 BUY
 - 위험축소 SELL은 자동
 - 목표수량은 HWM75 위험예산, 실제 JDSS 현금, 브로커 주문가능금액 중 가장 제한적인 금액으로 계산
+- 열린 코어 BUY와 아직 allocation 원장에 반영되지 않은 체결수량을 잔여 목표수량에서 차감
+- 목표 변경 전 기존 allocation BUY·SELL을 취소·정산하고, 유효시간이 끝난 코어 BUY를 감시기에서 취소
+- 주문예약 트랜잭션에서 HWM75 예산과 종목 잔여 목표수량을 함께 재검사
+- 동일 client order ID 재시도는 브로커 최신 상태를 DB에 먼저 저장한 뒤 체결 delta만 반영
+- 과거 H40-S3 직접 BUY 신호는 V3.2.2 실행 계층에서 무효화
 - 주문 UNKNOWN, 불완전 위험축소, 브로커/DB 수량 불일치 시 SAFE_MODE
 - QQQ 문제는 portfolio SAFE_MODE, TQQQ/SOXL 문제는 종목 SAFE_MODE와 portfolio reconciliation에 반영
 

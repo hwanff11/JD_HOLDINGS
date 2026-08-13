@@ -7,6 +7,7 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+from jd_holdings.application.allocation_trading_service import AllocationTradingService
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.broker import MarketDataDryRunBroker
 from jd_holdings.application.database import SQLiteRepository
@@ -18,11 +19,10 @@ from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.config import load_config
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
-from jd_holdings.infrastructure.telegram_bot_operational import OperationalTelegramBotApp
+from jd_holdings.infrastructure.telegram_bot_runtime import RuntimeTelegramBotApp
 from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import load_runtime_settings
 
@@ -176,7 +176,7 @@ def main() -> None:
         )
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
-    trading_service = FinalTradingService(
+    trading_service = AllocationTradingService(
         config,
         repository,
         broker,
@@ -212,7 +212,7 @@ def main() -> None:
     if mismatches:
         logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
     analysis_service = AnalysisService(config, repository, data_source, market_clock)
-    app = OperationalTelegramBotApp(
+    app = RuntimeTelegramBotApp(
         config,
         settings,
         repository,

@@ -1,19 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from conftest import make_score, make_snapshot
 
 from jd_holdings import __version__
+from jd_holdings.application.allocation_trading_service import AllocationTradingService
 from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import ApprovalError, SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.bot import restore_dry_run_orders
 from jd_holdings.core.enums import PositionState
+from jd_holdings.core.execution import max_chase_price
+from jd_holdings.core.strategy import evaluate_entry
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
@@ -55,7 +58,7 @@ def _build_core_signal(tmp_path, config):
         code_version=__version__,
     )
     assert created
-    trading = FinalTradingService(
+    trading = AllocationTradingService(
         config,
         repository,
         broker,
@@ -112,6 +115,31 @@ def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path,
     assert quote.quantity == 39
 
 
+def test_core_quote_reserves_quantity_for_an_open_core_buy(tmp_path, config):
+    repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    assert repository.reserve_order(
+        client_order_id="CORE-PENDING-BUY",
+        signal_id=signal_id,
+        cycle_id=None,
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        price=Decimal("100"),
+        quantity=30,
+        purpose="CORE_REBALANCE_BUY",
+    )
+    repository.update_order(
+        "CORE-PENDING-BUY",
+        status="PENDING",
+        broker_order_id="DRY-CORE-PENDING",
+    )
+
+    review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+    quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
+
+    assert quote.quantity == 19
+
+
 def test_core_signal_is_invalidated_when_symbol_is_in_safe_mode(tmp_path, config):
     repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
     position = repository.get_position("TQQQ")
@@ -137,6 +165,39 @@ def test_disabled_idle_cash_safe_mode_flag_does_not_block_allocation(tmp_path, c
 
     assert review_id > 0
     assert repository.get_signal(signal_id)["status"] == "ACTIVE"
+
+
+def test_v322_rejects_legacy_direct_buy_signal(tmp_path, config):
+    repository, _broker, trading, _ = _build_core_signal(tmp_path, config)
+    snapshot = make_snapshot(close=Decimal("100"))
+    score = make_score(84)
+    decision = evaluate_entry(
+        snapshot,
+        score,
+        repository.get_position("TQQQ"),
+        config,
+    )
+    assert decision.allowed
+    signal_id, created = repository.create_signal(
+        symbol="TQQQ",
+        trade_date=SIGNAL_DATE,
+        score=score,
+        atr_pct=Decimal("0.05"),
+        decision=decision,
+        signal_close=snapshot.close,
+        max_chase_price=max_chase_price(snapshot.close, config),
+        valid_until=APPROVAL_TIME + timedelta(days=1),
+        code_version="legacy-direct-signal-test",
+        cycle_id=None,
+    )
+    assert created
+
+    with pytest.raises(ApprovalError, match="V322_DIRECT_SIGNAL_DISABLED"):
+        trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+
+    signal = repository.get_signal(signal_id)
+    assert signal["status"] == "INVALID"
+    assert signal["expired_reason"] == "V322_DIRECT_SIGNAL_DISABLED"
 
 
 def test_restart_sequence_uses_completed_historical_dry_orders(tmp_path, config):

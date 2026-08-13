@@ -70,7 +70,7 @@ def _v322_runtime_text(text: str) -> str:
 telegram_bot_module._guide_cards = _v322_guide_cards
 
 
-class FinalTelegramBotApp(TelegramBotApp):
+class V322TelegramBotApp(TelegramBotApp):
     """Production entry point for the JDSS V3.2.2 Telegram application."""
 
     def _send(self, text: str, *, markup=None, chat_id: int | None = None) -> None:

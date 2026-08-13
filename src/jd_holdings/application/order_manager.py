@@ -45,12 +45,22 @@ class OrderManager:
         if existing:
             if existing.get("broker_order_id"):
                 try:
-                    return receipt_from_order(
+                    receipt = receipt_from_order(
                         self.broker.get_order(str(existing["broker_order_id"])),
                         request.client_order_id,
                     )
                 except Exception as exc:
                     LOGGER.warning("주문 상태 최신화 중 오류 발생: %s", exc)
+                else:
+                    self.repository.update_order(
+                        request.client_order_id,
+                        status=receipt.status,
+                        broker_order_id=receipt.broker_order_id,
+                        filled_qty=receipt.filled_quantity,
+                        average_fill_price=receipt.average_fill_price,
+                        raw=receipt.raw,
+                    )
+                    return receipt
             return OrderReceipt(
                 client_order_id=request.client_order_id,
                 broker_order_id=str(existing.get("broker_order_id") or ""),

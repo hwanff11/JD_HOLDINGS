@@ -31,6 +31,9 @@ V3.2.2에서 목표비중이 증가해 BUY가 필요하면 기존 2단계 승인
 4. 체결 결과를 allocation 원장에 반영
 
 위험예산은 HWM75, JDSS 보유현금, 브로커 주문가능금액 중 가장 제한적인 값으로 계산됩니다.
+이미 대기 중인 코어 BUY와 아직 원장에 반영되지 않은 체결수량도 잔여 목표수량에서 빼며,
+최종 주문예약 트랜잭션에서 이 수량을 다시 확인합니다.
+목표비중이 바뀌면 기존 allocation BUY·SELL을 먼저 취소·정산하고, 만료된 BUY도 주문 감시기가 취소합니다.
 
 ## 자동으로 처리되는 것
 
@@ -53,6 +56,7 @@ V3.1.1과 달리 `/score`의 TQQQ/SOXL JDSS 점수는 독립 $20k 직접 매수�
 - 주문 결과 UNKNOWN
 - 위험축소 SELL 불완전
 - V3.1.1 direct H40 position 또는 TP plan 잔존
+- V3.2.2에서 허용하지 않는 과거 direct H40 BUY 신호
 - 같은 계좌에서 JDSS가 관리하지 않는 개인 QQQ/TQQQ/SOXL 수량 발견
 
 QQQ 문제는 portfolio SAFE_MODE로, TQQQ/SOXL 문제는 종목 및 portfolio reconciliation에 반영됩니다.

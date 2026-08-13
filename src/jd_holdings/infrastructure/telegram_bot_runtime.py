@@ -10,7 +10,7 @@ from .telegram_bot import (
     _format_idle_cash_event,
     _is_toss_order_maintenance_window,
 )
-from .telegram_bot_final import FinalTelegramBotApp
+from .telegram_bot_v322 import V322TelegramBotApp
 
 LOGGER = logging.getLogger(__name__)
 
@@ -75,8 +75,8 @@ def _operator_text(text: str) -> str:
     return text
 
 
-class OperationalTelegramBotApp(FinalTelegramBotApp):
-    """Final V3.1 Telegram app with isolated schedulers and operator alerts."""
+class RuntimeTelegramBotApp(V322TelegramBotApp):
+    """V3.2.2 Telegram app with isolated schedulers and operator alerts."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._runtime_error_notice_at: dict[str, float] = {}

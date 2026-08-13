@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 from jd_holdings.config import StrategyConfig
+from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.core.v322_allocation import V322Policy, hwm_risk_budget
 
 from .broker import Broker
@@ -105,6 +106,32 @@ def _reserved_open_buy_from_connection(
     return reserved
 
 
+def _committed_core_buy_quantity_from_connection(
+    connection: Any, symbol: str
+) -> int:
+    """Return core BUY shares that are ordered or filled but not in the core ledger."""
+    rows = connection.execute(
+        """
+        SELECT orders.qty, orders.filled_qty, orders.status,
+               COALESCE(core_fill_progress.applied_filled_qty, 0) AS applied_filled_qty
+        FROM orders
+        LEFT JOIN core_fill_progress
+          ON core_fill_progress.client_order_id = orders.client_order_id
+        WHERE orders.symbol = ? AND orders.side = 'BUY'
+          AND orders.purpose = 'CORE_REBALANCE_BUY'
+        """,
+        (symbol.upper(),),
+    ).fetchall()
+    committed = 0
+    for row in rows:
+        applied = int(row["applied_filled_qty"])
+        if str(row["status"]) in OPEN_ORDER_STATUSES:
+            committed += max(0, int(row["qty"]) - applied)
+        else:
+            committed += max(0, int(row["filled_qty"]) - applied)
+    return committed
+
+
 def raw_managed_cash_balance(
     config: StrategyConfig, repository: SQLiteRepository
 ) -> Decimal:
@@ -175,6 +202,13 @@ def reserved_open_buy_amount(
         return _reserved_open_buy_from_connection(config, connection)
 
 
+def committed_core_buy_quantity(
+    repository: SQLiteRepository, symbol: str
+) -> int:
+    with repository.transaction() as connection:
+        return _committed_core_buy_quantity_from_connection(connection, symbol)
+
+
 def available_managed_cash(
     config: StrategyConfig,
     repository: SQLiteRepository,
@@ -218,6 +252,29 @@ def reserve_buy_order_with_managed_cash(
         invested = _managed_cost_basis_from_connection(config, connection)
         risk_budget = _risk_budget_from_connection(config, connection)
         reserved = _reserved_open_buy_from_connection(config, connection)
+        if purpose == "CORE_REBALANCE_BUY":
+            core = connection.execute(
+                "SELECT qty, target_weight FROM core_positions WHERE symbol = ?",
+                (symbol.upper(),),
+            ).fetchone()
+            if core is None:
+                raise RuntimeError(f"V3.2.2 코어 목표 종목이 아닙니다: {symbol.upper()}")
+            target = target_quantity(
+                risk_budget,
+                Decimal(str(core["target_weight"])),
+                price,
+                config.global_.buy_fee,
+            )
+            committed = _committed_core_buy_quantity_from_connection(
+                connection, symbol
+            )
+            remaining_target = max(0, target - int(core["qty"]) - committed)
+            if quantity > remaining_target:
+                raise RuntimeError(
+                    "V3.2.2 목표수량을 초과하는 코어 매수를 차단했습니다 "
+                    f"(요청={quantity}주, 잔여={remaining_target}주, "
+                    f"보유={int(core['qty'])}주, 주문중={committed}주)"
+                )
         available = max(
             Decimal("0"),
             min(raw_cash - reserved, risk_budget - invested - reserved, broker_available),
