@@ -144,14 +144,22 @@ jobs:
       - name: Validate focused research scripts
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
-          python -m ruff check scripts/research_v321_relative_strength_booster.py
-      - name: Run relative-strength booster research
+          python -m ruff check scripts/research_v321_core_timing.py
+          python -m ruff check scripts/research_v321_separated_vol_brake.py
+          python -m ruff check --ignore F401 scripts/research_v321_relative_strength_booster.py
+      - name: Run separated volatility brake research
         run: |
           mkdir -p reports
+          python scripts/research_v321_separated_vol_brake.py \
+            --output reports/v321_separated_vol_brake.json
+      - name: Run relative-strength booster research
+        run: |
           python scripts/research_v321_relative_strength_booster.py \
             --output reports/v321_relative_strength_booster.json
-      - name: Upload research artifact
+      - name: Upload research artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: v321-relative-strength-booster-${{ github.run_id }}
-          path: reports/v321_relative_strength_booster.json
+          name: v321-structural-research-${{ github.run_id }}
+          path: |
+            reports/v321_separated_vol_brake.json
+            reports/v321_relative_strength_booster.json
