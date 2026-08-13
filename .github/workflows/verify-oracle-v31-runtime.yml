@@ -128,11 +128,15 @@ jobs:
           set +a
           "$TARGET_DIR/venv/bin/python" - <<'PY'
           from jd_holdings.infrastructure.market_clock import MarketClock
-          print(MarketClock().phase().value)
+          print(MarketClock().classify_session())
           PY
           REMOTE
           )"
           phase="$(printf '%s' "$phase" | tail -n1 | tr -d '\r')"
+          case "$phase" in
+            closed|pre_market|regular|after_hours) ;;
+            *) echo "Unexpected market phase: $phase" >&2; exit 1 ;;
+          esac
           echo "phase=$phase" >> "$GITHUB_OUTPUT"
           echo "Oracle US-market phase: $phase"
 
