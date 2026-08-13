@@ -57,7 +57,7 @@ jobs:
           grep -q 'config_version: "3.1.1"' strategy.yaml
           grep -q 'total_capital: 50000' strategy.yaml
           grep -q 'capital_per_symbol: 20000' strategy.yaml
-          grep -q 'enabled: false' strategy.yaml
+          grep -A3 '^idle_cash:' strategy.yaml | grep -q 'enabled: false'
           grep -q 'live_enabled: false' strategy.yaml
 
       - name: Prepare SSH
