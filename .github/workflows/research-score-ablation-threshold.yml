@@ -1,0 +1,95 @@
+name: JDSS V3.1.1 Score Ablation Threshold Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_score_ablation_threshold.py"
+      - ".github/workflows/research-score-ablation-threshold.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint research script
+        run: ruff check scripts/research_score_ablation_threshold.py
+      - name: Run score ablation and threshold research
+        run: |
+          mkdir -p reports
+          python scripts/research_score_ablation_threshold.py \
+            --output reports/score_ablation_threshold.json \
+            --csv reports/score_ablation_threshold_grid.csv \
+            --slippage 0.001
+      - name: Publish research summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("reports/score_ablation_threshold.json").read_text(encoding="utf-8")
+          )
+          threshold_rows = sorted(
+              report["threshold_only"], key=lambda row: int(row["threshold"])
+          )
+          lines = [
+              "# V3.1.1 Score Ablation / Threshold Research",
+              "",
+              f"- 연구 종료일: {report['research_end']}",
+              "- threshold: 45 / 50 / 55 / 60 / 65 / 70",
+              "- ablation: Regime / Oversold / Reversal / Volume / ATR",
+              "",
+              "## Threshold only",
+              "",
+              "| Score | Train CAGR | Train MDD | Validation CAGR | Validation MDD | Objective |",
+              "|---:|---:|---:|---:|---:|---:|",
+          ]
+          for row in threshold_rows:
+              lines.append(
+                  f"| {int(row['threshold'])} | {row['train_cagr_pct']:+.2f}% | "
+                  f"{row['train_mdd_pct']:.2f}% | {row['validation_cagr_pct']:+.2f}% | "
+                  f"{row['validation_mdd_pct']:.2f}% | {row['objective']:+.4f} |"
+              )
+          lines += [
+              "",
+              "## Locked OOS",
+              "",
+              "| Model | CAGR | MDD | Sharpe | Booster entries |",
+              "|---|---:|---:|---:|---:|",
+          ]
+          for label, metrics in report["final_periods"]["oos"].items():
+              lines.append(
+                  f"| {label} | {metrics['cagr_pct']:+.2f}% | {metrics['mdd_pct']:.2f}% | "
+                  f"{metrics['sharpe']:.3f} | {metrics['booster_entries']} |"
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          Path("reports/score_ablation_threshold_summary.md").write_text(
+              summary, encoding="utf-8"
+          )
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write(summary)
+          PY
+      - name: Upload research artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: score-ablation-threshold-${{ github.run_id }}
+          path: |
+            reports/score_ablation_threshold.json
+            reports/score_ablation_threshold_grid.csv
+            reports/score_ablation_threshold_summary.md
