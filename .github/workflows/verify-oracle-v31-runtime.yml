@@ -88,22 +88,24 @@ jobs:
             "TARGET_DIR='$SERVER_TARGET_DIR' EXPECTED_SHA='$EXPECTED_SHA' bash -s" <<'REMOTE'
           set -Eeuo pipefail
           current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
           test -d "$current"
+          test -f "$env_file"
           deployed_sha="$(basename "$current")"
           test "$deployed_sha" = "$EXPECTED_SHA"
           test "$current" = "$TARGET_DIR/releases/$EXPECTED_SHA"
           grep -q 'JDSS-3.1.1-TWIN-H40-S3' "$current/strategy.yaml"
           grep -q 'total_capital: 50000' "$current/strategy.yaml"
           grep -A3 '^idle_cash:' "$current/strategy.yaml" | grep -q 'enabled: false'
-          grep -q '^JDSS_TRADING_MODE=dry_run$' "$TARGET_DIR/.env"
-          grep -q '^JDSS_LIVE_CONFIRMATION=$' "$TARGET_DIR/.env"
+          grep -q '^JDSS_TRADING_MODE=dry_run$' "$env_file"
+          grep -q '^JDSS_LIVE_CONFIRMATION=$' "$env_file"
           sudo systemctl is-active --quiet jd_holdings_bot
           cd "$current"
           set -a
-          source "$TARGET_DIR/.env"
+          source "$env_file"
           set +a
-          .venv/bin/jdss validate-config
-          .venv/bin/jdss toss-smoke
+          "$TARGET_DIR/venv/bin/jdss" --config "$current/strategy.yaml" validate-config
+          "$TARGET_DIR/venv/bin/jdss" --config "$current/strategy.yaml" toss-smoke
           REMOTE
 
       - name: Check whether restart verification is safe now
@@ -119,11 +121,12 @@ jobs:
             "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
           set -Eeuo pipefail
           current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
           cd "$current"
           set -a
-          source "$TARGET_DIR/.env"
+          source "$env_file"
           set +a
-          .venv/bin/python - <<'PY'
+          "$TARGET_DIR/venv/bin/python" - <<'PY'
           from jd_holdings.infrastructure.market_clock import MarketClock
           print(MarketClock().phase().value)
           PY
@@ -149,11 +152,12 @@ jobs:
           sleep 3
           sudo systemctl is-active --quiet jd_holdings_bot
           current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
           cd "$current"
           set -a
-          source "$TARGET_DIR/.env"
+          source "$env_file"
           set +a
-          .venv/bin/jdss validate-config
+          "$TARGET_DIR/venv/bin/jdss" --config "$current/strategy.yaml" validate-config
           REMOTE
 
       - name: Record session-safe verifier outcome
