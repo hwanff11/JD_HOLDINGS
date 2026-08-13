@@ -103,13 +103,8 @@ jobs:
                         f"- 고정 원금 상한: ${v3.get('capital_ceiling', 0):,.2f}",
                         f"- 최대 원가 투입: ${v3.get('maximum_invested_cost', 0):,.2f}",
                         f"- SGOV: {'ON' if v3.get('idle_cash_enabled') else 'OFF'}"]
-              half = v3.get("half_year_returns_pct", {})
-              if half:
-                  lines += ["", "## 반기별 수익률", "", "| 반기 | 수익률 |", "|---|---:|"]
-                  lines += [f"| {period} | {value:+.2f}% |" for period, value in half.items()]
           summary = "\n".join(lines) + "\n"
           Path("reports/backtest.md").write_text(summary, encoding="utf-8")
-          print("===== JDSS BACKTEST RESULT =====")
           print(summary)
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as f:
               f.write(summary)
@@ -144,22 +139,15 @@ jobs:
       - name: Validate focused research scripts
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
-          python -m ruff check scripts/research_v321_core_timing.py
-          python -m ruff check scripts/research_v321_separated_vol_brake.py
-          python -m ruff check --ignore F401 scripts/research_v321_relative_strength_booster.py
-      - name: Run separated volatility brake research
+          python -m ruff check scripts/research_v321_relative_strength_booster.py
+          python -m ruff check scripts/research_v321_rs6m_split.py
+      - name: Run diversified RS6M sleeve comparison
         run: |
           mkdir -p reports
-          python scripts/research_v321_separated_vol_brake.py \
-            --output reports/v321_separated_vol_brake.json
-      - name: Run relative-strength booster research
-        run: |
-          python scripts/research_v321_relative_strength_booster.py \
-            --output reports/v321_relative_strength_booster.json
-      - name: Upload research artifacts
+          python scripts/research_v321_rs6m_split.py \
+            --output reports/v321_rs6m_split.json
+      - name: Upload research artifact
         uses: actions/upload-artifact@v6
         with:
-          name: v321-structural-research-${{ github.run_id }}
-          path: |
-            reports/v321_separated_vol_brake.json
-            reports/v321_relative_strength_booster.json
+          name: v321-rs6m-split-${{ github.run_id }}
+          path: reports/v321_rs6m_split.json
