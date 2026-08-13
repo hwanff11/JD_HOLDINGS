@@ -146,6 +146,7 @@ jobs:
           python -m ruff check scripts/research_v321_controlled_compounding.py
           python -m ruff check scripts/research_v321_hwm_risk_controls.py
           python -m ruff check scripts/research_v321_core_timing.py
+          python -m ruff check scripts/research_v321_recovery_only.py
       - name: Run HWM75 risk-control research
         run: |
           mkdir -p reports
@@ -155,6 +156,10 @@ jobs:
         run: |
           python scripts/research_v321_core_timing.py \
             --output reports/v321_core_timing.json
+      - name: Run weekly recovery-only research
+        run: |
+          python scripts/research_v321_recovery_only.py \
+            --output reports/v321_recovery_only.json
       - name: Upload research artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -162,3 +167,4 @@ jobs:
           path: |
             reports/v321_hwm_risk_controls.json
             reports/v321_core_timing.json
+            reports/v321_recovery_only.json
