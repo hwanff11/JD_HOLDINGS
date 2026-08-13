@@ -18,7 +18,7 @@ portfolio:
     SOXL: SOXX
   buy_approval_required: true
   risk_reducing_sells_automatic: true
-  rebalance_tolerance_weight: 0.005
+  rebalance_tolerance_weight: 0.0
 
 global:
   # H40/S3 is retained only as the virtual JDSS overlay-signal engine.
