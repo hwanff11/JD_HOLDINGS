@@ -2,59 +2,23 @@ name: JDSS V3 Backtest
 
 on:
   workflow_dispatch:
-    inputs:
-      symbol:
-        description: "백테스트 종목"
-        required: true
-        default: "ALL"
-        type: choice
-        options: [ALL, TQQQ, SOXL]
-      start:
-        description: "시작일 (YYYY-MM-DD)"
-        required: false
-        default: "2011-01-01"
-        type: string
-      end:
-        description: "종료일 (비워두면 최신 완결 거래일)"
-        required: false
-        default: ""
-        type: string
-      slippage:
-        description: "슬리피지 (예: 0.0010)"
-        required: false
-        default: "0.0010"
-        type: string
-      issue_number:
-        description: "결과를 남길 Issue 번호 (선택)"
-        required: false
-        default: ""
-        type: string
   pull_request:
     paths:
       - "strategy.yaml"
       - "src/jd_holdings/**"
       - "tests/**"
+      - "scripts/research_v321_*.py"
       - ".github/workflows/jdss-backtest.yml"
-  issues:
-    types: [opened]
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   backtest:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issues' && github.actor == github.repository_owner &&
-      startsWith(github.event.issue.title, '[backtest-v3]'))
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -62,73 +26,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-      - name: Run backtest
-        env:
-          INPUT_SYMBOL: ${{ inputs.symbol || 'ALL' }}
-          INPUT_START: ${{ inputs.start || '2011-01-01' }}
-          INPUT_END: ${{ inputs.end }}
-          INPUT_SLIPPAGE: ${{ inputs.slippage || '0.0010' }}
+      - name: Verify production V3.1.1 backtest
         run: |
-          set -Eeuo pipefail
           mkdir -p reports
-          args=(backtest --symbol "$INPUT_SYMBOL" --start "$INPUT_START" --slippage "$INPUT_SLIPPAGE" --output reports/backtest.json)
-          if [[ -n "$INPUT_END" ]]; then args+=(--end "$INPUT_END"); fi
-          jdss "${args[@]}"
-      - name: Print and publish V3 summary
-        env:
-          INPUT_SYMBOL: ${{ inputs.symbol || 'ALL' }}
-          INPUT_START: ${{ inputs.start || '2011-01-01' }}
-          INPUT_END: ${{ inputs.end }}
-          INPUT_SLIPPAGE: ${{ inputs.slippage || '0.0010' }}
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          report = json.loads(Path("reports/backtest.json").read_text(encoding="utf-8"))
-          lines = ["# JDSS V3 백테스트 결과", "", f"- 종목: {os.environ['INPUT_SYMBOL']}",
-                   f"- 기간: {os.environ['INPUT_START']} ~ {os.environ['INPUT_END'] or '최신 완결 거래일'}",
-                   f"- 슬리피지: {os.environ['INPUT_SLIPPAGE']}", f"- 전략 버전: {report['strategy_version']}", "",
-                   "| 구분 | Total Return | CAGR | MDD | 거래 횟수 |", "|---|---:|---:|---:|---:|"]
-          for symbol, result in report["results"].items():
-              m = result["metrics"]
-              lines.append(f"| {symbol} | {m['total_return_pct']:+.2f}% | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | {m['closed_cycles']} |")
-          portfolio = report.get("portfolio_metrics", {})
-          if portfolio:
-              lines += ["", "## 포트폴리오", "", f"- Total Return: {portfolio['total_return_pct']:+.2f}%",
-                        f"- CAGR: {portfolio['cagr_pct']:+.2f}%", f"- MDD: {portfolio['mdd_pct']:.2f}%"]
-          v3 = report.get("v3_portfolio", {}).get("metrics", {})
-          if v3:
-              lines += [f"- Sharpe: {v3['sharpe']:.3f}", f"- 평균 노출: {v3['average_exposure_pct']:.2f}%",
-                        f"- 코어 체결: {v3['component_fills']['core']}", f"- 부스터 체결: {v3['component_fills']['booster']}",
-                        f"- 고정 원금 상한: ${v3.get('capital_ceiling', 0):,.2f}",
-                        f"- 최대 원가 투입: ${v3.get('maximum_invested_cost', 0):,.2f}",
-                        f"- SGOV: {'ON' if v3.get('idle_cash_enabled') else 'OFF'}"]
-          summary = "\n".join(lines) + "\n"
-          Path("reports/backtest.md").write_text(summary, encoding="utf-8")
-          print(summary)
-          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as f:
-              f.write(summary)
-          PY
-      - name: Upload detailed report archive
-        uses: actions/upload-artifact@v6
+          jdss backtest --symbol ALL --start 2011-01-01 --slippage 0.0010 \
+            --output reports/backtest.json
+      - uses: actions/upload-artifact@v6
         with:
           name: jdss-backtest-${{ github.run_id }}
-          path: reports/backtest.*
-      - name: Comment result on Issue
-        if: ${{ github.event_name == 'issues' || inputs.issue_number != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
-        run: gh issue comment "$ISSUE_NUMBER" --body-file reports/backtest.md
+          path: reports/backtest.json
 
   hwm-risk-control-research:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -142,13 +55,13 @@ jobs:
           python -m ruff check scripts/research_v321_relative_strength_booster.py
           python -m ruff check scripts/research_v321_rs6m_split.py
           python -m ruff check scripts/research_v321_rs6m_monthly_lock.py
-      - name: Run monthly-locked RS6M comparison
+          python -m ruff check scripts/research_v321_rs6m_strong_only.py
+      - name: Run strongest-regime RS6M comparison
         run: |
           mkdir -p reports
-          python scripts/research_v321_rs6m_monthly_lock.py \
-            --output reports/v321_rs6m_monthly_lock.json
-      - name: Upload research artifact
-        uses: actions/upload-artifact@v6
+          python scripts/research_v321_rs6m_strong_only.py \
+            --output reports/v321_rs6m_strong_only.json
+      - uses: actions/upload-artifact@v6
         with:
-          name: v321-rs6m-monthly-lock-${{ github.run_id }}
-          path: reports/v321_rs6m_monthly_lock.json
+          name: v321-rs6m-strong-only-${{ github.run_id }}
+          path: reports/v321_rs6m_strong_only.json
