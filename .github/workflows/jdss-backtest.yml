@@ -145,13 +145,20 @@ jobs:
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
           python -m ruff check scripts/research_v321_hwm_risk_controls.py
+          python -m ruff check scripts/research_v321_core_timing.py
       - name: Run HWM75 risk-control research
         run: |
           mkdir -p reports
           python scripts/research_v321_hwm_risk_controls.py \
             --output reports/v321_hwm_risk_controls.json
-      - name: Upload research artifact
+      - name: Run V3.2.1 core timing research
+        run: |
+          python scripts/research_v321_core_timing.py \
+            --output reports/v321_core_timing.json
+      - name: Upload research artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: v321-hwm-risk-controls-${{ github.run_id }}
-          path: reports/v321_hwm_risk_controls.json
+          name: v321-hwm-core-research-${{ github.run_id }}
+          path: |
+            reports/v321_hwm_risk_controls.json
+            reports/v321_core_timing.json
