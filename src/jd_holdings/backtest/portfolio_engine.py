@@ -60,16 +60,19 @@ class PortfolioBacktestEngine:
         end: str | date,
         slippage: float | None = None,
     ) -> PortfolioBacktestResult:
-        required = {
+        market_symbols = {
             *self.config.enabled_symbols,
             *self.config.portfolio.core_underlyings.values(),
-            self.config.idle_cash.symbol,
         }
+        required = set(market_symbols)
+        if self.config.idle_cash.enabled:
+            required.add(self.config.idle_cash.symbol)
         missing = required - set(frames)
         if missing:
             raise ValueError("포트폴리오 데이터 누락: " + ", ".join(sorted(missing)))
+
         index: pd.DatetimeIndex | None = None
-        for symbol in required - {self.config.idle_cash.symbol}:
+        for symbol in market_symbols:
             index = frames[symbol].index if index is None else index.intersection(frames[symbol].index)
         if index is None:
             raise ValueError("공통 거래일이 없습니다")
@@ -81,10 +84,15 @@ class PortfolioBacktestEngine:
         slip = float(self.config.backtest.default_slippage if slippage is None else slippage)
         buy_fee = float(self.config.global_.buy_fee)
         sell_fee = float(self.config.global_.sell_fee)
-        cash = float(self.config.portfolio.total_capital)
+        capital_ceiling = float(self.config.portfolio.total_capital)
+        cash = capital_ceiling
         quantities = {
             "core": {symbol: 0 for symbol in self.config.enabled_symbols},
             "booster": {symbol: 0 for symbol in self.config.enabled_symbols},
+        }
+        cost_basis = {
+            "core": {symbol: 0.0 for symbol in self.config.enabled_symbols},
+            "booster": {symbol: 0.0 for symbol in self.config.enabled_symbols},
         }
         month_ends = self._month_end_sessions(index)
         trends = {
@@ -105,9 +113,13 @@ class PortfolioBacktestEngine:
         trades: list[dict[str, Any]] = []
         equity_values: list[float] = []
         exposures: list[float] = []
+        invested_cost_values: list[float] = []
         idle_income = 0.0
-        idle_close = frames[self.config.idle_cash.symbol]["close"].reindex(index).ffill()
-        idle_returns = idle_close.pct_change(fill_method=None).fillna(0.0)
+        if self.config.idle_cash.enabled:
+            idle_close = frames[self.config.idle_cash.symbol]["close"].reindex(index).ffill()
+            idle_returns = idle_close.pct_change(fill_method=None).fillna(0.0)
+        else:
+            idle_returns = pd.Series(0.0, index=index)
 
         for timestamp in index:
             opens = {
@@ -118,24 +130,22 @@ class PortfolioBacktestEngine:
                 symbol: float(frames[symbol].loc[timestamp, "close"])
                 for symbol in self.config.enabled_symbols
             }
-            income = max(0.0, cash - float(self.config.idle_cash.cash_buffer)) * float(
-                idle_returns.loc[timestamp]
-            )
-            cash += income
-            idle_income += income
+            if self.config.idle_cash.enabled:
+                income = max(0.0, cash - float(self.config.idle_cash.cash_buffer)) * float(
+                    idle_returns.loc[timestamp]
+                )
+                cash += income
+                idle_income += income
 
             if pending_core is not None:
-                equity_at_open = cash + sum(
-                    quantities[component][symbol] * opens[symbol]
-                    for component in quantities
-                    for symbol in self.config.enabled_symbols
-                )
                 cash = self._rebalance_core(
                     pending_core,
                     quantities["core"],
+                    cost_basis,
                     opens,
                     cash=cash,
-                    equity=equity_at_open,
+                    sizing_equity=capital_ceiling,
+                    capital_ceiling=capital_ceiling,
                     timestamp=timestamp,
                     buy_fee=buy_fee,
                     sell_fee=sell_fee,
@@ -150,20 +160,32 @@ class PortfolioBacktestEngine:
                 price = float(event["price"])
                 side = str(event["side"])
                 if side == "BUY":
-                    affordable = math.floor(cash / (price * (1 + buy_fee)))
-                    quantity = min(quantity, affordable)
+                    principal_available = max(
+                        0.0, capital_ceiling - self._total_cost_basis(cost_basis)
+                    )
+                    affordable_cash = math.floor(cash / (price * (1 + buy_fee)))
+                    affordable_principal = math.floor(principal_available / price)
+                    quantity = min(quantity, affordable_cash, affordable_principal)
                     if quantity <= 0:
                         continue
                     fee = quantity * price * buy_fee
                     cash -= quantity * price + fee
                     quantities["booster"][symbol] += quantity
+                    cost_basis["booster"][symbol] += quantity * price
                 else:
-                    quantity = min(quantity, quantities["booster"][symbol])
+                    current_qty = quantities["booster"][symbol]
+                    quantity = min(quantity, current_qty)
                     if quantity <= 0:
                         continue
+                    released = self._released_cost_basis(
+                        cost_basis["booster"][symbol], current_qty, quantity
+                    )
                     fee = quantity * price * sell_fee
                     cash += quantity * price - fee
                     quantities["booster"][symbol] -= quantity
+                    cost_basis["booster"][symbol] = max(
+                        0.0, cost_basis["booster"][symbol] - released
+                    )
                 trades.append(
                     {
                         "date": timestamp.date().isoformat(),
@@ -198,6 +220,7 @@ class PortfolioBacktestEngine:
             equity = cash + liquidation
             equity_values.append(equity)
             exposures.append(liquidation / equity if equity > 0 else 0.0)
+            invested_cost_values.append(self._total_cost_basis(cost_basis))
 
         equity_curve = pd.Series(equity_values, index=index)
         metrics = self._metrics(equity_curve, exposures, trades, idle_income)
@@ -205,6 +228,10 @@ class PortfolioBacktestEngine:
             component: sum(trade["component"] == component for trade in trades)
             for component in quantities
         }
+        metrics["capital_ceiling"] = round(capital_ceiling, 2)
+        metrics["maximum_invested_cost"] = round(max(invested_cost_values, default=0.0), 2)
+        metrics["profit_reinvestment"] = False
+        metrics["idle_cash_enabled"] = self.config.idle_cash.enabled
         return PortfolioBacktestResult(
             index[0].date(),
             index[-1].date(),
@@ -233,14 +260,28 @@ class PortfolioBacktestEngine:
             result.loc[timestamp] = bool(active.get(timestamp.to_period("M"), False))
         return result
 
+    @staticmethod
+    def _total_cost_basis(cost_basis: dict[str, dict[str, float]]) -> float:
+        return sum(value for component in cost_basis.values() for value in component.values())
+
+    @staticmethod
+    def _released_cost_basis(cost: float, quantity: int, sold: int) -> float:
+        if quantity <= 0 or sold <= 0:
+            return 0.0
+        if sold >= quantity:
+            return cost
+        return cost * sold / quantity
+
     def _rebalance_core(
         self,
         targets,
         quantities,
+        cost_basis,
         prices,
         *,
         cash,
-        equity,
+        sizing_equity,
+        capital_ceiling,
         timestamp,
         buy_fee,
         sell_fee,
@@ -251,26 +292,40 @@ class PortfolioBacktestEngine:
         for symbol, weight in targets.items():
             buy_price = prices[symbol] * (1 + slippage)
             sell_price = prices[symbol] * (1 - slippage)
-            target_qty = math.floor(weight * equity / (buy_price * (1 + buy_fee)))
+            target_qty = math.floor(
+                weight * sizing_equity / (buy_price * (1 + buy_fee))
+            )
             changes[symbol] = (target_qty - quantities[symbol], buy_price, sell_price)
         for symbol, (difference, _, sell_price) in changes.items():
             if difference >= 0:
                 continue
+            current_qty = quantities[symbol]
             quantity = -difference
+            released = self._released_cost_basis(
+                cost_basis["core"][symbol], current_qty, quantity
+            )
             fee = quantity * sell_price * sell_fee
             cash += quantity * sell_price - fee
             quantities[symbol] -= quantity
+            cost_basis["core"][symbol] = max(
+                0.0, cost_basis["core"][symbol] - released
+            )
             trades.append(self._core_trade(timestamp, symbol, "SELL", quantity, sell_price, fee))
         for symbol, (difference, buy_price, _) in changes.items():
             if difference <= 0:
                 continue
-            affordable = math.floor(cash / (buy_price * (1 + buy_fee)))
-            quantity = min(difference, affordable)
+            principal_available = max(
+                0.0, capital_ceiling - self._total_cost_basis(cost_basis)
+            )
+            affordable_cash = math.floor(cash / (buy_price * (1 + buy_fee)))
+            affordable_principal = math.floor(principal_available / buy_price)
+            quantity = min(difference, affordable_cash, affordable_principal)
             if quantity <= 0:
                 continue
             fee = quantity * buy_price * buy_fee
             cash -= quantity * buy_price + fee
             quantities[symbol] += quantity
+            cost_basis["core"][symbol] += quantity * buy_price
             trades.append(self._core_trade(timestamp, symbol, "BUY", quantity, buy_price, fee))
         return cash
 

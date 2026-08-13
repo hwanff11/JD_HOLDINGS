@@ -74,4 +74,4 @@ def test_pr27_research_preserves_rejected_candidate_and_v3_followup():
     assert "PR #27 당시 결론" in report
     assert "SEMIMONTHLY_BAND_H05" in report
     assert "MONTHLY_H05" in report
-    assert "JDSS-3.1.0-TWIN-H40-S3" in guide
+    assert "JDSS-3.1.1-TWIN-H40-S3" in guide

@@ -91,7 +91,7 @@ def test_core_quote_never_exceeds_signal_time_planned_quantity(tmp_path, config)
     review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
     quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
 
-    assert quote.quantity == 19
+    assert quote.quantity == 49
 
 
 def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path, config):
@@ -125,7 +125,7 @@ def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path,
     review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
     quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
 
-    assert quote.quantity == 9
+    assert quote.quantity == 39
 
 
 def test_core_signal_is_invalidated_when_symbol_is_in_safe_mode(tmp_path, config):
@@ -145,14 +145,14 @@ def test_core_signal_is_invalidated_when_symbol_is_in_safe_mode(tmp_path, config
     assert repository.get_signal(signal_id)["status"] == "INVALID"
 
 
-def test_core_signal_is_invalidated_when_idle_cash_is_in_safe_mode(tmp_path, config):
+def test_disabled_idle_cash_safe_mode_flag_does_not_block_core(tmp_path, config):
     repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
     repository.set_system_value("idle_cash_safe_mode", "1")
 
-    with pytest.raises(ApprovalError, match="SIGNAL_IDLE_CASH_SAFE_MODE"):
-        trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+    review_id, _ = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
 
-    assert repository.get_signal(signal_id)["status"] == "INVALID"
+    assert review_id > 0
+    assert repository.get_signal(signal_id)["status"] == "ACTIVE"
 
 
 def test_restart_sequence_uses_completed_historical_dry_orders(tmp_path, config):

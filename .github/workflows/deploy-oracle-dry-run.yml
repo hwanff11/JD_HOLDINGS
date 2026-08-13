@@ -39,13 +39,13 @@ jobs:
           echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "Deploying exact latest main: $(git rev-parse HEAD)"
 
-      - name: Set up Python
+      - name: Install and verify JDSS V3.1.1
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install and verify JDSS V3.1
+      - name: Run V3.1.1 quality gate
         run: |
           set -Eeuo pipefail
           python -m pip install --upgrade pip
@@ -53,8 +53,11 @@ jobs:
           python -m ruff check .
           python -m pytest
           jdss validate-config
-          grep -q 'JDSS-3.1.0-TWIN-H40-S3' strategy.yaml
-          grep -q 'config_version: "3.1.0"' strategy.yaml
+          grep -q 'JDSS-3.1.1-TWIN-H40-S3' strategy.yaml
+          grep -q 'config_version: "3.1.1"' strategy.yaml
+          grep -q 'total_capital: 50000' strategy.yaml
+          grep -q 'capital_per_symbol: 20000' strategy.yaml
+          grep -A3 '^idle_cash:' strategy.yaml | grep -q 'enabled: false'
           grep -q 'live_enabled: false' strategy.yaml
 
       - name: Prepare SSH
@@ -69,7 +72,7 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           chmod 600 ~/.ssh/oracle_jdss
 
-      - name: Deploy and smoke-test JDSS V3.1 in forced dry-run mode
+      - name: Deploy and smoke-test JDSS V3.1.1 in forced dry-run mode
         env:
           SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
@@ -95,7 +98,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == "success" ]]; then
-            message="✅ Oracle dry-run 배포 성공: \`$DEPLOY_REF\`\n\nmain 계보·CI·설정·dry-run 잠금·Toss smoke test를 통과했습니다.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
+            message="✅ Oracle dry-run 배포 성공: \`$DEPLOY_REF\`\n\nV3.1.1 main 계보·CI·설정·dry-run 잠금·Toss smoke test를 통과했습니다.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
           else
             message="❌ Oracle dry-run 배포 실패: \`${DEPLOY_REF:-ref 확인 실패}\`\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
           fi

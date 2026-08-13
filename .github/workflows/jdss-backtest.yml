@@ -29,6 +29,12 @@ on:
         required: false
         default: ""
         type: string
+  pull_request:
+    paths:
+      - "strategy.yaml"
+      - "src/jd_holdings/**"
+      - "tests/**"
+      - ".github/workflows/jdss-backtest.yml"
   issues:
     types: [opened]
 
@@ -40,7 +46,9 @@ jobs:
   backtest:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issues' && github.actor == github.repository_owner && startsWith(github.event.issue.title, '[backtest-v3]'))
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issues' && github.actor == github.repository_owner &&
+      startsWith(github.event.issue.title, '[backtest-v3]'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -91,7 +99,10 @@ jobs:
           v3 = report.get("v3_portfolio", {}).get("metrics", {})
           if v3:
               lines += [f"- Sharpe: {v3['sharpe']:.3f}", f"- 평균 노출: {v3['average_exposure_pct']:.2f}%",
-                        f"- 코어 체결: {v3['component_fills']['core']}", f"- 부스터 체결: {v3['component_fills']['booster']}"]
+                        f"- 코어 체결: {v3['component_fills']['core']}", f"- 부스터 체결: {v3['component_fills']['booster']}",
+                        f"- 고정 원금 상한: ${v3.get('capital_ceiling', 0):,.2f}",
+                        f"- 최대 원가 투입: ${v3.get('maximum_invested_cost', 0):,.2f}",
+                        f"- SGOV: {'ON' if v3.get('idle_cash_enabled') else 'OFF'}"]
               half = v3.get("half_year_returns_pct", {})
               if half:
                   lines += ["", "## 반기별 수익률", "", "| 반기 | 수익률 |", "|---|---:|"]

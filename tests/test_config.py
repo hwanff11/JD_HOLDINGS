@@ -9,8 +9,8 @@ from jd_holdings.config import ConfigError, PositionConfig, validate_config
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-3.1.0-TWIN-H40-S3"
-    assert config.config_version == "3.1.0"
+    assert config.version == "JDSS-3.1.1-TWIN-H40-S3"
+    assert config.config_version == "3.1.1"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert config.position.stage_weights == (
         Decimal("0.40"),
@@ -42,21 +42,18 @@ def test_default_config_is_valid_and_complete(config):
     assert config.take_profit.tp1_fraction == Decimal("0.30")
     assert config.take_profit.tp2_base == Decimal("0.10")
     assert config.take_profit.remainder_exit.enabled is False
-    assert config.idle_cash.enabled is True
+    assert config.idle_cash.enabled is False
     assert config.idle_cash.symbol == "SGOV"
-    assert config.idle_cash.cash_buffer == Decimal("250")
-    assert config.idle_cash.orderbook_limit_offset == Decimal("0.01")
-    assert config.idle_cash.reprice_after_seconds == 60
-    assert config.idle_cash.require_sale_fill_before_entry is True
+    assert config.idle_cash.cash_buffer == Decimal("0")
     assert config.portfolio.enabled is True
-    assert config.portfolio.total_capital == Decimal("20000")
+    assert config.portfolio.total_capital == Decimal("50000")
     assert config.portfolio.core_initial_weight == Decimal("0.10")
     assert config.portfolio.core_target_weight == Decimal("0.15")
     assert config.portfolio.booster_max_weight == Decimal("0.40")
     assert config.portfolio.trend_months == 6
     assert config.portfolio.core_underlyings == {"TQQQ": "QQQ", "SOXL": "SOXX"}
     assert config.portfolio.live_enabled is False
-    assert config.global_.capital_per_symbol == Decimal("8000")
+    assert config.global_.capital_per_symbol == Decimal("20000")
     assert tuple(config.additional_entry.stages) == (2, 3)
 
 

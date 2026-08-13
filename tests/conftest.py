@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -15,8 +16,26 @@ from jd_holdings.core.models import IndicatorSnapshot, ScoreResult
 
 
 @pytest.fixture
-def config():
-    return load_config(Path(__file__).parents[1] / "strategy.yaml")
+def config(request):
+    config = load_config(Path(__file__).parents[1] / "strategy.yaml")
+    # SGOV is retired from the V3.1.1 production contract. Keep its component-level
+    # regression tests alive under the exact legacy funding assumptions instead of
+    # re-enabling SGOV in production configuration.
+    if (
+        request.node.path.name == "test_idle_cash_manager.py"
+        or request.node.name == "test_backtest_applies_sgov_return_only_to_idle_cash"
+    ):
+        return replace(
+            config,
+            global_=replace(config.global_, capital_per_symbol=Decimal("8000")),
+            portfolio=replace(config.portfolio, total_capital=Decimal("20000")),
+            idle_cash=replace(
+                config.idle_cash,
+                enabled=True,
+                cash_buffer=Decimal("250"),
+            ),
+        )
+    return config
 
 
 @pytest.fixture

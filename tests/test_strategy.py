@@ -13,7 +13,7 @@ from jd_holdings.core.take_profit import calculate_take_profit
 
 
 def test_final_config_contract(config):
-    assert config.version == "JDSS-3.1.0-TWIN-H40-S3"
+    assert config.version == "JDSS-3.1.1-TWIN-H40-S3"
     assert config.global_.entry_score == 55
     assert config.global_.approval_required
     assert not config.global_.stop_loss_enabled
@@ -33,7 +33,7 @@ def test_final_config_contract(config):
 
 
 def test_first_entry_score_55_is_required(config):
-    position = PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("10000"))
+    position = PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("20000"))
     blocked = evaluate_entry(make_snapshot(), make_score(54), position, config)
     allowed = evaluate_entry(make_snapshot(), make_score(55), position, config)
     assert not blocked.allowed
@@ -45,20 +45,20 @@ def test_first_entry_budget_uses_score_exposure(config):
     decision = evaluate_entry(
         make_snapshot(),
         make_score(84),
-        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("8000")),
+        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("20000")),
         config,
     )
     assert decision.allowed
     assert decision.action == DecisionType.FIRST_ENTRY_CANDIDATE
-    assert decision.cycle_exposure_cap == Decimal("8000.00")
-    assert decision.planned_budget == Decimal("3200.00")
+    assert decision.cycle_exposure_cap == Decimal("20000.00")
+    assert decision.planned_budget == Decimal("8000.00")
 
 
 def test_entry_without_reversal_is_blocked(config):
     decision = evaluate_entry(
         make_snapshot(),
         make_score(76, reversal=0),
-        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("8000")),
+        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("20000")),
         config,
     )
     assert not decision.allowed
@@ -69,19 +69,19 @@ def test_entry_with_one_reversal_condition_can_enter(config):
     decision = evaluate_entry(
         make_snapshot(),
         make_score(76, reversal=5),
-        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("8000")),
+        PositionSnapshot(symbol="TQQQ", cash_remaining=Decimal("20000")),
         config,
     )
     assert decision.allowed
-    assert decision.cycle_exposure_cap == Decimal("8000.00")
-    assert decision.planned_budget == Decimal("3200.00")
+    assert decision.cycle_exposure_cap == Decimal("20000.00")
+    assert decision.planned_budget == Decimal("8000.00")
 
 
 def test_soxl_sector_guard_blocks_first_entry_in_weak_sector(config):
     decision = evaluate_entry(
         make_snapshot(symbol="SOXL", close=Decimal("90")),
         make_score(89),
-        PositionSnapshot(symbol="SOXL", cash_remaining=Decimal("8000")),
+        PositionSnapshot(symbol="SOXL", cash_remaining=Decimal("20000")),
         config,
         sector_benchmarks={
             "SOXX": make_snapshot(symbol="SOXX", close=Decimal("490"), ema60=500.0)
@@ -95,7 +95,7 @@ def test_soxl_sector_guard_allows_first_entry_when_benchmark_is_healthy(config):
     decision = evaluate_entry(
         make_snapshot(symbol="SOXL", close=Decimal("90")),
         make_score(89),
-        PositionSnapshot(symbol="SOXL", cash_remaining=Decimal("8000")),
+        PositionSnapshot(symbol="SOXL", cash_remaining=Decimal("20000")),
         config,
         sector_benchmarks={
             "SOXX": make_snapshot(symbol="SOXX", close=Decimal("510"), ema60=500.0)
@@ -108,8 +108,8 @@ def test_additional_entry_stage2_uses_first_fill_anchor(config):
     position = PositionSnapshot(
         symbol="TQQQ",
         state=PositionState.HOLDING_1ST,
-        cycle_exposure_cap=Decimal("8000"),
-        staged_entry_capital=Decimal("3200"),
+        cycle_exposure_cap=Decimal("20000"),
+        staged_entry_capital=Decimal("8000"),
         anchor_price=Decimal("100"),
         entry_count=1,
     )
@@ -117,9 +117,9 @@ def test_additional_entry_stage2_uses_first_fill_anchor(config):
         make_snapshot(close=Decimal("98")), make_score(55), position, 2, config
     )
     assert decision.allowed
-    assert decision.cycle_exposure_cap == Decimal("8000")
-    assert decision.target_cumulative_capital == Decimal("5600.00")
-    assert decision.planned_budget == Decimal("2400.00")
+    assert decision.cycle_exposure_cap == Decimal("20000")
+    assert decision.target_cumulative_capital == Decimal("14000.00")
+    assert decision.planned_budget == Decimal("6000.00")
     assert decision.stage_trigger_price == Decimal("98.0000")
 
 
@@ -127,8 +127,8 @@ def test_stage3_trigger_is_five_percent_from_first_fill(config):
     position = PositionSnapshot(
         symbol="TQQQ",
         state=PositionState.HOLDING_2ND,
-        cycle_exposure_cap=Decimal("8000"),
-        staged_entry_capital=Decimal("5600"),
+        cycle_exposure_cap=Decimal("20000"),
+        staged_entry_capital=Decimal("14000"),
         anchor_price=Decimal("100"),
         entry_count=2,
     )
@@ -142,7 +142,7 @@ def test_stage3_trigger_is_five_percent_from_first_fill(config):
     assert "STAGE_TRIGGER_NOT_MET" in blocked.reason_codes
     assert allowed.allowed
     assert allowed.stage_trigger_price == Decimal("95.0000")
-    assert allowed.planned_budget == Decimal("1600.00")
+    assert allowed.planned_budget == Decimal("4000.00")
 
 
 def test_stage4_is_not_configured(config):
@@ -154,8 +154,8 @@ def test_stage4_is_not_configured(config):
             PositionSnapshot(
                 symbol="TQQQ",
                 state=PositionState.HOLDING_3RD,
-                cycle_exposure_cap=Decimal("8000"),
-                staged_entry_capital=Decimal("7200"),
+                cycle_exposure_cap=Decimal("20000"),
+                staged_entry_capital=Decimal("18000"),
                 anchor_price=Decimal("100"),
                 entry_count=3,
             ),
@@ -168,8 +168,8 @@ def test_additional_entry_without_reversal_is_blocked(config):
     position = PositionSnapshot(
         symbol="TQQQ",
         state=PositionState.HOLDING_1ST,
-        cycle_exposure_cap=Decimal("8000"),
-        staged_entry_capital=Decimal("3200"),
+        cycle_exposure_cap=Decimal("20000"),
+        staged_entry_capital=Decimal("8000"),
         anchor_price=Decimal("100"),
         entry_count=1,
     )
@@ -184,8 +184,8 @@ def test_soxl_sector_guard_blocks_stage3_when_benchmark_below_ema60(config):
     position = PositionSnapshot(
         symbol="SOXL",
         state=PositionState.HOLDING_2ND,
-        cycle_exposure_cap=Decimal("8000"),
-        staged_entry_capital=Decimal("5600"),
+        cycle_exposure_cap=Decimal("20000"),
+        staged_entry_capital=Decimal("14000"),
         anchor_price=Decimal("100"),
         entry_count=2,
     )
@@ -207,8 +207,8 @@ def test_soxl_sector_guard_does_not_block_stage2(config):
     position = PositionSnapshot(
         symbol="SOXL",
         state=PositionState.HOLDING_1ST,
-        cycle_exposure_cap=Decimal("8000"),
-        staged_entry_capital=Decimal("3200"),
+        cycle_exposure_cap=Decimal("20000"),
+        staged_entry_capital=Decimal("8000"),
         anchor_price=Decimal("100"),
         entry_count=1,
     )
@@ -229,8 +229,8 @@ def test_stage2_trigger_boundary(config):
     position = PositionSnapshot(
         symbol="TQQQ",
         state=PositionState.HOLDING_1ST,
-        cycle_exposure_cap=Decimal("8000"),
-        staged_entry_capital=Decimal("3200"),
+        cycle_exposure_cap=Decimal("20000"),
+        staged_entry_capital=Decimal("8000"),
         anchor_price=Decimal("100"),
         entry_count=1,
     )
