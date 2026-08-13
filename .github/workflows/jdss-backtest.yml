@@ -55,13 +55,13 @@ jobs:
           python -m ruff check scripts/research_v321_relative_strength_booster.py
           python -m ruff check scripts/research_v321_rs6m_split.py
           python -m ruff check scripts/research_v321_rs6m_monthly_lock.py
-          python -m ruff check scripts/research_v321_rs6m_strong_only.py
-      - name: Run strongest-regime RS6M comparison
+          python -m ruff check scripts/research_v321_rs6m_oneway_exit.py
+      - name: Run monthly-entry daily-exit RS6M comparison
         run: |
           mkdir -p reports
-          python scripts/research_v321_rs6m_strong_only.py \
-            --output reports/v321_rs6m_strong_only.json
+          python scripts/research_v321_rs6m_oneway_exit.py \
+            --output reports/v321_rs6m_oneway_exit.json
       - uses: actions/upload-artifact@v6
         with:
-          name: v321-rs6m-strong-only-${{ github.run_id }}
-          path: reports/v321_rs6m_strong_only.json
+          name: v321-rs6m-oneway-exit-${{ github.run_id }}
+          path: reports/v321_rs6m_oneway_exit.json
