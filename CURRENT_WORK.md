@@ -1,6 +1,6 @@
 # JD_HOLDINGS Current Work
 
-> 현재 전략·배포·검증 상태의 단일 기준입니다. 상세 전략은 `docs/JDSS_FINAL_SPEC.md`, 백테스트는 `docs/BACKTEST_REPORT.md`를 따릅니다.
+> 현재 전략·배포·검증 상태의 단일 기준입니다. 상세 전략과 백테스트는 `docs/STRATEGY_GUIDE.md`, 공식 계약은 `docs/JDSS_FINAL_SPEC.md`를 따릅니다.
 
 ## 현재 릴리즈·운영 상태
 

@@ -41,8 +41,9 @@ def test_document_roles_and_change_impact_are_explicit():
         "DEVELOPMENT_WORKFLOW.md",
         "SECURITY.md",
         "DECISIONS.md",
+        "ONE_PAGE_REPORT.md",
         "STRATEGY_GUIDE.md",
-        "BACKTEST_REPORT.md",
+        "HISTORY.md",
     ):
         assert required in guide
 
@@ -65,14 +66,29 @@ def test_legacy_strategy_config_is_clearly_archived():
     assert "저장소 루트 strategy.yaml만 사용" in legacy
 
 
-def test_pr27_research_preserves_rejected_candidate_and_v3_followup():
-    report = (ROOT / "docs/research/PR27_SIMPLE_STRATEGY_RESEARCH.md").read_text(
-        encoding="utf-8"
-    )
+def test_history_preserves_representative_versions_and_rejected_candidate():
+    history = (ROOT / "docs/HISTORY.md").read_text(encoding="utf-8")
     guide = (ROOT / "docs/STRATEGY_GUIDE.md").read_text(encoding="utf-8")
 
-    assert "PR #27 당시 결론" in report
-    assert "SEMIMONTHLY_BAND_H05" in report
-    assert "MONTHLY_H05" in report
-    assert "JDSS-3.0.0-TWIN-H05" in report
+    for version in ("v1.1.2", "v2.2.2", "v3.0.0", "v3.2.2"):
+        assert version in history
+    assert "SEMIMONTHLY_BAND_H05" in history
+    assert "MONTHLY_H05" in history
     assert "JDSS V3.2.2" in guide
+
+
+def test_one_page_report_and_guide_cover_required_plain_language_topics():
+    report = (ROOT / "docs/ONE_PAGE_REPORT.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs/STRATEGY_GUIDE.md").read_text(encoding="utf-8")
+
+    for required in ("용어 미니 사전", "QQQ 비교", "거래 사이클", "SAFE_MODE", "64.29%"):
+        assert required in report
+    for required in (
+        "flowchart",
+        "HWM75",
+        "RS6M",
+        "2단계",
+        "대기 중인 코어 BUY",
+        "clientOrderId",
+    ):
+        assert required in guide

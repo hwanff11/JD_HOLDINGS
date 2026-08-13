@@ -18,7 +18,7 @@ from jd_holdings.core.models import IndicatorSnapshot, ScoreResult
 @pytest.fixture
 def config(request):
     config = load_config(Path(__file__).parents[1] / "strategy.yaml")
-    # SGOV is retired from the V3.1.1 production contract. Keep its component-level
+    # SGOV is retired from the V3.2.2 production contract. Keep its component-level
     # regression tests alive under the exact legacy funding assumptions instead of
     # re-enabling SGOV in production configuration.
     if (

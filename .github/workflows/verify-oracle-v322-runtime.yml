@@ -60,11 +60,11 @@ jobs:
           python -m pytest \
             tests/test_v322_allocation.py \
             tests/test_v322_managed_account.py \
-            tests/test_v31_managed_account_safety.py \
-            tests/test_v31_core_approval_safety.py \
-            tests/test_v31_operational_faults.py \
-            tests/test_v31_runtime_resilience.py \
-            tests/test_final_dry_run.py
+            tests/test_managed_account_safety.py \
+            tests/test_core_approval_safety.py \
+            tests/test_operational_faults.py \
+            tests/test_runtime_resilience.py \
+            tests/test_v322_dry_run.py
 
       - name: Prepare SSH
         env:

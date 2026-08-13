@@ -1,27 +1,10 @@
 # Security Policy
 
-## 비밀정보
+비밀정보·Telegram 승인·Toss 주문·SQLite·GitHub Actions·Oracle에 적용하는 전체 기준은 [`docs/infra/SECURITY.md`](docs/infra/SECURITY.md)를 따릅니다.
 
-API 키, Telegram 토큰, SSH 개인키, GitHub token을 이 저장소에 커밋하지 마세요.
-`.env`와 런타임 데이터는 `.gitignore`에 포함되어 있으며 서버 `.env`는 `0600` 권한으로
-관리합니다. 로그와 Telegram 메시지에 비밀값을 출력하지 않습니다.
+- API 키, Telegram 토큰, SSH 개인키, 전체 계좌번호와 인증 헤더를 커밋하거나 공개 Issue에 쓰지 않습니다.
+- 기본 운영은 forced dry-run이며 live 전환에는 별도 명시적 승인이 필요합니다.
+- 모든 위험증가 BUY는 만료되는 2단계 승인을 거칩니다.
+- 불명확한 주문, 원장 불일치, 위험축소 미완료는 SAFE_MODE로 신규 BUY를 막습니다.
 
-Git HTTPS remote는 credential이 없는 URL을 사용합니다.
-
-```text
-https://github.com/hwanff11/JD_HOLDINGS.git
-```
-
-과거 remote URL에 token이 포함된 적이 있다면 URL을 바꾸는 것만으로는 충분하지
-않습니다. GitHub에서 해당 token을 즉시 폐기하고 새 credential을 발급해야 합니다.
-
-## 주문 통제
-
-- 기본 모드는 dry-run입니다.
-- live는 모드와 별도 확인 문구가 동시에 일치해야 합니다.
-- Telegram 개인 Chat ID 정확히 한 명만 허용합니다.
-- 매수마다 만료되는 2단계 승인이 필요합니다.
-- 불명확한 주문, 잔고 불일치, 미체결 주문 불일치는 신규 매수를 중단합니다.
-
-보안 문제는 공개 Issue에 토큰이나 계좌정보를 남기지 말고 저장소 소유자에게 비공개로
-전달하세요.
+보안 문제가 의심되면 live를 잠그고 노출된 자격증명을 폐기·재발급한 뒤 저장소 소유자에게 비공개로 알립니다.

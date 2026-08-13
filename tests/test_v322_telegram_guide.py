@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import jd_holdings.infrastructure.telegram_bot as telegram_bot_module
-from jd_holdings.infrastructure.telegram_bot_final import (
-    FinalTelegramBotApp,
+from jd_holdings.infrastructure.telegram_bot_v322 import (
+    V322TelegramBotApp,
     _v322_guide_cards,
     _v322_runtime_text,
 )
 
 
 def test_final_runtime_guide_matches_v322_contract():
-    assert FinalTelegramBotApp is not None
+    assert V322TelegramBotApp is not None
     cards = _v322_guide_cards()
     guide = "\n".join(cards)
     for expected in (

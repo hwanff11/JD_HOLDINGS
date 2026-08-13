@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -83,6 +84,86 @@ def test_central_buy_gate_reserves_hwm75_budget_not_personal_cash(tmp_path, conf
     with pytest.raises(RuntimeError, match="HWM75 위험예산"):
         manager.submit(second, cycle_id=None)
     assert repository.get_order_by_client_id("MANAGED-SECOND") is None
+
+
+def test_central_buy_gate_rejects_core_quantity_above_remaining_target(
+    tmp_path, config
+):
+    repository = SQLiteRepository(tmp_path / "managed.db", config)
+    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("50000"))
+    manager = OrderManager(repository, broker, _settings(tmp_path))
+    repository.set_core_target(
+        "TQQQ",
+        active=True,
+        target_weight=Decimal("0.10"),
+        signal_trade_date=date(2026, 8, 3),
+    )
+    assert repository.reserve_order(
+        client_order_id="CORE-ALREADY-PENDING",
+        signal_id=None,
+        cycle_id=None,
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        price=Decimal("100"),
+        quantity=30,
+        purpose="CORE_REBALANCE_BUY",
+    )
+    repository.update_order(
+        "CORE-ALREADY-PENDING",
+        status="PENDING",
+        broker_order_id="DRY-CORE-ALREADY-PENDING",
+    )
+    request = OrderRequest(
+        client_order_id="CORE-OVER-TARGET",
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        quantity=20,
+        price=Decimal("100"),
+        purpose="CORE_REBALANCE_BUY",
+    )
+
+    with pytest.raises(RuntimeError, match="V3.2.2 목표수량"):
+        manager.submit(request, cycle_id=None)
+
+    assert repository.get_order_by_client_id("CORE-OVER-TARGET") is None
+
+
+def test_idempotent_submit_persists_fresh_broker_fill_before_ledger_apply(
+    tmp_path, config
+):
+    repository = SQLiteRepository(tmp_path / "managed.db", config)
+    broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("50000"))
+    manager = OrderManager(repository, broker, _settings(tmp_path))
+    repository.set_core_target(
+        "TQQQ",
+        active=True,
+        target_weight=Decimal("0.10"),
+        signal_trade_date=date(2026, 8, 3),
+    )
+    request = OrderRequest(
+        client_order_id="CORE-IDEMPOTENT-REFRESH",
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        quantity=10,
+        price=Decimal("99"),
+        purpose="CORE_REBALANCE_BUY",
+    )
+    first = manager.submit(request, cycle_id=None)
+    assert first.status == "PENDING"
+
+    broker.set_price("TQQQ", Decimal("98"))
+    broker.fill_open_orders("TQQQ")
+    second = manager.submit(request, cycle_id=None)
+    repository.apply_core_fill(request.client_order_id)
+
+    local = repository.get_order_by_client_id(request.client_order_id)
+    assert second.status == "FILLED"
+    assert local["status"] == "FILLED"
+    assert local["filled_qty"] == 10
+    assert int(repository.get_core_position("TQQQ")["qty"]) == 10
 
 
 def test_realized_profit_is_cash_but_not_risk_budget_until_hwm_is_recorded(tmp_path, config):

@@ -4,18 +4,18 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from jd_holdings import __version__
+from jd_holdings.application.allocation_trading_service import AllocationTradingService
 from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service_final import FinalTradingService
 from jd_holdings.core.enums import PositionState
-from jd_holdings.core.models import OrderReceipt
+from jd_holdings.core.models import OrderReceipt, OrderRequest
 from jd_holdings.infrastructure.market_clock import MarketClock
-from jd_holdings.infrastructure.telegram_bot_operational import (
-    OperationalTelegramBotApp,
+from jd_holdings.infrastructure.telegram_bot_runtime import (
+    RuntimeTelegramBotApp,
     _operator_text,
 )
 from jd_holdings.settings import RuntimeSettings
@@ -70,7 +70,7 @@ def _core_signal(tmp_path, config, broker):
     assert created
     manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
-    trading = FinalTradingService(
+    trading = AllocationTradingService(
         config,
         repository,
         broker,
@@ -197,6 +197,34 @@ def test_canceled_partial_core_buy_reopens_remaining_signal(tmp_path, config):
     assert any("다시 승인이 필요" in event for event in events)
 
 
+def test_expired_pending_core_buy_is_canceled_by_monitor(tmp_path, config):
+    broker = DryRunBroker(
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
+    )
+    repository, _trading, monitor, signal_id = _core_signal(tmp_path, config, broker)
+    repository.mark_signal(signal_id, status="PROCESSED", processed=True)
+    request = OrderRequest(
+        client_order_id="EXPIRED-PENDING-CORE-BUY",
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        quantity=3,
+        price=Decimal("99"),
+        purpose="CORE_REBALANCE_BUY",
+        signal_id=signal_id,
+    )
+    manager = monitor.order_manager
+    assert manager.submit(request, cycle_id=None).status == "PENDING"
+
+    events = monitor.run_once(now=datetime(2026, 8, 6, 22, tzinfo=UTC))
+
+    local = repository.get_order_by_client_id(request.client_order_id)
+    assert local["status"] == "CANCELED"
+    assert repository.get_signal(signal_id)["status"] == "EXPIRED"
+    assert any("재승인 가능 시간이 지나" in event for event in events)
+
+
 def test_incomplete_core_sell_enters_safe_mode(tmp_path, config):
     broker = DryRunBroker(
         {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
@@ -294,7 +322,7 @@ def test_operator_text_distinguishes_pending_rejected_and_unknown():
 
 def test_runtime_error_is_persisted_and_telegram_notice_is_rate_limited(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "faults.db", config)
-    app = object.__new__(OperationalTelegramBotApp)
+    app = object.__new__(RuntimeTelegramBotApp)
     app.repository = repository
     app._runtime_error_notice_at = {}
     sent: list[str] = []

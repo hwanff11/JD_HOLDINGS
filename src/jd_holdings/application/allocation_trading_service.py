@@ -12,7 +12,11 @@ from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.infrastructure.market_clock import session_is_allowed
 
 from .database import ApprovalError
-from .managed_account import available_managed_cash, managed_equity
+from .managed_account import (
+    available_managed_cash,
+    committed_core_buy_quantity,
+    managed_equity,
+)
 from .order_manager import build_client_order_id
 from .trading_service import QuoteChangedError, ReviewQuote, TradingService
 
@@ -23,7 +27,7 @@ _execution_approval_id: ContextVar[int | None] = ContextVar(
 )
 
 
-class FinalTradingService(TradingService):
+class AllocationTradingService(TradingService):
     """Production trading service with the V3.2.2 operational safety layer."""
 
     def execute(self, approval_id: int, token: str, *, now=None) -> OrderReceipt:
@@ -81,7 +85,13 @@ class FinalTradingService(TradingService):
             limit,
             self.config.global_.buy_fee,
         )
-        remaining_target = max(0, current_target - int(core["qty"]))
+        committed_quantity = committed_core_buy_quantity(
+            self.repository, str(signal["symbol"])
+        )
+        remaining_target = max(
+            0,
+            current_target - int(core["qty"]) - committed_quantity,
+        )
         maximum_quantity = min(planned_quantity, remaining_target)
         quantity = calculate_order_quantity(
             budget,
@@ -121,7 +131,7 @@ class FinalTradingService(TradingService):
 
     def _signal_gate_failure(self, signal: dict) -> str | None:
         if str(signal["action"]) != DecisionType.CORE_REBALANCE_BUY.value:
-            return super()._signal_gate_failure(signal)
+            return "V322_DIRECT_SIGNAL_DISABLED"
         if (
             signal["strategy_version"] != self.config.version
             or signal["config_version"] != self.config.config_version

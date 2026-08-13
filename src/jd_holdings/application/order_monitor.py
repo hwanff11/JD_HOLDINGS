@@ -146,6 +146,63 @@ class OrderMonitor:
                 f"{symbol} {purpose} 신규 {receipt.filled_quantity - prior_filled}주 체결 반영"
             )
 
+        if purpose == "CORE_REBALANCE_BUY" and receipt.status not in TERMINAL_STATUSES:
+            signal_id = int(local.get("signal_id") or 0)
+            if signal_id:
+                signal = self.repository.get_signal(signal_id)
+                valid_until = datetime.fromisoformat(str(signal["valid_until"]))
+                if valid_until < current:
+                    before_cancel_filled = receipt.filled_quantity
+                    try:
+                        self.broker.cancel_order(receipt.broker_order_id)
+                        receipt = self.order_manager.refresh_order(
+                            str(local["client_order_id"])
+                        )
+                    except Exception as exc:
+                        self._enter_symbol_safe_mode(
+                            symbol, "EXPIRED_CORE_BUY_CANCEL_UNCONFIRMED"
+                        )
+                        self.repository.log_event(
+                            "SAFE_MODE",
+                            "EXPIRED_CORE_BUY_CANCEL_UNCONFIRMED",
+                            "만료된 코어 BUY 주문 취소를 확정할 수 없습니다",
+                            symbol=symbol,
+                            context={
+                                "client_order_id": str(local["client_order_id"]),
+                                "broker_order_id": receipt.broker_order_id,
+                                "error": str(exc),
+                            },
+                        )
+                        events.append(
+                            f"{symbol} 만료 코어 BUY 취소 확인 실패: SAFE_MODE"
+                        )
+                        return
+                    if receipt.filled_quantity > before_cancel_filled:
+                        self.repository.apply_core_fill(str(local["client_order_id"]))
+                        events.append(
+                            f"{symbol} CORE_REBALANCE_BUY 취소 중 "
+                            f"신규 {receipt.filled_quantity - before_cancel_filled}주 체결 반영"
+                        )
+                    if receipt.status not in TERMINAL_STATUSES:
+                        self._enter_symbol_safe_mode(
+                            symbol, "EXPIRED_CORE_BUY_CANCEL_UNCONFIRMED"
+                        )
+                        self.repository.log_event(
+                            "SAFE_MODE",
+                            "EXPIRED_CORE_BUY_CANCEL_UNCONFIRMED",
+                            "만료된 코어 BUY 주문이 취소 후에도 종료 상태가 아닙니다",
+                            symbol=symbol,
+                            context={
+                                "client_order_id": str(local["client_order_id"]),
+                                "broker_order_id": receipt.broker_order_id,
+                                "status": receipt.status,
+                            },
+                        )
+                        events.append(
+                            f"{symbol} 만료 코어 BUY 취소 미확정: SAFE_MODE"
+                        )
+                        return
+
         remaining = max(0, receipt.quantity - receipt.filled_quantity)
         if receipt.status not in TERMINAL_STATUSES or remaining <= 0:
             return

@@ -24,8 +24,8 @@ from jd_holdings.infrastructure.telegram_bot import (
     parse_backtest_request,
     parse_history_request,
 )
-from jd_holdings.infrastructure.telegram_bot_final import (
-    FinalTelegramBotApp,
+from jd_holdings.infrastructure.telegram_bot_v322 import (
+    V322TelegramBotApp,
     _v322_guide_cards,
 )
 
@@ -231,7 +231,7 @@ def test_final_code_version_matches_strategy_release(config):
 
 
 def test_final_bot_uses_v3_portfolio_backtest_path():
-    assert FinalTelegramBotApp._run_backtest_and_send is TelegramBotApp._run_backtest_and_send
+    assert V322TelegramBotApp._run_backtest_and_send is TelegramBotApp._run_backtest_and_send
 
 
 def test_sgov_legacy_command_parser_remains_backward_compatible():

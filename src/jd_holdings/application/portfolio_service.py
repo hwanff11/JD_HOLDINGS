@@ -33,6 +33,7 @@ from .managed_account import (
 from .order_manager import OrderManager, build_client_order_id
 
 TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
+CORE_ORDER_PURPOSES = {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,7 @@ class PortfolioService:
                 self.repository.invalidate_active_signals(
                     symbol, reason="SUPERSEDED_BY_V322_ALLOCATION"
                 )
+            events.extend(self._cancel_open_core_orders())
             # Risk-reducing sells are completed before any new buy approval is created.
             for symbol in ALLOCATION_SYMBOLS:
                 signal_id, event = self._apply_target(
@@ -311,6 +313,72 @@ class PortfolioService:
         if not created:
             return None, None
         return signal_id, f"{symbol} 목표 {weight * 100:.2f}% · {difference}주 매수 승인 대기"
+
+    def _cancel_open_core_orders(self) -> list[str]:
+        """Settle stale allocation orders before a changed target is applied."""
+        events: list[str] = []
+        for local in self.repository.open_orders():
+            purpose = str(local["purpose"])
+            if purpose not in CORE_ORDER_PURPOSES:
+                continue
+            symbol = str(local["symbol"])
+            broker_order_id = str(local.get("broker_order_id") or "")
+            if not broker_order_id:
+                self._record_core_cancel_failure(
+                    symbol,
+                    local,
+                    "브로커 주문 ID가 없습니다",
+                )
+                raise RuntimeError(
+                    f"{symbol} 기존 allocation 주문을 안전하게 취소할 수 없습니다"
+                )
+            try:
+                receipt = self.order_manager.refresh_order(
+                    str(local["client_order_id"])
+                )
+                if receipt.status not in TERMINAL_STATUSES:
+                    self.broker.cancel_order(broker_order_id)
+                    receipt = self.order_manager.refresh_order(
+                        str(local["client_order_id"])
+                    )
+            except Exception as exc:
+                self._record_core_cancel_failure(symbol, local, str(exc))
+                raise RuntimeError(
+                    f"{symbol} 기존 allocation 주문 취소 확인에 실패했습니다"
+                ) from exc
+            if receipt.filled_quantity > 0:
+                self.repository.apply_core_fill(str(local["client_order_id"]))
+            if receipt.status not in TERMINAL_STATUSES:
+                self._record_core_cancel_failure(
+                    symbol,
+                    local,
+                    f"취소 후 상태={receipt.status}",
+                )
+                raise RuntimeError(
+                    f"{symbol} 기존 allocation 주문이 종료 상태가 아닙니다"
+                )
+            events.append(
+                f"{symbol} 기존 {purpose} 주문 취소·정산 "
+                f"({receipt.status}, {receipt.filled_quantity}/{receipt.quantity}주)"
+            )
+        return events
+
+    def _record_core_cancel_failure(
+        self, symbol: str, order: dict, error: str
+    ) -> None:
+        self._enter_symbol_safe_mode(symbol, "CORE_ORDER_CANCEL_UNCONFIRMED")
+        self.repository.log_event(
+            "SAFE_MODE",
+            "CORE_ORDER_CANCEL_UNCONFIRMED",
+            "목표 변경 전 기존 allocation 주문 취소를 확정할 수 없습니다",
+            symbol=symbol,
+            context={
+                "client_order_id": str(order["client_order_id"]),
+                "broker_order_id": str(order.get("broker_order_id") or ""),
+                "purpose": str(order["purpose"]),
+                "error": error,
+            },
+        )
 
     def portfolio_equity(self) -> Decimal:
         return managed_equity(self.config, self.repository, self.broker)

@@ -12,6 +12,7 @@ from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.backtest.engine import BacktestResult
 from jd_holdings.backtest.portfolio_engine import PortfolioBacktestEngine
+from jd_holdings.core.models import OrderRequest
 from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
@@ -99,6 +100,106 @@ def test_v322_allocation_run_is_idempotent_and_creates_approval_signals(tmp_path
     assert repository.get_core_position("SOXL")["target_weight"] == "0.125"
     assert repository.open_orders() == []
     assert service.run_allocation(now) is None
+
+
+def test_target_change_cancels_stale_core_orders_before_rebalancing(tmp_path, config):
+    repository = SQLiteRepository(tmp_path / "jdss.db", config)
+    broker = DryRunBroker(
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("49500"),
+    )
+    manager = OrderManager(repository, broker, settings(tmp_path))
+    market_clock = MarketClock()
+    repository.set_core_target(
+        "TQQQ",
+        active=True,
+        target_weight=Decimal("0.10"),
+        signal_trade_date=datetime(2026, 7, 31).date(),
+    )
+    pending_buy = OrderRequest(
+        client_order_id="STALE-CORE-BUY",
+        symbol="TQQQ",
+        side="BUY",
+        order_type="LIMIT",
+        quantity=10,
+        price=Decimal("99"),
+        purpose="CORE_REBALANCE_BUY",
+    )
+    assert manager.submit(pending_buy, cycle_id=None).status == "PENDING"
+
+    seed_id = "SOXL-SEED"
+    assert repository.reserve_order(
+        client_order_id=seed_id,
+        signal_id=None,
+        cycle_id=None,
+        symbol="SOXL",
+        side="BUY",
+        order_type="LIMIT",
+        price=Decimal("50"),
+        quantity=10,
+        purpose="CORE_REBALANCE_BUY",
+    )
+    repository.update_order(
+        seed_id,
+        status="FILLED",
+        broker_order_id="DRY-SEED-SOXL",
+        filled_qty=10,
+        average_fill_price=Decimal("50"),
+    )
+    repository.apply_core_fill(seed_id)
+    broker.holdings["SOXL"] = {
+        "quantity": 10,
+        "averagePurchasePrice": Decimal("50"),
+    }
+    pending_sell = OrderRequest(
+        client_order_id="STALE-CORE-SELL",
+        symbol="SOXL",
+        side="SELL",
+        order_type="LIMIT",
+        quantity=5,
+        price=Decimal("55"),
+        purpose="CORE_REBALANCE_SELL",
+    )
+    assert manager.submit(pending_sell, cycle_id=None).status == "PENDING"
+
+    now = datetime(2026, 8, 1, 12, tzinfo=UTC)
+    completed = market_clock.latest_completed_session(
+        now, delay_minutes=config.scheduler.signal_delay_minutes
+    )
+    target = pd.DataFrame(
+        [
+            {
+                "trade_date": completed.isoformat(),
+                "leverage": 1.0,
+                "semiconductor_active": False,
+                "jdss_tqqq_active": False,
+                "jdss_soxl_active": False,
+                "QQQ": 1.0,
+                "TQQQ": 0.0,
+                "SOXL": 0.0,
+            }
+        ],
+        index=[pd.Timestamp(completed)],
+    )
+    service = StubPortfolioService(
+        config,
+        repository,
+        broker,
+        manager,
+        object(),
+        market_clock,
+        trading_mode="dry_run",
+        target=target,
+    )
+
+    result = service.run_allocation(now)
+
+    assert result is not None
+    assert repository.get_order_by_client_id("STALE-CORE-BUY")["status"] == "CANCELED"
+    assert repository.get_order_by_client_id("STALE-CORE-SELL")["status"] == "CANCELED"
+    assert repository.get_core_position("SOXL")["qty"] == 0
+    assert any("기존 CORE_REBALANCE_BUY 주문 취소" in event for event in result.events)
+    assert any("기존 CORE_REBALANCE_SELL 주문 취소" in event for event in result.events)
 
 
 def test_v322_refuses_live_mode_before_any_data_or_order_access(tmp_path, config):

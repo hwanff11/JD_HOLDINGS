@@ -23,7 +23,7 @@
 
 | 변경 유형 | 함께 확인·갱신할 기준 | 필수 검증 |
 |---|---|---|
-| 전략 조건·점수·비중·익절 | `strategy.yaml`, `JDSS_FINAL_SPEC.md`, `STRATEGY_GUIDE.md`, `BACKTEST_REPORT.md`, 관련 테스트 | 설정 검증, 단위 테스트, 노룩어헤드 백테스트 |
+| 전략 조건·점수·비중·익절 | `strategy.yaml`, `JDSS_FINAL_SPEC.md`, `ONE_PAGE_REPORT.md`, `STRATEGY_GUIDE.md`, 관련 테스트 | 설정 검증, 단위 테스트, 노룩어헤드 백테스트 |
 | 주문·승인·포지션·SGOV | 공식 사양, `TELEGRAM_BOT_GUIDE.md`, 관련 결정 기록과 테스트 | Dry Run, 멱등성·재시작·Reconciliation 테스트 |
 | Telegram 명령·버튼·문구 | `TELEGRAM_BOT_GUIDE.md`, 도움말·포맷 테스트 | 권한 검사, 4,096자 제한, 콜백 만료·1회성 |
 | Toss API·인증·네트워크 | `docs/infra/SECURITY.md`, 배포 문서, 어댑터 테스트 | 오류 응답·타임아웃·입력 경계 테스트 |
