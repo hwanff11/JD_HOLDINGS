@@ -10,7 +10,6 @@ from typing import Any
 
 from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
 from jd_holdings.config import load_config
-
 from scripts.research_stage_score_thresholds import (
     ROOT,
     _config_with_thresholds,
@@ -77,7 +76,14 @@ def _max_equity_diff(left, right) -> float:
     common = left.equity_curve.index.intersection(right.equity_curve.index)
     if len(common) == 0:
         return 0.0
-    return round(float((left.equity_curve.loc[common] - right.equity_curve.loc[common]).abs().max()), 6)
+    return round(
+        float(
+            (left.equity_curve.loc[common] - right.equity_curve.loc[common])
+            .abs()
+            .max()
+        ),
+        6,
+    )
 
 
 def _compare(left, right) -> dict[str, Any]:
