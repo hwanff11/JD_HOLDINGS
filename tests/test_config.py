@@ -50,6 +50,11 @@ def test_default_config_is_valid_and_complete(config):
     assert config.portfolio.total_capital == Decimal("50000")
     assert config.portfolio.live_enabled is False
     assert config.portfolio.rebalance_tolerance_weight == Decimal("0")
+    assert config.portfolio.core_underlyings == {
+        "QQQ": "QQQ",
+        "TQQQ": "QQQ",
+        "SOXL": "SOXX",
+    }
     assert config.global_.capital_per_symbol == Decimal("20000")
     assert tuple(config.additional_entry.stages) == (2, 3)
 
