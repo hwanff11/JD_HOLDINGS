@@ -10,29 +10,11 @@ from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.portfolio_service import PortfolioService
-from jd_holdings.application.position_manager import PositionManager
-from jd_holdings.application.tp_manager import TakeProfitManager
-from jd_holdings.application.trading_service import TradingService
 from jd_holdings.backtest.engine import BacktestResult
 from jd_holdings.backtest.portfolio_engine import PortfolioBacktestEngine
-from jd_holdings.core.twin_core import monthly_trend_signal, target_quantity
+from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
-
-
-class FrameSource:
-    def __init__(self, frames: dict[str, pd.DataFrame]) -> None:
-        self.frames = frames
-
-    def daily(self, symbol, start, end, *, refresh=False):
-        del start, end, refresh
-        return self.frames[symbol]
-
-
-def monthly_frame(values: list[float]) -> pd.DataFrame:
-    index = pd.date_range("2025-08-31", periods=len(values), freq="ME")
-    index = index[:-1].append(pd.DatetimeIndex([pd.Timestamp("2026-07-31")]))
-    return pd.DataFrame({"close": values}, index=index)
 
 
 def settings(tmp_path, mode: str = "dry_run") -> RuntimeSettings:
@@ -46,14 +28,19 @@ def settings(tmp_path, mode: str = "dry_run") -> RuntimeSettings:
     )
 
 
-def test_monthly_trend_uses_completed_month_and_strict_cross():
-    frame = monthly_frame([100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111])
-    signal = monthly_trend_signal("TQQQ", "QQQ", frame, months=6)
+class StubPortfolioService(PortfolioService):
+    def __init__(self, *args, target: pd.DataFrame, marked_equity=Decimal("50000"), **kwargs):
+        self._target = target
+        self._marked = marked_equity
+        super().__init__(*args, **kwargs)
 
-    assert signal.trade_date.isoformat() == "2026-07-31"
-    assert signal.active is True
-    assert signal.close == Decimal("111")
-    assert signal.moving_average == Decimal("108.5")
+    def _calculate_target(self, completed):
+        del completed
+        return {}, self._target
+
+    def _completed_marked_equity(self, raw, timestamp):
+        del raw, timestamp
+        return self._marked
 
 
 def test_target_quantity_accounts_for_buy_fee():
@@ -62,118 +49,89 @@ def test_target_quantity_accounts_for_buy_fee():
     ) == 49
 
 
-def test_month_end_run_recovers_after_restart_and_creates_only_active_buy(tmp_path, config):
+def test_v322_allocation_run_is_idempotent_and_creates_approval_signals(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "jdss.db", config)
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
-        buying_power=Decimal("50000"),
-    )
-    source = FrameSource(
-        {
-            "QQQ": monthly_frame(list(range(100, 112))),
-            "SOXX": monthly_frame(list(range(112, 100, -1))),
-        }
-    )
-    service = PortfolioService(
-        config,
-        repository,
-        broker,
-        OrderManager(repository, broker, settings(tmp_path)),
-        source,
-        MarketClock(),
-        trading_mode="dry_run",
-    )
-
-    result = service.run_month_end(datetime(2026, 8, 3, 22, tzinfo=UTC))
-    assert result is not None
-    assert result.trade_date == "2026-07-31"
-    assert len(result.signals) == 1
-    assert repository.get_core_position("TQQQ")["trend_active"] == 1
-    assert repository.get_core_position("TQQQ")["target_weight"] == "0.1"
-    assert repository.get_core_position("SOXL")["trend_active"] == 0
-    assert service.run_month_end(datetime(2026, 8, 4, 22, tzinfo=UTC)) is None
-
-
-def test_v3_core_refuses_live_mode(tmp_path, config):
-    repository = SQLiteRepository(tmp_path / "jdss.db", config)
-    broker = DryRunBroker(buying_power=Decimal("50000"))
-    service = PortfolioService(
-        config,
-        repository,
-        broker,
-        OrderManager(repository, broker, settings(tmp_path, "live")),
-        FrameSource({}),
-        MarketClock(),
-        trading_mode="live",
-    )
-
-    with pytest.raises(RuntimeError, match="live 모드가 잠겨"):
-        service.run_month_end(datetime(2026, 8, 3, 22, tzinfo=UTC))
-
-
-def test_core_buy_keeps_two_step_approval_and_separate_ledger(tmp_path, config):
-    repository = SQLiteRepository(tmp_path / "jdss.db", config)
-    broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
         buying_power=Decimal("50000"),
     )
     runtime = settings(tmp_path)
     order_manager = OrderManager(repository, broker, runtime)
     market_clock = MarketClock()
-    service = PortfolioService(
+    now = datetime(2026, 8, 1, 12, tzinfo=UTC)
+    completed = market_clock.latest_completed_session(
+        now, delay_minutes=config.scheduler.signal_delay_minutes
+    )
+    timestamp = pd.Timestamp(completed)
+    target = pd.DataFrame(
+        [
+            {
+                "trade_date": completed.isoformat(),
+                "leverage": 1.5,
+                "semiconductor_active": True,
+                "jdss_tqqq_active": False,
+                "jdss_soxl_active": False,
+                "QQQ": 0.75,
+                "TQQQ": 0.125,
+                "SOXL": 0.125,
+            }
+        ],
+        index=[timestamp],
+    )
+    service = StubPortfolioService(
         config,
         repository,
         broker,
         order_manager,
-        FrameSource(
-            {
-                "QQQ": monthly_frame(list(range(100, 112))),
-                "SOXX": monthly_frame(list(range(112, 100, -1))),
-            }
-        ),
+        object(),
         market_clock,
         trading_mode="dry_run",
+        target=target,
     )
-    run = service.run_month_end(datetime(2026, 8, 3, 22, tzinfo=UTC))
-    signal_id = run.signals[0]
-    position_manager = PositionManager(config, repository, broker)
-    trading = TradingService(
+
+    result = service.run_allocation(now)
+
+    assert result is not None
+    assert result.trade_date == completed.isoformat()
+    assert len(result.signals) == 3
+    assert repository.get_core_position("QQQ")["target_weight"] == "0.75"
+    assert repository.get_core_position("TQQQ")["target_weight"] == "0.125"
+    assert repository.get_core_position("SOXL")["target_weight"] == "0.125"
+    assert repository.open_orders() == []
+    assert service.run_allocation(now) is None
+
+
+def test_v322_refuses_live_mode_before_any_data_or_order_access(tmp_path, config):
+    repository = SQLiteRepository(tmp_path / "jdss.db", config)
+    broker = DryRunBroker(buying_power=Decimal("50000"))
+    service = StubPortfolioService(
         config,
         repository,
         broker,
-        order_manager,
-        position_manager,
-        TakeProfitManager(repository, broker, order_manager),
-        market_clock,
+        OrderManager(repository, broker, settings(tmp_path, "live")),
+        object(),
+        MarketClock(),
+        trading_mode="live",
+        target=pd.DataFrame(),
     )
 
-    approval_time = datetime(2026, 8, 4, 12, tzinfo=UTC)
-    review_id, review_token = trading.create_review_approval(signal_id, now=approval_time)
-    quote = trading.consume_review(review_id, review_token, now=approval_time)
-    assert quote.quantity == 49
-    receipt = trading.execute(
-        quote.execution_approval_id, quote.execution_token, now=approval_time
-    )
-
-    assert receipt.status == "FILLED"
-    assert repository.get_core_position("TQQQ")["qty"] == 49
-    assert repository.get_position("TQQQ").quantity == 0
+    with pytest.raises(RuntimeError, match="live 모드가 잠겨"):
+        service.run_allocation(datetime(2026, 8, 1, 12, tzinfo=UTC))
 
 
-def test_portfolio_backtest_uses_fixed_principal_and_needs_no_sgov_frame(config):
-    index = pd.bdate_range("2025-07-01", "2026-08-05")
-    underlying = pd.Series(range(len(index)), index=index, dtype=float) + 100
-    leveraged = pd.Series(100.0, index=index)
+def test_v322_portfolio_backtest_uses_hwm75_and_no_sgov_frame(config):
+    index = pd.bdate_range("2010-01-04", "2026-08-05")
+    base = pd.Series(range(len(index)), index=index, dtype=float) / 20 + 100
     frames = {
-        "TQQQ": pd.DataFrame({"open": leveraged, "close": leveraged}),
-        "SOXL": pd.DataFrame({"open": leveraged, "close": leveraged}),
-        "QQQ": pd.DataFrame({"open": underlying, "close": underlying}),
-        "SOXX": pd.DataFrame({"open": underlying, "close": underlying}),
+        "TQQQ": pd.DataFrame({"open": base * 1.2, "close": base * 1.2}),
+        "SOXL": pd.DataFrame({"open": base * 0.8, "close": base * 0.8}),
+        "QQQ": pd.DataFrame({"open": base, "close": base}),
+        "SOXX": pd.DataFrame({"open": base * 1.01, "close": base * 1.01}),
     }
     booster_results = {
         symbol: BacktestResult(
             symbol=symbol,
-            start_date=index[0].date(),
+            start_date=pd.Timestamp("2011-01-03").date(),
             end_date=index[-1].date(),
             strategy_version=config.version,
             config_version=config.config_version,
@@ -183,7 +141,7 @@ def test_portfolio_backtest_uses_fixed_principal_and_needs_no_sgov_frame(config)
             signals=(),
             skipped_signals=(),
             closed_cycles=(),
-            open_position={},
+            open_position={"quantity": 0},
             equity_curve=pd.Series(1000.0, index=index),
         )
         for symbol in config.enabled_symbols
@@ -192,24 +150,16 @@ def test_portfolio_backtest_uses_fixed_principal_and_needs_no_sgov_frame(config)
     result = PortfolioBacktestEngine(config).run(
         frames,
         booster_results,
-        start=index[0].date(),
+        start="2011-01-03",
         end=index[-1].date(),
         slippage=0.001,
     )
 
-    core_buys = [
-        trade
-        for trade in result.trades
-        if trade["component"] == "core" and trade["side"] == "BUY"
-    ]
-    assert core_buys
-    first_buy = pd.Timestamp(core_buys[0]["date"])
-    preceding_session = index[index.get_loc(first_buy) - 1]
-    assert preceding_session in PortfolioBacktestEngine._month_end_sessions(index)
-    assert result.metrics["component_fills"]["core"] == len(core_buys)
-    assert result.metrics["component_fills"]["booster"] == 0
-    assert result.metrics["capital_ceiling"] == 50000.0
-    assert result.metrics["maximum_invested_cost"] <= 50000.0
-    assert result.metrics["profit_reinvestment"] is False
+    assert result.trades
+    assert {trade["component"] for trade in result.trades} == {"allocation"}
+    assert result.metrics["initial_risk_budget"] == 50000.0
+    assert result.metrics["hwm_reinvestment_fraction"] == 0.75
+    assert result.metrics["profit_reinvestment"] == "HWM75_CONTROLLED"
+    assert result.metrics["maximum_sizing_base"] >= 50000.0
     assert result.metrics["idle_cash_enabled"] is False
     assert result.metrics["idle_cash_income"] == 0.0
