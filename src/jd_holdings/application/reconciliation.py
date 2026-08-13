@@ -35,6 +35,21 @@ class ReconciliationService:
         self.config = config
         self.repository = repository
         self.broker = broker
+        self._ensure_allocation_rows()
+
+    def _ensure_allocation_rows(self) -> None:
+        underlyings = {"QQQ": "QQQ", "TQQQ": "QQQ", "SOXL": "SOXX"}
+        now = datetime.now(UTC).isoformat()
+        with self.repository.transaction() as connection:
+            for symbol in ALLOCATION_SYMBOLS:
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO core_positions(
+                        symbol, underlying, target_weight, updated_at
+                    ) VALUES (?, ?, '0', ?)
+                    """,
+                    (symbol, underlyings[symbol], now),
+                )
 
     def run(self) -> dict[str, list[str]]:
         broker_holdings = {item["symbol"]: item for item in self.broker.get_holdings()}
