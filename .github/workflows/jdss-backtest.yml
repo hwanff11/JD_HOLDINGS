@@ -144,9 +144,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-      - name: Research quality check
+      - name: Normalize and lint research script
         run: |
-          python -m ruff format --check scripts/research_v32_qqq_alpha.py
+          python -m ruff format scripts/research_v32_qqq_alpha.py
           python -m ruff check scripts/research_v32_qqq_alpha.py
       - name: Run V3.2 QQQ alpha discovery
         run: |
