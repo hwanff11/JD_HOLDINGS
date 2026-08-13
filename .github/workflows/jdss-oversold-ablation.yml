@@ -1,0 +1,36 @@
+name: JDSS V3.1.1 Oversold Component Ablation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/research_oversold_ablation.py"
+      - ".github/workflows/jdss-oversold-ablation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    if: startsWith(github.head_ref, 'research/v311-oversold-component-ablation-') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Quality check research script
+        run: |
+          ruff format --check scripts/research_oversold_ablation.py
+          ruff check scripts/research_oversold_ablation.py
+      - name: Run ablation
+        run: python scripts/research_oversold_ablation.py
+      - name: Upload result
+        uses: actions/upload-artifact@v6
+        with:
+          name: oversold-ablation-${{ github.run_id }}
+          path: oversold_ablation.json
