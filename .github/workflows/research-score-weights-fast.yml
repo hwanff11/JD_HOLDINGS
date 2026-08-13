@@ -30,7 +30,7 @@ jobs:
           ruff check --fix scripts/research_score_weights.py scripts/research_score_weights_fast.py
           ruff check scripts/research_score_weights.py scripts/research_score_weights_fast.py
       - name: Run directional scan
-        run: python scripts/research_score_weights_fast.py
+        run: PYTHONPATH="$PWD" python scripts/research_score_weights_fast.py
       - name: Upload result
         uses: actions/upload-artifact@v6
         with:
