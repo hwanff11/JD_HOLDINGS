@@ -37,7 +37,7 @@ jobs:
           name: jdss-backtest-${{ github.run_id }}
           path: reports/backtest.json
 
-  hwm-risk-control-research:
+  rs1m-exit-research:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -50,28 +50,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-      - name: Validate frozen validation scripts
+      - name: Validate focused research scripts
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
           python -m ruff check scripts/research_v321_relative_strength_booster.py
           python -m ruff check scripts/research_v321_rs6m_split.py
           python -m ruff check scripts/research_v321_rs6m_monthly_lock.py
           python -m ruff check scripts/research_v321_rs6m_oneway_exit.py
-          python -m ruff check scripts/research_v321_rs6m_strong_only.py
-          python -m ruff check scripts/research_v321_rs6m_attribution.py
-          python -m ruff check scripts/research_v322_final_validation.py
-      - name: Run frozen V3.2.2 final validation
+          python -m ruff check scripts/research_v322_rs1m_exit.py
+      - name: Run RS6M entry with RS1M exit research
         run: |
           mkdir -p reports
-          python scripts/research_v322_final_validation.py \
-            --output reports/v322_final_validation.json
-      - name: Run RS6M weak-window attribution
-        run: |
-          python scripts/research_v321_rs6m_attribution.py \
-            --output reports/v321_rs6m_attribution.json
+          python scripts/research_v322_rs1m_exit.py \
+            --output reports/v322_rs1m_exit.json
       - uses: actions/upload-artifact@v6
         with:
-          name: v322-final-validation-${{ github.run_id }}
-          path: |
-            reports/v322_final_validation.json
-            reports/v321_rs6m_attribution.json
+          name: v322-rs1m-exit-${{ github.run_id }}
+          path: reports/v322_rs1m_exit.json
