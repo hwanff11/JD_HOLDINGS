@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
-import pandas as pd
-
+from jd_holdings import __version__
 from jd_holdings.application.broker import DryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
-from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.application.trading_service_final import FinalTradingService
@@ -23,15 +21,7 @@ from jd_holdings.infrastructure.telegram_bot_operational import (
 from jd_holdings.settings import RuntimeSettings
 
 APPROVAL_TIME = datetime(2026, 8, 4, 12, tzinfo=UTC)
-
-
-class FrameSource:
-    def __init__(self, frames: dict[str, pd.DataFrame]) -> None:
-        self.frames = frames
-
-    def daily(self, symbol, start, end, *, refresh=False):
-        del start, end, refresh
-        return self.frames[symbol]
+SIGNAL_DATE = date(2026, 7, 31)
 
 
 class RejectedBroker(DryRunBroker):
@@ -46,12 +36,6 @@ class RejectedBroker(DryRunBroker):
             average_fill_price=None,
             raw={"status": "REJECTED"},
         )
-
-
-def _monthly_frame(values: list[float]) -> pd.DataFrame:
-    index = pd.date_range("2025-08-31", periods=len(values), freq="ME")
-    index = index[:-1].append(pd.DatetimeIndex([pd.Timestamp("2026-07-31")]))
-    return pd.DataFrame({"close": values}, index=index)
 
 
 def _settings(tmp_path) -> RuntimeSettings:
@@ -69,22 +53,21 @@ def _core_signal(tmp_path, config, broker):
     repository = SQLiteRepository(tmp_path / "faults.db", config)
     order_manager = OrderManager(repository, broker, _settings(tmp_path))
     clock = MarketClock()
-    portfolio = PortfolioService(
-        config,
-        repository,
-        broker,
-        order_manager,
-        FrameSource(
-            {
-                "QQQ": _monthly_frame(list(range(100, 112))),
-                "SOXX": _monthly_frame(list(range(112, 100, -1))),
-            }
-        ),
-        clock,
-        trading_mode="dry_run",
+    repository.set_core_target(
+        "TQQQ",
+        active=True,
+        target_weight=Decimal("0.10"),
+        signal_trade_date=SIGNAL_DATE,
     )
-    run = portfolio.run_month_end(datetime(2026, 8, 3, 22, tzinfo=UTC))
-    assert run is not None and len(run.signals) == 1
+    signal_id, created = repository.create_core_buy_signal(
+        symbol="TQQQ",
+        trade_date=SIGNAL_DATE,
+        signal_close=Decimal("100"),
+        planned_budget=Decimal("5000"),
+        valid_until=clock.next_session_close(SIGNAL_DATE),
+        code_version=__version__,
+    )
+    assert created
     manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
     trading = FinalTradingService(
@@ -105,7 +88,7 @@ def _core_signal(tmp_path, config, broker):
         tp_manager,
         clock,
     )
-    return repository, trading, monitor, run.signals[0]
+    return repository, trading, monitor, signal_id
 
 
 def _manual_broker_order(
@@ -137,8 +120,8 @@ def _manual_broker_order(
 
 def test_rejected_core_buy_reopens_same_signal_with_new_attempt_id(tmp_path, config):
     broker = RejectedBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     repository, trading, _monitor, signal_id = _core_signal(tmp_path, config, broker)
 
@@ -171,8 +154,8 @@ def test_rejected_core_buy_reopens_same_signal_with_new_attempt_id(tmp_path, con
 
 def test_canceled_partial_core_buy_reopens_remaining_signal(tmp_path, config):
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     repository, _trading, monitor, signal_id = _core_signal(tmp_path, config, broker)
     repository.mark_signal(signal_id, status="PROCESSED", processed=True)
@@ -216,12 +199,12 @@ def test_canceled_partial_core_buy_reopens_remaining_signal(tmp_path, config):
 
 def test_incomplete_core_sell_enters_safe_mode(tmp_path, config):
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("19800"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("49800"),
     )
     repository = SQLiteRepository(tmp_path / "faults.db", config)
-    settings = _settings(tmp_path)
-    order_manager = OrderManager(repository, broker, settings)
+    runtime = _settings(tmp_path)
+    order_manager = OrderManager(repository, broker, runtime)
     position_manager = PositionManager(config, repository, broker)
     tp_manager = TakeProfitManager(repository, broker, order_manager)
     monitor = OrderMonitor(
