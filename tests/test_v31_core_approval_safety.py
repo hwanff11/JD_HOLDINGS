@@ -18,7 +18,7 @@ from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.settings import RuntimeSettings
 
 APPROVAL_TIME = datetime(2026, 8, 4, 12, tzinfo=UTC)
-SIGNAL_DATE = date(2026, 7, 31)
+SIGNAL_DATE = date(2026, 8, 3)
 
 
 def _settings(tmp_path) -> RuntimeSettings:
