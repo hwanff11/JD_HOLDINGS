@@ -141,36 +141,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-      - name: Validate research scripts
+      - name: Validate focused research scripts
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
-          python -m ruff check scripts/research_v321_hwm_risk_controls.py
           python -m ruff check scripts/research_v321_core_timing.py
-          python -m ruff check scripts/research_v321_recovery_only.py
-          python -m ruff check scripts/research_v321_vol_cross_reentry.py
-      - name: Run HWM75 risk-control research
+          python -m ruff check scripts/research_v321_safe_reentry.py
+      - name: Run safe 1x reentry research
         run: |
           mkdir -p reports
-          python scripts/research_v321_hwm_risk_controls.py \
-            --output reports/v321_hwm_risk_controls.json
-      - name: Run V3.2.1 core timing research
-        run: |
-          python scripts/research_v321_core_timing.py \
-            --output reports/v321_core_timing.json
-      - name: Run weekly recovery-only research
-        run: |
-          python scripts/research_v321_recovery_only.py \
-            --output reports/v321_recovery_only.json
-      - name: Run volatility-cross reentry research
-        run: |
-          python scripts/research_v321_vol_cross_reentry.py \
-            --output reports/v321_vol_cross_reentry.json
-      - name: Upload research artifacts
+          python scripts/research_v321_safe_reentry.py \
+            --output reports/v321_safe_reentry.json
+      - name: Upload research artifact
         uses: actions/upload-artifact@v6
         with:
-          name: v321-hwm-core-research-${{ github.run_id }}
-          path: |
-            reports/v321_hwm_risk_controls.json
-            reports/v321_core_timing.json
-            reports/v321_recovery_only.json
-            reports/v321_vol_cross_reentry.json
+          name: v321-safe-reentry-${{ github.run_id }}
+          path: reports/v321_safe_reentry.json
