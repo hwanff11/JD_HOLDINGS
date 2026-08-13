@@ -1,0 +1,41 @@
+name: JDSS V3.1.1 Stage Score Probe
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_stage_score_probe.py"
+      - ".github/workflows/research-stage-score-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint probe
+        run: |
+          ruff check scripts/research_stage_score_probe.py
+          ruff format --check scripts/research_stage_score_probe.py
+      - name: Run score probe
+        run: |
+          python -m scripts.research_stage_score_probe \
+            --output reports/stage_score_probe.json \
+            --slippage 0.001
+      - name: Upload probe result
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage-score-probe-${{ github.run_id }}
+          path: reports/stage_score_probe.json
