@@ -42,8 +42,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = load_config(args.config)
-    # The frozen V3.2.2 allocation policy lives in the generic market_regime
-    # section so it can coexist with the legacy JDSS signal-engine settings.
     V322Policy.from_config(config)
     if args.command == "validate-config":
         print(f"OK strategy={config.version} config={config.config_version}")
@@ -176,11 +174,12 @@ def main(argv: list[str] | None = None) -> int:
             }
             policy = V322Policy.from_config(config)
             if policy.rs_benchmark not in raw_frames:
-                raw_frames[policy.rs_benchmark] = sector_data.get(
-                    policy.rs_benchmark
-                ) or data_source.daily(
-                    policy.rs_benchmark, warmup_start, end, refresh=args.refresh
-                )
+                rs_frame = sector_data.get(policy.rs_benchmark)
+                if rs_frame is None:
+                    rs_frame = data_source.daily(
+                        policy.rs_benchmark, warmup_start, end, refresh=args.refresh
+                    )
+                raw_frames[policy.rs_benchmark] = rs_frame
             portfolio_result = PortfolioBacktestEngine(config).run(
                 raw_frames,
                 virtual_results,
@@ -191,7 +190,6 @@ def main(argv: list[str] | None = None) -> int:
             portfolio_metrics = portfolio_result.metrics
             serialized = portfolio_result.to_dict(include_equity=False)
             output["v322_portfolio"] = serialized
-            # Compatibility alias for Telegram/report code written before V3.2.2.
             output["v3_portfolio"] = serialized
         else:
             portfolio = pd.concat(
