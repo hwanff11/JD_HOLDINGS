@@ -1,0 +1,81 @@
+name: JDSS V3.1.1 Score Weight Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_score_weights.py"
+      - ".github/workflows/research-score-weights.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint research script
+        run: ruff check scripts/research_score_weights.py
+      - name: Run score-weight research
+        run: |
+          mkdir -p reports
+          python scripts/research_score_weights.py \
+            --output reports/score_weight_research.json \
+            --csv reports/score_weight_grid.csv \
+            --slippage 0.001
+      - name: Publish research summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("reports/score_weight_research.json").read_text(encoding="utf-8"))
+          locked = report["locked_candidate"]
+          lines = [
+              "# V3.1.1 Score Weight Research",
+              "",
+              f"- 후보 수: {report['method']['candidate_count']}",
+              f"- 연구 종료일: {report['research_end']}",
+              f"- 기준 배점: {report['method']['base_weights']}",
+              f"- 선택 배점: {locked['weights']}",
+              f"- development objective: {locked['objective']}",
+              f"- train+validation 동시 baseline 지배: {locked['dominates_baseline']}",
+              "",
+              "| 기간 | 구분 | CAGR | MDD | Sharpe | 평균노출 | 부스터 진입 |",
+              "|---|---|---:|---:|---:|---:|---:|",
+          ]
+          for period in ("oos", "recent", "full"):
+              for label in ("baseline", "candidate"):
+                  m = report["final_periods"][period][label]
+                  lines.append(
+                      f"| {period} | {label} | {m['cagr_pct']:+.2f}% | {m['mdd_pct']:.2f}% | "
+                      f"{m['sharpe']:.3f} | {m['average_exposure_pct']:.2f}% | {m['booster_entries']} |"
+                  )
+          dominators = report.get("robust_dominators", [])
+          lines += ["", f"- train+validation 동시 baseline 지배 후보 수: {len(dominators)}"]
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          Path("reports/score_weight_summary.md").write_text(summary, encoding="utf-8")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write(summary)
+          PY
+      - name: Upload research artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: score-weight-research-${{ github.run_id }}
+          path: |
+            reports/score_weight_research.json
+            reports/score_weight_grid.csv
+            reports/score_weight_summary.md
