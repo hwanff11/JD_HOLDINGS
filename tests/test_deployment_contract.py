@@ -34,6 +34,7 @@ def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
     assert '"$(git branch --show-current)" != "main"' in deploy
     assert '"$(git rev-parse HEAD)" != "$(git rev-parse origin/main)"' in deploy
     assert '"$target_dir/shared/data/cache"' in deploy
+    assert '"$target_dir/shared/.env"' in deploy
     assert "SKIP_LOCAL_CHECKS" in deploy
     assert "JDSS_TRADING_MODE=dry_run" in deploy
     assert "JDSS_LIVE_CONFIRMATION=" in deploy
@@ -101,6 +102,17 @@ def test_runtime_verifier_checks_release_directory_sha_without_git_metadata():
     assert 'deployed_sha="$(basename "$current")"' in workflow
     assert 'test "$current" = "$TARGET_DIR/releases/$EXPECTED_SHA"' in workflow
     assert 'git -C "$current" rev-parse HEAD' not in workflow
+
+
+def test_runtime_verifier_uses_shared_env_and_shared_venv():
+    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+        encoding="utf-8"
+    )
+    assert 'env_file="$TARGET_DIR/shared/.env"' in workflow
+    assert 'source "$env_file"' in workflow
+    assert '"$TARGET_DIR/venv/bin/jdss"' in workflow
+    assert 'source "$TARGET_DIR/.env"' not in workflow
+    assert '.venv/bin/jdss' not in workflow
 
 
 def test_workflows_use_node24_actions():
