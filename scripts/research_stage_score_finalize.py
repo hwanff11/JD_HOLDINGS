@@ -85,7 +85,10 @@ def main() -> int:
             "stage_values": list(base.STAGE_VALUES),
             "candidate_count": len(frame),
             "baseline": list(base.BASELINE),
-            "selection": "Five parallel S1 shards; train 2011-2018 + validation 2019-2022 only; OOS opened after locking.",
+            "selection": (
+                "Five parallel S1 shards; train 2011-2018 + validation 2019-2022 only; "
+                "OOS opened after locking."
+            ),
             "fees": float(config.global_.buy_fee),
             "slippage": args.slippage,
         },
