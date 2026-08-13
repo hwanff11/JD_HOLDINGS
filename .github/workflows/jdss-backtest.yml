@@ -33,6 +33,7 @@ on:
     paths:
       - "strategy.yaml"
       - "src/jd_holdings/**"
+      - "scripts/research_v32_qqq_alpha.py"
       - "tests/**"
       - ".github/workflows/jdss-backtest.yml"
   issues:
@@ -125,3 +126,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: gh issue comment "$ISSUE_NUMBER" --body-file reports/backtest.md
+
+  v32-qqq-alpha-research:
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'research/v32-qqq-alpha-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Research quality check
+        run: |
+          python -m ruff format --check scripts/research_v32_qqq_alpha.py
+          python -m ruff check scripts/research_v32_qqq_alpha.py
+      - name: Run V3.2 QQQ alpha discovery
+        run: |
+          mkdir -p reports
+          python scripts/research_v32_qqq_alpha.py --output reports/v32_qqq_alpha.json
+      - name: Upload V3.2 research artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: v32-qqq-alpha-${{ github.run_id }}
+          path: reports/v32_qqq_alpha.json
