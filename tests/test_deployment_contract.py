@@ -146,7 +146,7 @@ def test_workflows_use_node24_actions():
     ):
         workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
         assert "actions/checkout@v7" in workflow
-        assert "actions/setup-python@v7" not in workflow or "actions/setup-python@v7" in workflow
+        assert "actions/setup-python@v7" in workflow
         assert "actions/checkout@v4" not in workflow
         assert "actions/setup-python@v5" not in workflow
 
