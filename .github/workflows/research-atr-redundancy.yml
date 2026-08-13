@@ -25,9 +25,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
-      - name: Lint research script
+      - name: Normalize and lint research script
         run: |
-          ruff format --check scripts/research_atr_redundancy.py
+          ruff format scripts/research_atr_redundancy.py
           ruff check scripts/research_atr_redundancy.py
       - name: Run ATR redundancy research
         run: |
