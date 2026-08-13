@@ -233,7 +233,12 @@ def test_reconciliation_accepts_open_tp2_after_restart(tmp_path, config):
 
     assert [order["purpose"] for order in repository.open_orders("TQQQ")] == ["TP2"]
     assert repository.get_position("TQQQ").state == PositionState.PARTIAL_TP_1
-    assert ReconciliationService(config, repository, broker).run() == {}
+    issues = ReconciliationService(config, repository, broker).run()
+    assert any(
+        issue.startswith("V322_DIRECT_BOOSTER_STATE_PRESENT")
+        for issue in issues["TQQQ"]
+    )
+    assert "V322_DIRECT_TP_PLAN_PRESENT" in issues["TQQQ"]
 
 
 class FailingBroker(DryRunBroker):

@@ -13,7 +13,7 @@ from jd_holdings.core.take_profit import calculate_take_profit
 
 
 def test_final_config_contract(config):
-    assert config.version == "JDSS-3.1.1-TWIN-H40-S3"
+    assert config.version == "JDSS-3.2.2-RS6M-ONEWAY-HWM75"
     assert config.global_.entry_score == 55
     assert config.global_.approval_required
     assert not config.global_.stop_loss_enabled

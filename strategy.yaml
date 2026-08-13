@@ -14,6 +14,7 @@ portfolio:
   signal_schedule: month_end
   execution_schedule: next_session
   core_underlyings:
+    QQQ: QQQ
     TQQQ: QQQ
     SOXL: SOXX
   buy_approval_required: true
