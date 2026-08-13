@@ -14,7 +14,7 @@ class StageThresholds:
     s3: int
 
     @classmethod
-    def from_config(cls, config: StrategyConfig) -> "StageThresholds":
+    def from_config(cls, config: StrategyConfig) -> StageThresholds:
         return cls(
             s1=int(config.global_.entry_score),
             s2=int(config.additional_entry.stages[2].min_score),
