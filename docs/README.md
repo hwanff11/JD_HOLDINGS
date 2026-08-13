@@ -1,6 +1,6 @@
 # JD_HOLDINGS 문서 안내
 
-이 디렉터리는 JDSS V3.1.1 TWIN-H40-S3의 개발·운영 문서와 과거 연구 기록을 함께 보관한다. 다른 환경의 Codex, ChatGPT, Antigravity는 아래 순서로 읽는다.
+이 디렉터리는 JDSS V3.2.2 RS6M/HWM75의 개발·운영 문서와 과거 연구 기록을 함께 보관한다. 다른 환경의 Codex, ChatGPT, Antigravity는 아래 순서로 읽는다.
 
 ## 작업 시작 순서
 
@@ -17,7 +17,7 @@ GitHub `main`이 소스의 기준이다. 동일 브랜치를 여러 환경에서
 | 문서 | 역할 | 기준 |
 |---|---|---|
 | [`../CURRENT_WORK.md`](../CURRENT_WORK.md) | 최근 인수인계·Oracle 상태 | 현재 상태 최종 기준 |
-| [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md) | JDSS-3.1.1-TWIN-H40-S3 전략·자금·주문 계약 | 현재 전략 최종 기준 |
+| [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md) | JDSS-3.2.2-RS6M-ONEWAY-HWM75 전략·자금·주문 계약 | 현재 전략 최종 기준 |
 | [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md) | 쉬운 전략·용어 설명 | 사용자 이해용 현재 기준 |
 | [`BACKTEST_REPORT.md`](BACKTEST_REPORT.md) | production 백테스트 조건·성과·한계 | 검증 기준 |
 | [`TELEGRAM_BOT_GUIDE.md`](TELEGRAM_BOT_GUIDE.md) | Telegram 명령·승인·SAFE_MODE | 현재 UI 기준 |
@@ -25,19 +25,23 @@ GitHub `main`이 소스의 기준이다. 동일 브랜치를 여러 환경에서
 | [`infra/DEVELOPMENT_WORKFLOW.md`](infra/DEVELOPMENT_WORKFLOW.md) | Codex·ChatGPT·Antigravity 협업 절차 | 개발 기준 |
 | [`infra/SECURITY.md`](infra/SECURITY.md) | 비밀정보·인증·주문·DB·배포 보안 | 보안 기준 |
 | [`infra/DECISIONS.md`](infra/DECISIONS.md) | 구현 결정과 변경 이유 | 누적 결정 기록 |
+| [`releases/V3.2.2.md`](releases/V3.2.2.md) | V3.2.2 변경·검증·운영 안전 요약 | 현재 릴리즈 기록 |
 | [`research/PR27_SIMPLE_STRATEGY_RESEARCH.md`](research/PR27_SIMPLE_STRATEGY_RESEARCH.md) | 과거 PR #27 연구 | 연구 이력 |
 | [`archive/spec_v1/`](archive/spec_v1/) | v1 계열 명세 | Archive 전용 |
 | [`../configs/strategy_v1.1.2.yaml`](../configs/strategy_v1.1.2.yaml) | v1.1.2 연구 재현 | Archive 전용 |
 
-## V3.1.1에서 특히 바뀐 문서 계약
+## V3.2.2 핵심 문서 계약
 
-- JDSS 위험원금: 고정 $50,000
-- 자체수익·월급·추가입금: 사이징에 재투자하지 않음
-- SGOV: OFF, 유휴원금 USD 현금
-- H40: 종목당 $20,000
-- S3 최대 신규투입: 종목당 $18,000
-- 개인 QQQ/QQQM·USD는 JDSS와 분리 가능
-- 개인 TQQQ/SOXL은 같은 Toss 계좌 혼합 금지
+- 시작 위험원금: $50,000
+- HWM75: 새 최고자산 누적이익의 75%만 위험예산 증가에 반영
+- QQQ 중심 노출: 0.5 / 1.0 / 1.25 / 1.5x
+- 고변동 브레이크: QQQ 20일 연환산 변동성 30% 이상이면 0.5x
+- RS6M: SOXX 126거래일 상대강도 우위 시 레버리지 슬리브의 50%를 SOXL로 분산
+- 월중 RS 이탈: SOXL에서 TQQQ로 one-way exit하고 다음 월 reset 전 재진입 금지
+- H40-S3: 독립 자금전략이 아닌 QQQ 최대 5% virtual overlay
+- SGOV OFF, 모든 위험증가 BUY 2단계 승인, 위험축소 SELL 자동
+- 개인 QQQ/TQQQ/SOXL은 같은 Toss 계좌 혼합 금지
+- live OFF, Oracle forced dry-run 유지
 
 ## 변동 상태 기록 원칙
 
@@ -45,4 +49,4 @@ GitHub `main`이 소스의 기준이다. 동일 브랜치를 여러 환경에서
 
 ## 과거 문서 사용 규칙
 
-`Archive`, `Legacy`, `v1.x`, `v2.x`, `V3.0`, `V3.1.0`으로 표시된 과거 값은 연구 재현용일 수 있다. 현재 수치와 충돌하면 루트 `strategy.yaml`과 `JDSS_FINAL_SPEC.md`를 우선한다. 둘이 서로 다르면 코드를 변경하기 전에 불일치로 보고한다.
+`Archive`, `Legacy`, `v1.x`, `v2.x`, `V3.0`, `V3.1.x`로 표시된 과거 값은 연구 재현용일 수 있다. 현재 수치와 충돌하면 루트 `strategy.yaml`과 `JDSS_FINAL_SPEC.md`를 우선한다. 둘이 서로 다르면 코드를 변경하기 전에 불일치로 보고한다.

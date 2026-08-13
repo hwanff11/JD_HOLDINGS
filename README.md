@@ -46,6 +46,8 @@ JD_HOLDINGS의 현재 전략은 **JDSS-3.2.2-RS6M-ONEWAY-HWM75**입니다. QQQ�
 
 ## 문서
 
+현재 브랜치·Oracle 배포·검증 상태는 변동 정보이므로 `CURRENT_WORK.md`에서만 관리합니다.
+
 1. `CURRENT_WORK.md` — 현재 작업/배포 상태
 2. `docs/JDSS_FINAL_SPEC.md` — 공식 전략 계약
 3. `docs/STRATEGY_GUIDE.md` — 쉬운 전략 설명
