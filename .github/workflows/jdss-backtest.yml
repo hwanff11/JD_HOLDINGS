@@ -34,6 +34,7 @@ on:
       - "strategy.yaml"
       - "src/jd_holdings/**"
       - "scripts/research_v32_qqq_alpha.py"
+      - "scripts/research_v32_regime_ladder.py"
       - "tests/**"
       - ".github/workflows/jdss-backtest.yml"
   issues:
@@ -104,13 +105,8 @@ jobs:
                         f"- 고정 원금 상한: ${v3.get('capital_ceiling', 0):,.2f}",
                         f"- 최대 원가 투입: ${v3.get('maximum_invested_cost', 0):,.2f}",
                         f"- SGOV: {'ON' if v3.get('idle_cash_enabled') else 'OFF'}"]
-              half = v3.get("half_year_returns_pct", {})
-              if half:
-                  lines += ["", "## 반기별 수익률", "", "| 반기 | 수익률 |", "|---|---:|"]
-                  lines += [f"| {period} | {value:+.2f}% |" for period, value in half.items()]
           summary = "\n".join(lines) + "\n"
           Path("reports/backtest.md").write_text(summary, encoding="utf-8")
-          print("===== JDSS BACKTEST RESULT =====")
           print(summary)
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as f:
               f.write(summary)
@@ -120,12 +116,6 @@ jobs:
         with:
           name: jdss-backtest-${{ github.run_id }}
           path: reports/backtest.*
-      - name: Comment result on Issue
-        if: ${{ github.event_name == 'issues' || inputs.issue_number != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
-        run: gh issue comment "$ISSUE_NUMBER" --body-file reports/backtest.md
 
   v32-qqq-alpha-research:
     if: >-
@@ -144,16 +134,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-      - name: Normalize and lint research script
+      - name: Normalize and lint research scripts
         run: |
-          python -m ruff format scripts/research_v32_qqq_alpha.py
-          python -m ruff check --fix --ignore E501 scripts/research_v32_qqq_alpha.py
-      - name: Run V3.2 QQQ alpha discovery
+          python -m ruff format scripts/research_v32_qqq_alpha.py scripts/research_v32_regime_ladder.py
+          python -m ruff check --fix --ignore E501 scripts/research_v32_qqq_alpha.py scripts/research_v32_regime_ladder.py
+      - name: Run V3.2 phase one and phase two
         run: |
           mkdir -p reports
           python scripts/research_v32_qqq_alpha.py --output reports/v32_qqq_alpha.json
-      - name: Upload V3.2 research artifact
+          python scripts/research_v32_regime_ladder.py --output reports/v32_regime_ladder.json
+      - name: Upload V3.2 research artifacts
         uses: actions/upload-artifact@v6
         with:
           name: v32-qqq-alpha-${{ github.run_id }}
-          path: reports/v32_qqq_alpha.json
+          path: reports/v32_*.json
