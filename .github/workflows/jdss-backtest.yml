@@ -8,6 +8,7 @@ on:
       - "src/jd_holdings/**"
       - "tests/**"
       - "scripts/research_v321_*.py"
+      - "scripts/research_v322_*.py"
       - ".github/workflows/jdss-backtest.yml"
 
 permissions:
@@ -49,19 +50,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-      - name: Validate focused research scripts
+      - name: Validate frozen validation scripts
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
           python -m ruff check scripts/research_v321_relative_strength_booster.py
           python -m ruff check scripts/research_v321_rs6m_split.py
           python -m ruff check scripts/research_v321_rs6m_monthly_lock.py
           python -m ruff check scripts/research_v321_rs6m_oneway_exit.py
-      - name: Run monthly-entry daily-exit RS6M comparison
+          python -m ruff check scripts/research_v321_rs6m_strong_only.py
+          python -m ruff check scripts/research_v322_final_validation.py
+      - name: Run frozen V3.2.2 final validation
         run: |
           mkdir -p reports
-          python scripts/research_v321_rs6m_oneway_exit.py \
-            --output reports/v321_rs6m_oneway_exit.json
+          python scripts/research_v322_final_validation.py \
+            --output reports/v322_final_validation.json
       - uses: actions/upload-artifact@v6
         with:
-          name: v321-rs6m-oneway-exit-${{ github.run_id }}
-          path: reports/v321_rs6m_oneway_exit.json
+          name: v322-final-validation-${{ github.run_id }}
+          path: reports/v322_final_validation.json
