@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test a diversified 6-month relative-strength leverage sleeve."""
+"""Test and diagnose a diversified 6-month relative-strength leverage sleeve."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from jd_holdings.config import load_config
@@ -31,14 +32,12 @@ def load_rs():
 
 
 def split_weights(policy, leverage, qqq_row, soxx_row):
+    del policy
     if leverage <= 1.0:
         return {"QQQ": max(0.0, leverage)}
     sleeve = (leverage - 1.0) / 2.0
     weights = {"QQQ": 1.0 - sleeve}
-    values = (
-        qqq_row.get("ret126"),
-        soxx_row.get("ret126"),
-    )
+    values = (qqq_row.get("ret126"), soxx_row.get("ret126"))
     soxx_wins = False
     if not any(pd.isna(value) for value in values):
         q126 = float(qqq_row["ret126"])
@@ -60,6 +59,97 @@ def run_split(rs, base, frames, active, end, fee, slippage):
         return rs.simulate(base, policy, frames, active, end, fee, slippage)
     finally:
         rs.leverage_weights = original
+
+
+def rolling_distribution(candidate: pd.Series, benchmark: pd.Series, years: int):
+    common = candidate.index.intersection(benchmark.index)
+    rows: list[dict[str, object]] = []
+    for start in common[::21]:
+        target = start + pd.DateOffset(years=years)
+        ends = common[common >= target]
+        if ends.empty:
+            break
+        end = ends[0]
+        span = max((end - start).days / 365.2425, 1 / 365.2425)
+        candidate_cagr = (
+            float(candidate.loc[end] / candidate.loc[start]) ** (1 / span) - 1
+        ) * 100
+        qqq_cagr = (
+            float(benchmark.loc[end] / benchmark.loc[start]) ** (1 / span) - 1
+        ) * 100
+        rows.append(
+            {
+                "start": start.date().isoformat(),
+                "end": end.date().isoformat(),
+                "strategy_cagr_pct": candidate_cagr,
+                "qqq_cagr_pct": qqq_cagr,
+                "excess_pp": candidate_cagr - qqq_cagr,
+            }
+        )
+    if not rows:
+        return {"count": 0}
+    values = np.asarray([float(row["excess_pp"]) for row in rows])
+    worst = rows[int(np.argmin(values))]
+    best = rows[int(np.argmax(values))]
+    return {
+        "count": len(rows),
+        "win_rate_pct": round(float(np.mean(values > 0)) * 100, 2),
+        "p10_excess_pp": round(float(np.percentile(values, 10)), 2),
+        "median_excess_pp": round(float(np.median(values)), 2),
+        "p90_excess_pp": round(float(np.percentile(values, 90)), 2),
+        "worst": {
+            "start": worst["start"],
+            "end": worst["end"],
+            "strategy_cagr_pct": round(float(worst["strategy_cagr_pct"]), 2),
+            "qqq_cagr_pct": round(float(worst["qqq_cagr_pct"]), 2),
+            "excess_pp": round(float(worst["excess_pp"]), 2),
+        },
+        "best": {
+            "start": best["start"],
+            "end": best["end"],
+            "strategy_cagr_pct": round(float(best["strategy_cagr_pct"]), 2),
+            "qqq_cagr_pct": round(float(best["qqq_cagr_pct"]), 2),
+            "excess_pp": round(float(best["excess_pp"]), 2),
+        },
+    }
+
+
+def yearly_comparison(base_metrics, rs6_metrics, split_metrics, qqq_metrics):
+    years = sorted(qqq_metrics["annual_returns_pct"])
+    result = {}
+    for year in years:
+        base_ret = float(base_metrics["annual_returns_pct"][year])
+        rs6_ret = float(rs6_metrics["annual_returns_pct"][year])
+        split_ret = float(split_metrics["annual_returns_pct"][year])
+        qqq_ret = float(qqq_metrics["annual_returns_pct"][year])
+        result[year] = {
+            "qqq_pct": round(qqq_ret, 2),
+            "base_pct": round(base_ret, 2),
+            "rs6m_pct": round(rs6_ret, 2),
+            "split_pct": round(split_ret, 2),
+            "split_minus_base_pp": round(split_ret - base_ret, 2),
+            "split_minus_qqq_pp": round(split_ret - qqq_ret, 2),
+        }
+    return result
+
+
+def cost_drag(base_case: dict, harsh_case: dict):
+    return {
+        name: {
+            "cagr_drag_pp": round(
+                float(harsh_case[name]["cagr_pct"])
+                - float(base_case[name]["cagr_pct"]),
+                2,
+            ),
+            "final_equity_drag_pct": round(
+                (float(harsh_case[name]["final_equity"]) / float(base_case[name]["final_equity"]) - 1)
+                * 100,
+                2,
+            ),
+            "trade_fills": int(base_case[name]["trade_fills"]),
+        }
+        for name in ("BASE_TQQQ", "RS_6M", "RS_6M_SPLIT")
+    }
 
 
 def main() -> int:
@@ -127,10 +217,20 @@ def main() -> int:
     _, rs6_harsh, _ = rs.simulate(
         base, rs6_policy, frames, active, end, 0.002, 0.002
     )
+    full_metrics = {
+        "BASE_TQQQ": base_metrics,
+        "RS_6M": rs6_metrics,
+        "RS_6M_SPLIT": split_metrics,
+    }
+    harsh_metrics = {
+        "BASE_TQQQ": base_harsh,
+        "RS_6M": rs6_harsh,
+        "RS_6M_SPLIT": split_harsh,
+    }
 
     report = {
         "generated_at": datetime.now(UTC).isoformat(),
-        "status": "RS6M_SPLIT_RESEARCH_NO_PRODUCTION_CHANGE",
+        "status": "RS6M_SPLIT_ROBUSTNESS_RESEARCH_NO_PRODUCTION_CHANGE",
         "rule": (
             "HWM75 and V3.2.1 core frozen. When leverage>1 and SOXX 6m return "
             "is positive and exceeds QQQ 6m return, split the leveraged sleeve "
@@ -140,35 +240,39 @@ def main() -> int:
             "QQQ": qqq_metrics,
             "BASE_TQQQ": {
                 "metrics": base_metrics,
-                "rolling_3y": rs.rolling_compare(base_curve, qqq, 3),
-                "rolling_5y": rs.rolling_compare(base_curve, qqq, 5),
+                "rolling_1y": rolling_distribution(base_curve, qqq, 1),
+                "rolling_3y": rolling_distribution(base_curve, qqq, 3),
+                "rolling_5y": rolling_distribution(base_curve, qqq, 5),
             },
             "RS_6M": {
                 "metrics": rs6_metrics,
-                "rolling_3y": rs.rolling_compare(rs6_curve, qqq, 3),
-                "rolling_5y": rs.rolling_compare(rs6_curve, qqq, 5),
+                "rolling_1y": rolling_distribution(rs6_curve, qqq, 1),
+                "rolling_3y": rolling_distribution(rs6_curve, qqq, 3),
+                "rolling_5y": rolling_distribution(rs6_curve, qqq, 5),
             },
             "RS_6M_SPLIT": {
                 "metrics": split_metrics,
-                "rolling_3y": rs.rolling_compare(split_curve, qqq, 3),
-                "rolling_5y": rs.rolling_compare(split_curve, qqq, 5),
+                "rolling_1y": rolling_distribution(split_curve, qqq, 1),
+                "rolling_3y": rolling_distribution(split_curve, qqq, 3),
+                "rolling_5y": rolling_distribution(split_curve, qqq, 5),
                 "soxl_sleeve_days_pct_by_year": rs.yearly_soxl_share(split_state),
             },
         },
+        "yearly": yearly_comparison(
+            base_metrics, rs6_metrics, split_metrics, qqq_metrics
+        ),
         "periods": period_results,
-        "harsh_fee20_slip20": {
-            "BASE_TQQQ": base_harsh,
-            "RS_6M": rs6_harsh,
-            "RS_6M_SPLIT": split_harsh,
-        },
+        "harsh_fee20_slip20": harsh_metrics,
+        "cost_drag": cost_drag(full_metrics, harsh_metrics),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print("FULL", report["full"])
+    print("YEARLY", report["yearly"])
     print("PERIODS", report["periods"])
-    print("HARSH", report["harsh_fee20_slip20"])
+    print("COST_DRAG", report["cost_drag"])
     return 0
 
 
