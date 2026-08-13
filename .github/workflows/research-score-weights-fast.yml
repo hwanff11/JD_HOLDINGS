@@ -1,0 +1,38 @@
+name: JDSS V3.1.1 Score Weight Fast Scan
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_score_weights_fast.py"
+      - ".github/workflows/research-score-weights-fast.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint
+        run: |
+          ruff check --fix scripts/research_score_weights.py scripts/research_score_weights_fast.py
+          ruff check scripts/research_score_weights.py scripts/research_score_weights_fast.py
+      - name: Run directional scan
+        run: python scripts/research_score_weights_fast.py
+      - name: Upload result
+        uses: actions/upload-artifact@v6
+        with:
+          name: score-weight-fast-${{ github.run_id }}
+          path: reports/score_weight_fast.json
