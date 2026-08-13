@@ -181,9 +181,7 @@ def main() -> int:
     for split, (start, split_end) in base.FINAL.items():
         resolved_end = split_end or end
         final_periods[split] = {
-            label: base._compact(
-                base._evaluate(config, frames, spec, start, resolved_end, args.slippage)
-            )
+            label: base._compact(base._evaluate(config, frames, spec, start, resolved_end, args.slippage))
             for label, spec in locked.items()
         }
 
@@ -199,9 +197,7 @@ def main() -> int:
             "slippage": args.slippage,
         },
         "baseline_signal_score_distribution": signal_distribution,
-        "baseline_development": {
-            split: _compact_dev(metrics) for split, metrics in baseline_dev.items()
-        },
+        "baseline_development": {split: _compact_dev(metrics) for split, metrics in baseline_dev.items()},
         "development_top10": frame.head(10).to_dict(orient="records"),
         "development_dominators": frame[frame["dominates_development"]].to_dict(orient="records"),
         "locked_specs": {label: list(spec) for label, spec in locked.items()},
