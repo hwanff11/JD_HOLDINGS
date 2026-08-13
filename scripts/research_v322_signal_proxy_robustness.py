@@ -18,7 +18,7 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 ROOT = Path(__file__).resolve().parents[1]
 RS_SCRIPT = ROOT / "scripts" / "research_v321_relative_strength_booster.py"
 MONTHLY_SCRIPT = ROOT / "scripts" / "research_v321_rs6m_monthly_lock.py"
-ONEWAY_SCRIPT = ROOT / "scripts" / "research_v321_rs6m_oneway_exit.py"
+SPLIT_SCRIPT = ROOT / "scripts" / "research_v321_rs6m_split.py"
 CAPITAL = 50_000.0
 START = "2011-01-03"
 SYMBOLS = ("QQQ", "TQQQ", "SOXL")
@@ -66,8 +66,14 @@ def simulate(base, monthly, frames, active, end, fee, slippage, signal_key: str)
     last_month = str(prior_ts.to_period("M"))
 
     for timestamp in sessions:
-        opens = {symbol: float(frames[symbol].loc[timestamp, "open"]) for symbol in SYMBOLS}
-        closes = {symbol: float(frames[symbol].loc[timestamp, "close"]) for symbol in SYMBOLS}
+        opens = {
+            symbol: float(frames[symbol].loc[timestamp, "open"])
+            for symbol in SYMBOLS
+        }
+        closes = {
+            symbol: float(frames[symbol].loc[timestamp, "close"])
+            for symbol in SYMBOLS
+        }
         open_equity = cash + sum(
             holdings[symbol] * opens[symbol] * (1 - fee) for symbol in SYMBOLS
         )
@@ -124,11 +130,13 @@ def main() -> int:
 
     rs = load_module("rs_booster_proxy", RS_SCRIPT)
     monthly = load_module("rs_monthly_proxy", MONTHLY_SCRIPT)
-    oneway = load_module("rs_oneway_proxy", ONEWAY_SCRIPT)
+    split = load_module("rs_split_proxy", SPLIT_SCRIPT)
     base = rs.load_base()
     config = load_config(ROOT / "strategy.yaml")
     end = args.end or datetime.now(UTC).date().isoformat()
-    warmup = (datetime.fromisoformat("2011-01-01").date() - timedelta(days=420)).isoformat()
+    warmup = (
+        datetime.fromisoformat("2011-01-01").date() - timedelta(days=420)
+    ).isoformat()
     source = YFinanceDataSource(ROOT / "data" / "cache")
     raw = {
         symbol: source.daily(symbol, warmup, end)
@@ -149,12 +157,14 @@ def main() -> int:
     results = {}
     curves = {}
     for signal_key in ("SOXX", "SMH"):
-        curve, metrics = simulate(base, monthly, frames, active, end, fee, slippage, signal_key)
+        curve, metrics = simulate(
+            base, monthly, frames, active, end, fee, slippage, signal_key
+        )
         curves[signal_key] = curve
         results[signal_key] = {
             "metrics": metrics,
-            "rolling_3y": oneway.split.rolling_distribution(curve, qqq, 3),
-            "rolling_5y": oneway.split.rolling_distribution(curve, qqq, 5),
+            "rolling_3y": split.rolling_distribution(curve, qqq, 3),
+            "rolling_5y": split.rolling_distribution(curve, qqq, 5),
         }
 
     periods = {
@@ -173,19 +183,26 @@ def main() -> int:
 
     harsh = {}
     for signal_key in ("SOXX", "SMH"):
-        _, metrics = simulate(base, monthly, frames, active, end, 0.002, 0.002, signal_key)
+        _, metrics = simulate(
+            base, monthly, frames, active, end, 0.002, 0.002, signal_key
+        )
         harsh[signal_key] = metrics
 
     report = {
         "generated_at": datetime.now(UTC).isoformat(),
         "status": "SIGNAL_PROXY_ROBUSTNESS_NO_PRODUCTION_CHANGE",
-        "rule": "Frozen RS6M one-way logic; only semiconductor relative-strength proxy changes SOXX vs SMH.",
+        "rule": (
+            "Frozen RS6M one-way logic; only semiconductor relative-strength "
+            "proxy changes SOXX vs SMH."
+        ),
         "full": results,
         "periods": period_results,
         "harsh_fee20_slip20": harsh,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    args.output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print("FULL", report["full"])
     print("PERIODS", report["periods"])
     print("HARSH", report["harsh_fee20_slip20"])
