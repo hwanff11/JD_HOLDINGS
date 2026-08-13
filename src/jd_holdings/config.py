@@ -442,8 +442,13 @@ def validate_config(config: StrategyConfig) -> None:
             errors.append("부스터 최대비중은 0~50%여야 합니다")
         if config.portfolio.trend_months < 6:
             errors.append("월간 추세기간은 6개월 이상이어야 합니다")
-        if set(config.portfolio.core_underlyings) != set(config.enabled_symbols):
-            errors.append("코어 기초자산 설정은 활성 종목과 정확히 일치해야 합니다")
+        expected_core_symbols = set(config.enabled_symbols)
+        if config.config_version == "3.2.2":
+            expected_core_symbols.add("QQQ")
+        if set(config.portfolio.core_underlyings) != expected_core_symbols:
+            errors.append("코어 기초자산 설정이 현재 포트폴리오 자산과 정확히 일치해야 합니다")
+        if config.config_version == "3.2.2" and config.portfolio.core_underlyings.get("QQQ") != "QQQ":
+            errors.append("V3.2.2 QQQ allocation 원장은 QQQ를 기초자산으로 사용해야 합니다")
         if config.portfolio.signal_schedule != "month_end":
             errors.append("V3 신호주기는 month_end만 지원합니다")
         if config.portfolio.execution_schedule != "next_session":
