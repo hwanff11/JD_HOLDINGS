@@ -147,6 +147,7 @@ jobs:
           python -m ruff check scripts/research_v321_hwm_risk_controls.py
           python -m ruff check scripts/research_v321_core_timing.py
           python -m ruff check scripts/research_v321_recovery_only.py
+          python -m ruff check scripts/research_v321_vol_cross_reentry.py
       - name: Run HWM75 risk-control research
         run: |
           mkdir -p reports
@@ -160,6 +161,10 @@ jobs:
         run: |
           python scripts/research_v321_recovery_only.py \
             --output reports/v321_recovery_only.json
+      - name: Run volatility-cross reentry research
+        run: |
+          python scripts/research_v321_vol_cross_reentry.py \
+            --output reports/v321_vol_cross_reentry.json
       - name: Upload research artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -168,3 +173,4 @@ jobs:
             reports/v321_hwm_risk_controls.json
             reports/v321_core_timing.json
             reports/v321_recovery_only.json
+            reports/v321_vol_cross_reentry.json
