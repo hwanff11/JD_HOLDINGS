@@ -1,0 +1,53 @@
+name: JDSS V3.1.1 Monthly Returns Research
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/research-monthly-returns.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  monthly-returns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Enable equity output for research only
+        run: |
+          sed -i 's/portfolio_result.to_dict(include_equity=False)/portfolio_result.to_dict(include_equity=True)/' src/jd_holdings/cli.py
+      - name: Run production-equivalent backtest and calculate monthly returns
+        run: |
+          set -Eeuo pipefail
+          mkdir -p reports
+          jdss backtest --symbol ALL --start 2011-01-01 --slippage 0.0010 --output reports/backtest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          report = json.loads(Path('reports/backtest.json').read_text(encoding='utf-8'))
+          eq = pd.Series(report['v3_portfolio']['equity_curve'], dtype=float)
+          eq.index = pd.to_datetime(eq.index)
+          month_end = eq.groupby(eq.index.to_period('M')).last()
+          monthly = month_end.pct_change() * 100
+          # January 2024 needs December 2023 month-end as the base, which pct_change provides.
+          rows = []
+          for period, value in monthly.items():
+              if period >= pd.Period('2024-01', freq='M'):
+                  rows.append({'month': str(period), 'return_pct': round(float(value), 4), 'month_end_equity': round(float(month_end.loc[period]), 2)})
+          Path('reports/monthly_returns.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(rows, ensure_ascii=False, indent=2))
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: jdss-v311-monthly-returns
+          path: reports/monthly_returns.json
