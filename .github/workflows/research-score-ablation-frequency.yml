@@ -1,0 +1,45 @@
+name: JDSS V3.1.1 Score Ablation Frequency Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_score_ablation_frequency.py"
+      - ".github/workflows/research-score-ablation-frequency.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Normalize and lint research scripts
+        run: |
+          ruff check --fix scripts/research_score_ablation_threshold.py scripts/research_score_ablation_frequency.py
+          ruff check scripts/research_score_ablation_threshold.py scripts/research_score_ablation_frequency.py
+      - name: Run frequency-matched ablation research
+        run: |
+          mkdir -p reports
+          PYTHONPATH="$PWD" python scripts/research_score_ablation_frequency.py \
+            --output reports/score_ablation_frequency.json \
+            --csv reports/score_ablation_frequency_grid.csv \
+            --slippage 0.001
+      - name: Upload research artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: score-ablation-frequency-${{ github.run_id }}
+          path: |
+            reports/score_ablation_frequency.json
+            reports/score_ablation_frequency_grid.csv
