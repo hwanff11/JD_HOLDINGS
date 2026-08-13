@@ -58,13 +58,20 @@ jobs:
           python -m ruff check scripts/research_v321_rs6m_monthly_lock.py
           python -m ruff check scripts/research_v321_rs6m_oneway_exit.py
           python -m ruff check scripts/research_v321_rs6m_strong_only.py
+          python -m ruff check scripts/research_v321_rs6m_attribution.py
           python -m ruff check scripts/research_v322_final_validation.py
       - name: Run frozen V3.2.2 final validation
         run: |
           mkdir -p reports
           python scripts/research_v322_final_validation.py \
             --output reports/v322_final_validation.json
+      - name: Run RS6M weak-window attribution
+        run: |
+          python scripts/research_v321_rs6m_attribution.py \
+            --output reports/v321_rs6m_attribution.json
       - uses: actions/upload-artifact@v6
         with:
           name: v322-final-validation-${{ github.run_id }}
-          path: reports/v322_final_validation.json
+          path: |
+            reports/v322_final_validation.json
+            reports/v321_rs6m_attribution.json
