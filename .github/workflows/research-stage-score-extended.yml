@@ -1,0 +1,91 @@
+name: JDSS V3.1.1 Extended S2 S3 Score Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_stage_score_extended.py"
+      - ".github/workflows/research-stage-score-extended.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint extended research
+        run: |
+          ruff format --check scripts/research_stage_score_extended.py
+          ruff check scripts/research_stage_score_extended.py
+      - name: Run extended S2 S3 audit
+        run: |
+          mkdir -p reports
+          python -m scripts.research_stage_score_extended \
+            --output reports/stage_score_extended.json \
+            --csv reports/stage_score_extended_grid.csv \
+            --slippage 0.001
+      - name: Publish summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("reports/stage_score_extended.json").read_text(encoding="utf-8"))
+          lines = [
+              "# Extended S2/S3 score threshold audit",
+              "",
+              f"- Strategy: {report['strategy_version']}",
+              f"- Research end: {report['research_end']}",
+              "",
+              "## Production signal score distribution",
+              "",
+              "| Stage | Count | Min | Q25 | Median | Q75 | Max |",
+              "|---|---:|---:|---:|---:|---:|---:|",
+          ]
+          for stage, values in report["baseline_signal_score_distribution"].items():
+              lines.append(
+                  f"| {stage} | {values['count']} | {values['min']} | {values['q25']:.1f} | "
+                  f"{values['median']:.1f} | {values['q75']:.1f} | {values['max']} |"
+              )
+          lines += [
+              "",
+              "## Locked candidates",
+              "",
+              "| Label | S1/S2/S3 | 2023+ CAGR | MDD | Sharpe | 2022+ CAGR | MDD |",
+              "|---|---|---:|---:|---:|---:|---:|",
+          ]
+          for label, spec in report["locked_specs"].items():
+              oos = report["final_periods"]["oos"][label]
+              recent = report["final_periods"]["recent"][label]
+              lines.append(
+                  f"| {label} | {'/'.join(map(str, spec))} | {oos['cagr_pct']:.2f}% | "
+                  f"{oos['mdd_pct']:.2f}% | {oos['sharpe']:.3f} | "
+                  f"{recent['cagr_pct']:.2f}% | {recent['mdd_pct']:.2f}% |"
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          Path("reports/stage_score_extended_summary.md").write_text(summary, encoding="utf-8")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
+              handle.write(summary)
+          PY
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage-score-extended-${{ github.run_id }}
+          path: |
+            reports/stage_score_extended.json
+            reports/stage_score_extended_grid.csv
+            reports/stage_score_extended_summary.md
