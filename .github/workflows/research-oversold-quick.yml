@@ -1,0 +1,67 @@
+name: JDSS V3.1.1 Oversold Quick Scan
+
+on:
+  pull_request:
+    paths:
+      - "scripts/research_oversold_quick.py"
+      - ".github/workflows/research-oversold-quick.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  quick-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint
+        run: |
+          ruff format scripts/research_oversold_quick.py
+          ruff check scripts/research_oversold_quick.py
+      - name: Run quick scan
+        run: |
+          mkdir -p reports
+          python -m scripts.research_oversold_quick
+      - name: Publish summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("reports/oversold_quick.json").read_text())
+          lines = [
+              "# Oversold quick scan",
+              "",
+              f"- End: {report['research_end']}",
+              "",
+              "| Variant | Allocation | Dev objective | 2023+ CAGR/MDD | 2022+ CAGR/MDD |",
+              "|---|---|---:|---:|---:|",
+          ]
+          for row in report["ranked_development"]:
+              label = row["label"]
+              oos = report["final"][label]["oos"]
+              recent = report["final"][label]["recent"]
+              lines.append(
+                  f"| {label} | {row['allocation']} | {row['objective']:.4f} | "
+                  f"{oos['cagr_pct']:.2f}% / {oos['mdd_pct']:.2f}% | "
+                  f"{recent['cagr_pct']:.2f}% / {recent['mdd_pct']:.2f}% |"
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as handle:
+              handle.write(summary)
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: oversold-quick-${{ github.run_id }}
+          path: reports/oversold_quick.json
