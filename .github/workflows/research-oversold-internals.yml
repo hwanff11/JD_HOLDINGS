@@ -1,0 +1,106 @@
+name: JDSS V3.1.1 Oversold Internals Research
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/research_oversold_internals.py"
+      - ".github/workflows/research-oversold-internals.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint research script
+        run: |
+          ruff format --check scripts/research_oversold_internals.py
+          ruff check scripts/research_oversold_internals.py
+      - name: Run oversold internals research
+        run: |
+          mkdir -p reports
+          python scripts/research_oversold_internals.py \
+            --output reports/oversold_internals.json \
+            --csv reports/oversold_internals_grid.csv \
+            --slippage 0.001
+      - name: Publish research summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("reports/oversold_internals.json").read_text(encoding="utf-8")
+          )
+          lines = [
+              "# Oversold internals research",
+              "",
+              f"- 연구 종료일: {report['research_end']}",
+              f"- 탐색 후보: {report['variant_count']}개",
+              f"- 기준 배점: {report['baseline_allocation']}",
+              "",
+              "## Development top 10",
+              "",
+              "| Variant | Allocation | Train CAGR/MDD | Validation CAGR/MDD | Objective |",
+              "|---|---|---:|---:|---:|",
+          ]
+          for row in report["top_development"][:10]:
+              lines.append(
+                  f"| {row['label']} | {row['allocation']} | "
+                  f"{row['train_cagr_pct']:.2f}% / {row['train_mdd_pct']:.2f}% | "
+                  f"{row['validation_cagr_pct']:.2f}% / {row['validation_mdd_pct']:.2f}% | "
+                  f"{row['objective']:.4f} |"
+              )
+          lines += [
+              "",
+              "## Locked candidates",
+              "",
+              "| Variant | Allocation | 2023+ CAGR/MDD | 2022+ CAGR/MDD | Full CAGR/MDD |",
+              "|---|---|---:|---:|---:|",
+          ]
+          labels = ["baseline", *report["locked_labels"]]
+          for label in labels:
+              oos = report["final"]["oos"][label]
+              recent = report["final"]["recent"][label]
+              full = report["final"]["full"][label]
+              lines.append(
+                  f"| {label} | {full['allocation']} | "
+                  f"{oos['metrics']['cagr_pct']:.2f}% / {oos['metrics']['mdd_pct']:.2f}% | "
+                  f"{recent['metrics']['cagr_pct']:.2f}% / {recent['metrics']['mdd_pct']:.2f}% | "
+                  f"{full['metrics']['cagr_pct']:.2f}% / {full['metrics']['mdd_pct']:.2f}% |"
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          Path("reports/oversold_internals_summary.md").write_text(
+              summary,
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              handle.write(summary)
+          PY
+      - name: Upload research artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: oversold-internals-${{ github.run_id }}
+          path: |
+            reports/oversold_internals.json
+            reports/oversold_internals_grid.csv
+            reports/oversold_internals_summary.md
