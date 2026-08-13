@@ -144,15 +144,14 @@ jobs:
       - name: Validate focused research scripts
         run: |
           python -m ruff check scripts/research_v321_controlled_compounding.py
-          python -m ruff check scripts/research_v321_core_timing.py
-          python -m ruff check scripts/research_v321_confirmed_reentry.py
-      - name: Run confirmed 1x reentry research
+          python -m ruff check scripts/research_v321_relative_strength_booster.py
+      - name: Run relative-strength booster research
         run: |
           mkdir -p reports
-          python scripts/research_v321_confirmed_reentry.py \
-            --output reports/v321_confirmed_reentry.json
+          python scripts/research_v321_relative_strength_booster.py \
+            --output reports/v321_relative_strength_booster.json
       - name: Upload research artifact
         uses: actions/upload-artifact@v6
         with:
-          name: v321-confirmed-reentry-${{ github.run_id }}
-          path: reports/v321_confirmed_reentry.json
+          name: v321-relative-strength-booster-${{ github.run_id }}
+          path: reports/v321_relative_strength_booster.json
