@@ -1,0 +1,5 @@
+[allowlist]
+description = "JDSS internal non-secret SQLite state names"
+regexes = [
+  '''v322_risk_budget''',
+]
