@@ -35,7 +35,7 @@ class V322Policy:
     monthly_reset: str
 
     @classmethod
-    def from_config(cls, config: Any) -> "V322Policy":
+    def from_config(cls, config: Any) -> V322Policy:
         if config.version != V322_STRATEGY_ID or config.config_version != V322_CONFIG_VERSION:
             raise ValueError(
                 "V3.2.2 allocation engine requires "
