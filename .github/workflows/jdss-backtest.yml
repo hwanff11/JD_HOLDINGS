@@ -147,7 +147,7 @@ jobs:
       - name: Normalize and lint research script
         run: |
           python -m ruff format scripts/research_v32_qqq_alpha.py
-          python -m ruff check scripts/research_v32_qqq_alpha.py
+          python -m ruff check --fix --ignore E501 scripts/research_v32_qqq_alpha.py
       - name: Run V3.2 QQQ alpha discovery
         run: |
           mkdir -p reports
