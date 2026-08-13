@@ -89,8 +89,9 @@ jobs:
           set -Eeuo pipefail
           current="$(readlink -f "$TARGET_DIR/current")"
           test -d "$current"
-          deployed_sha="$(git -C "$current" rev-parse HEAD)"
+          deployed_sha="$(basename "$current")"
           test "$deployed_sha" = "$EXPECTED_SHA"
+          test "$current" = "$TARGET_DIR/releases/$EXPECTED_SHA"
           grep -q 'JDSS-3.1.1-TWIN-H40-S3' "$current/strategy.yaml"
           grep -q 'total_capital: 50000' "$current/strategy.yaml"
           grep -A3 '^idle_cash:' "$current/strategy.yaml" | grep -q 'enabled: false'
