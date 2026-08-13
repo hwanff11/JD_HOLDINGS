@@ -5,11 +5,11 @@
 ## 현재 릴리즈·운영 상태
 
 - 공식 릴리즈: **`v3.2.2`**
-- production `main` 전략 SHA: **`3a613f4095942d2d992e9c05cf24c313707e2835`**
-- Oracle runtime SHA: **`3a613f4095942d2d992e9c05cf24c313707e2835`**
+- production 코드 SHA: **`6f7d93fb839b9fb0c183c98db5af162889880dd6`**
+- Oracle runtime SHA: **`6f7d93fb839b9fb0c183c98db5af162889880dd6`**
 - Oracle `jd_holdings_bot`: **active / V3.2.2 forced dry-run**
-- runtime verifier: run **`31698900090` SUCCESS / `PASS_NO_RESTART`**
-- 검증 당시 시장이 `closed`가 아니어서 안전규칙에 따라 추가 systemd 재시작만 생략
+- runtime verifier: run **`31704844851` SUCCESS / `PASS_NO_RESTART`**
+- 검증 당시 시장이 `pre_market`이어서 안전규칙에 따라 verifier의 추가 systemd 재시작만 생략
 - live: **LOCKED OFF**
 
 ## 현재 전략
@@ -60,14 +60,24 @@ exact-main Backtest run `31698628950`, 2011-01-01~최신 완결 거래일, 매�
 
 - 승격 PR **#128** squash merge 완료: `3a613f4`
 - GitHub Release **`v3.2.2`** 생성 완료
-- exact-main Quality Gate run `31698603780`: **SUCCESS**, pytest **193 passed**, Ruff/config 성공
-- exact-main Security run `31698603801`: **SUCCESS**
-- exact-main Backtest run `31698628950`: **SUCCESS**
-- Oracle deploy run `31698773915`: **SUCCESS**
+- 운영 안전·문서 정리 PR **#130** squash merge 완료: `6f7d93f`
+- PR #130 Quality Gate run `31704559136`: **SUCCESS**, pytest **197 passed**, Ruff/config 성공
+- PR #130 Security run `31704559046`: **SUCCESS**
+- PR #130 Backtest run `31704559140`: **SUCCESS**, V3.2.2 canonical gate 재확인
+- Oracle direct deploy `6f7d93f`: **SUCCESS**, forced dry-run/service active/Toss read-only smoke 성공
 - V3.1.1 → V3.2.2 원장 전환 완료: legacy position 0, open order 0, 기존 DB `v322-migration` 백업 보존
 - 배포 후 package/config 3.2.2, exact runtime SHA, forced dry-run/live lock, QQQ·TQQQ·SOXL 시세와 미국장 캘린더 read-only smoke 성공
-- Oracle runtime verifier run `31698900090`: **SUCCESS**, focused safety tests **33 passed**, service active
+- Oracle runtime verifier run `31704844851`: **SUCCESS**, phase `pre_market`, service active
+- 원격 구버전/종료 브랜치 **49개 삭제 완료**, 보존 원격 브랜치는 `main`만 남음
+- 대표 복구 기준은 Git tag `v2.2.2`, `v3.0.0`, `v3.2.2`와 `docs/HISTORY.md`로 보존
 - live 활성화는 이번 릴리즈에 포함하지 않았습니다.
+
+## 마지막 완료 작업
+
+- 고등학생 수준의 `docs/ONE_PAGE_REPORT.md`와 용어·QQQ 비교·거래 사이클 작성
+- 백테스트·전략·흐름도를 `docs/STRATEGY_GUIDE.md`로 통합하고 대표 역사를 `docs/HISTORY.md`로 압축
+- 중복 v1 문서, 종료 연구 스크립트·결과·브랜치 정리
+- 멱등 재시도 체결 원장 미반영, 열린 BUY 중복수량, legacy direct 신호, 목표 변경 시 기존 주문, 만료 BUY 취소 결함 수정
 
 ## 다음 작업
 
@@ -75,4 +85,4 @@ exact-main Backtest run `31698628950`, 2011-01-01~최신 완결 거래일, 매�
 2. 다음 `closed` 세션에 필요하면 runtime verifier를 다시 실행해 추가 재시작 검증을 `PASS_RESTARTED`로 완료합니다.
 3. 같은 Toss 계좌에 개인 QQQ/TQQQ/SOXL을 혼합하지 않습니다.
 4. 실제 주문의 `PARTIAL_FILLED`/`UNKNOWN`, 위험축소 미체결과 reconciliation을 충분히 관찰하기 전에는 live를 승인하지 않습니다.
-5. Security의 `gitleaks-action@v2` Node 20 deprecation 경고는 기능 변경과 분리한 의존성 유지보수 PR에서 처리할 수 있습니다.
+5. 배포 시 확인된 OpenSSH post-quantum KEX 경고와 `gitleaks-action@v2` Node 20 경고는 기능 변경과 분리한 인프라·의존성 유지보수로 처리합니다.
