@@ -105,8 +105,8 @@ def _create_core_signal(repository, config) -> int:
 
 def test_unknown_core_buy_enters_safe_mode_and_is_not_reopened(tmp_path, config):
     broker = UnknownBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     repository, _order_manager, trading = _final_trading(tmp_path, config, broker)
     signal_id = _create_core_signal(repository, config)
@@ -132,8 +132,8 @@ def test_unknown_core_buy_enters_safe_mode_and_is_not_reopened(tmp_path, config)
 
 def test_immediate_core_sell_rejection_enters_safe_mode(tmp_path, config):
     broker = RejectedBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     repository = SQLiteRepository(tmp_path / "runtime.db", config)
     order_manager = OrderManager(repository, broker, _settings(tmp_path))
@@ -157,10 +157,10 @@ def test_immediate_core_sell_rejection_enters_safe_mode(tmp_path, config):
     )
 
 
-def test_monthly_core_missing_aligned_data_is_an_explicit_error(tmp_path, config):
+def test_v322_missing_ohlcv_is_an_explicit_error(tmp_path, config):
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "SGOV": Decimal("100")},
-        buying_power=Decimal("20000"),
+        {"QQQ": Decimal("500"), "TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        buying_power=Decimal("50000"),
     )
     repository = SQLiteRepository(tmp_path / "runtime.db", config)
     service = PortfolioService(
@@ -173,10 +173,10 @@ def test_monthly_core_missing_aligned_data_is_an_explicit_error(tmp_path, config
         trading_mode="dry_run",
     )
 
-    with pytest.raises(ValueError, match="공통 거래일 데이터가 없습니다"):
-        service.run_month_end(datetime(2026, 8, 3, 22, 0, tzinfo=UTC))
+    with pytest.raises(ValueError, match="OHLCV 필수 컬럼 누락"):
+        service.run_allocation(datetime(2026, 8, 3, 22, 0, tzinfo=UTC))
 
-    assert repository.get_system_value("last_v3_core_signal_trade_date") is None
+    assert repository.get_system_value("last_v322_allocation_trade_date") is None
 
 
 class _OneCycleStop:
