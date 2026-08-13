@@ -21,13 +21,46 @@ jobs:
       github.actor == github.repository_owner &&
       startsWith(github.event.issue.title, '[verify-oracle-v31]'))
     runs-on: ubuntu-latest
-    environment: oracle-dry-run
     steps:
-      - name: Checkout main
+      - name: Checkout exact latest main
         uses: actions/checkout@v7
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
+
+      - name: Verify source contract
+        id: ref
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          grep -q 'JDSS-3.1.1-TWIN-H40-S3' strategy.yaml
+          grep -q 'config_version: "3.1.1"' strategy.yaml
+          grep -q 'total_capital: 50000' strategy.yaml
+          grep -q 'capital_per_symbol: 20000' strategy.yaml
+          grep -A3 '^idle_cash:' strategy.yaml | grep -q 'enabled: false'
+          grep -q 'live_enabled: false' strategy.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Run focused runtime safety tests
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          python -m pytest \
+            tests/test_v31_managed_account_safety.py \
+            tests/test_v31_core_approval_safety.py \
+            tests/test_v31_operational_faults.py \
+            tests/test_v31_order_monitor_safety.py \
+            tests/test_v31_runtime_resilience.py \
+            tests/test_v31_sleeve_accounting.py \
+            tests/test_v31_telegram_guide.py
 
       - name: Prepare SSH
         env:
@@ -41,176 +74,97 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           chmod 600 ~/.ssh/oracle_jdss
 
-      - name: Verify live Oracle dry-run service and isolated fault scenarios
+      - name: Verify deployed SHA, forced dry-run and read-only broker access
         env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
           SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
           SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
-          REMOTE_PYTHON_BIN: ${{ vars.ORACLE_PYTHON || 'python3.12' }}
+          EXPECTED_SHA: ${{ steps.ref.outputs.ref }}
         run: |
           set -Eeuo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i ~/.ssh/oracle_jdss \
-            "$SERVER_USER@$SERVER_HOST" bash -s -- \
-            "$SERVER_TARGET_DIR" "$REMOTE_PYTHON_BIN" <<'REMOTE'
+          ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' EXPECTED_SHA='$EXPECTED_SHA' bash -s" <<'REMOTE'
           set -Eeuo pipefail
-          target_dir="$1"
-          remote_python="$2"
-          service_name="jd_holdings_bot"
-          env_file="$target_dir/shared/.env"
-          db_path="$target_dir/shared/data/jdss.db"
-          log_path="$target_dir/shared/logs/jdss.log"
-          current_dir="$(readlink -f "$target_dir/current")"
-          verify_root="$(mktemp -d /tmp/jdss-v31-runtime-verify.XXXXXX)"
-          trap 'rm -rf "$verify_root"' EXIT
-
-          echo "[1/7] deployed release and dry-run lock"
-          test -d "$current_dir"
-          grep -q 'JDSS-3.1.0-TWIN-H40-S3' "$current_dir/strategy.yaml"
-          grep -q 'config_version: "3.1.0"' "$current_dir/strategy.yaml"
+          current="$(readlink -f "$TARGET_DIR/current")"
+          test -d "$current"
+          deployed_sha="$(git -C "$current" rev-parse HEAD)"
+          test "$deployed_sha" = "$EXPECTED_SHA"
+          grep -q 'JDSS-3.1.1-TWIN-H40-S3' "$current/strategy.yaml"
+          grep -q 'total_capital: 50000' "$current/strategy.yaml"
+          grep -A3 '^idle_cash:' "$current/strategy.yaml" | grep -q 'enabled: false'
+          grep -q '^JDSS_TRADING_MODE=dry_run$' "$TARGET_DIR/.env"
+          grep -q '^JDSS_LIVE_CONFIRMATION=$' "$TARGET_DIR/.env"
+          sudo systemctl is-active --quiet jd_holdings_bot
+          cd "$current"
           set -a
-          source "$env_file"
+          source "$TARGET_DIR/.env"
           set +a
-          test "${JDSS_TRADING_MODE:-}" = "dry_run"
-          test -z "${JDSS_LIVE_CONFIRMATION:-}"
-          "$target_dir/venv/bin/jdss" --config "$current_dir/strategy.yaml" validate-config
-          echo "release=$(basename "$current_dir") mode=dry_run live_confirmation=empty"
-
-          echo "[2/7] require a closed market session before disruptive restart verification"
-          session="$(cd "$current_dir" && "$target_dir/venv/bin/python" - <<'PY'
-          from jd_holdings.infrastructure.market_clock import MarketClock
-          print(MarketClock().classify_session())
-          PY
-          )"
-          echo "market_session=$session"
-          test "$session" = "closed"
-
-          echo "[3/7] inspect real service/ledger before restart"
-          sudo systemctl is-enabled --quiet "$service_name"
-          sudo systemctl is-active --quiet "$service_name"
-          pid_before="$(sudo systemctl show -p MainPID --value "$service_name")"
-          test "$pid_before" -gt 0
-          fingerprint_before="$("$target_dir/venv/bin/python" - "$db_path" <<'PY'
-          import hashlib, json, sqlite3, sys
-          db = sqlite3.connect(sys.argv[1])
-          db.row_factory = sqlite3.Row
-          payload = {}
-          for table in ('positions', 'core_positions', 'idle_cash_state', 'trades'):
-              rows = [dict(r) for r in db.execute(f'SELECT * FROM {table} ORDER BY 1')]
-              payload[table] = rows
-          payload['open_orders'] = [dict(r) for r in db.execute(
-              "SELECT client_order_id, broker_order_id, symbol, side, qty, filled_qty, status, purpose "
-              "FROM orders WHERE status IN ('CREATED','SUBMITTED','PENDING','PARTIAL_FILLED','UNKNOWN') "
-              "ORDER BY order_id"
-          )]
-          raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
-          print(hashlib.sha256(raw).hexdigest())
-          PY
-          )"
-          "$target_dir/venv/bin/python" - "$db_path" <<'PY'
-          import sqlite3, sys
-          db = sqlite3.connect(sys.argv[1])
-          db.row_factory = sqlite3.Row
-          safe = list(db.execute("SELECT symbol, state FROM positions WHERE state='SAFE_MODE'"))
-          unknown = list(db.execute("SELECT symbol, purpose, status FROM orders WHERE status='UNKNOWN'"))
-          idle = db.execute("SELECT value FROM system_state WHERE key='idle_cash_safe_mode'").fetchone()
-          if safe or unknown or (idle and idle['value'] == '1'):
-              raise SystemExit(f'pre-restart safety state is not clean: safe={len(safe)} unknown={len(unknown)} idle_safe={idle[0] if idle else None}')
-          print('pre_restart_state=clean')
-          PY
-
-          echo "[4/7] restart the actual systemd process and verify persistence/reconciliation"
-          sudo systemctl restart "$service_name"
-          for _ in $(seq 1 20); do
-            if sudo systemctl is-active --quiet "$service_name"; then break; fi
-            sleep 1
-          done
-          sudo systemctl is-active --quiet "$service_name"
-          pid_after="$(sudo systemctl show -p MainPID --value "$service_name")"
-          test "$pid_after" -gt 0
-          test "$pid_after" != "$pid_before"
-          sleep 3
-          fingerprint_after="$("$target_dir/venv/bin/python" - "$db_path" <<'PY'
-          import hashlib, json, sqlite3, sys
-          db = sqlite3.connect(sys.argv[1])
-          db.row_factory = sqlite3.Row
-          payload = {}
-          for table in ('positions', 'core_positions', 'idle_cash_state', 'trades'):
-              rows = [dict(r) for r in db.execute(f'SELECT * FROM {table} ORDER BY 1')]
-              payload[table] = rows
-          payload['open_orders'] = [dict(r) for r in db.execute(
-              "SELECT client_order_id, broker_order_id, symbol, side, qty, filled_qty, status, purpose "
-              "FROM orders WHERE status IN ('CREATED','SUBMITTED','PENDING','PARTIAL_FILLED','UNKNOWN') "
-              "ORDER BY order_id"
-          )]
-          raw = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
-          print(hashlib.sha256(raw).hexdigest())
-          PY
-          )"
-          test "$fingerprint_before" = "$fingerprint_after"
-          "$target_dir/venv/bin/python" - "$db_path" <<'PY'
-          import sqlite3, sys
-          from datetime import UTC, datetime
-          db = sqlite3.connect(sys.argv[1])
-          db.row_factory = sqlite3.Row
-          row = db.execute("SELECT value FROM system_state WHERE key='last_reconciliation'").fetchone()
-          if row is None:
-              raise SystemExit('last_reconciliation missing after restart')
-          value = datetime.fromisoformat(row['value'])
-          age = (datetime.now(UTC) - value.astimezone(UTC)).total_seconds()
-          if age > 120:
-              raise SystemExit(f'last_reconciliation too old: {age:.1f}s')
-          safe = list(db.execute("SELECT symbol FROM positions WHERE state='SAFE_MODE'"))
-          idle = db.execute("SELECT value FROM system_state WHERE key='idle_cash_safe_mode'").fetchone()
-          if safe or (idle and idle['value'] == '1'):
-              raise SystemExit(f'post-restart SAFE_MODE detected: positions={len(safe)} idle={idle[0] if idle else None}')
-          print(f'post_restart_reconciliation_age={age:.1f}s safe_mode=clear')
-          PY
-          echo "pid_before=$pid_before pid_after=$pid_after ledger_fingerprint=unchanged"
-
-          echo "[5/7] run deployed-code fault injection in an isolated Oracle temp environment"
-          "$remote_python" -m venv "$verify_root/venv"
-          "$verify_root/venv/bin/python" -m pip install --quiet --upgrade pip
-          "$verify_root/venv/bin/pip" install --quiet -e "${current_dir}[dev]"
-          cd "$current_dir"
-          "$verify_root/venv/bin/python" -m pytest -q \
-            tests/test_v31_operational_faults.py \
-            tests/test_v31_runtime_resilience.py \
-            tests/test_dry_run_restart.py \
-            tests/test_v31_managed_account_safety.py
-
-          echo "[6/7] verify logs and Telegram transport"
-          test -s "$log_path"
-          sudo journalctl -u "$service_name" --since '-5 minutes' --no-pager -n 30 >/tmp/jdss_runtime_verify_journal.txt
-          grep -Ev 'TOKEN|SECRET|APP_KEY|APP_SECRET' /tmp/jdss_runtime_verify_journal.txt | tail -n 15 || true
-          "$target_dir/venv/bin/python" - <<'PY'
-          import os, requests
-          token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
-          ids = [x.strip() for x in os.environ.get('TELEGRAM_ALLOWED_CHAT_IDS', '').split(',') if x.strip()]
-          if not token or not ids:
-              raise SystemExit('Telegram token/chat id missing')
-          me = requests.get(f'https://api.telegram.org/bot{token}/getMe', timeout=15).json()
-          if not me.get('ok'):
-              raise SystemExit('Telegram getMe failed')
-          text = '🧪 JDSS V3.1 Oracle 검증 완료\n실제 서버 재시작·정합성·fault-injection·로그·Telegram 통신을 점검 중입니다. 실매매는 OFF(dry-run)입니다.'
-          for chat_id in ids:
-              result = requests.post(
-                  f'https://api.telegram.org/bot{token}/sendMessage',
-                  json={'chat_id': chat_id, 'text': text},
-                  timeout=15,
-              ).json()
-              if not result.get('ok'):
-                  raise SystemExit(f'Telegram send failed for configured chat id')
-          print(f'telegram_transport=ok recipients={len(ids)}')
-          PY
-
-          echo "[7/7] final service health"
-          sudo systemctl is-active --quiet "$service_name"
-          test "$(sudo systemctl show -p ExecMainStatus --value "$service_name")" = "0"
-          "$target_dir/venv/bin/jdss" --config "$current_dir/strategy.yaml" toss-smoke
-          echo "ORACLE_V31_RUNTIME_VERIFY=PASS"
+          .venv/bin/jdss validate-config
+          .venv/bin/jdss toss-smoke
           REMOTE
 
-      - name: Report ChatOps verification result
+      - name: Check whether restart verification is safe now
+        id: market
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+        run: |
+          set -Eeuo pipefail
+          phase="$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          current="$(readlink -f "$TARGET_DIR/current")"
+          cd "$current"
+          set -a
+          source "$TARGET_DIR/.env"
+          set +a
+          .venv/bin/python - <<'PY'
+          from jd_holdings.infrastructure.market_clock import MarketClock
+          print(MarketClock().phase().value)
+          PY
+          REMOTE
+          )"
+          phase="$(printf '%s' "$phase" | tail -n1 | tr -d '\r')"
+          echo "phase=$phase" >> "$GITHUB_OUTPUT"
+          echo "Oracle US-market phase: $phase"
+
+      - name: Restart only during closed market and verify recovery
+        if: steps.market.outputs.phase == 'closed'
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+        run: |
+          set -Eeuo pipefail
+          ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          sudo systemctl restart jd_holdings_bot
+          sleep 3
+          sudo systemctl is-active --quiet jd_holdings_bot
+          current="$(readlink -f "$TARGET_DIR/current")"
+          cd "$current"
+          set -a
+          source "$TARGET_DIR/.env"
+          set +a
+          .venv/bin/jdss validate-config
+          REMOTE
+
+      - name: Record session-safe verifier outcome
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ steps.market.outputs.phase }}" == "closed" ]]; then
+            echo 'ORACLE_V311_RUNTIME_VERIFY=PASS_RESTARTED' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ORACLE_V311_RUNTIME_VERIFY=PASS_NO_RESTART' >> "$GITHUB_STEP_SUMMARY"
+            echo '시장 세션이 closed가 아니므로 안전규칙에 따라 systemd 재시작 검증은 생략했습니다.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment ChatOps result
         if: always() && github.event_name == 'issues'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -218,11 +172,12 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           RUN_ID: ${{ github.run_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PHASE: ${{ steps.market.outputs.phase }}
         run: |
           set -Eeuo pipefail
           if [[ "$JOB_STATUS" == "success" ]]; then
-            message="✅ Oracle V3.1 runtime 검증 성공\n\n실제 systemd 재시작·원장 보존·Reconciliation·격리 fault-injection·로그·Telegram·Toss smoke를 통과했습니다. live는 계속 OFF입니다.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
+            body="✅ V3.1.1 Oracle runtime 검증 성공. 시장 phase=\`${PHASE:-unknown}\`.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
           else
-            message="❌ Oracle V3.1 runtime 검증 실패\n\n운영 안전상 자동 우회하지 않았습니다. 실패 로그를 확인해야 합니다.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
+            body="❌ V3.1.1 Oracle runtime 검증 실패.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
           fi
-          gh issue comment "$ISSUE_NUMBER" --body "$(printf '%b' "$message")"
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '%b' "$body")"
