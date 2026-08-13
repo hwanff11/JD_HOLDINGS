@@ -6,11 +6,12 @@ from decimal import Decimal
 import pytest
 
 from jd_holdings.config import ConfigError, PositionConfig, validate_config
+from jd_holdings.core.v322_allocation import V322Policy
 
 
 def test_default_config_is_valid_and_complete(config):
-    assert config.version == "JDSS-3.1.1-TWIN-H40-S3"
-    assert config.config_version == "3.1.1"
+    assert config.version == "JDSS-3.2.2-RS6M-ONEWAY-HWM75"
+    assert config.config_version == "3.2.2"
     assert config.enabled_symbols == ("TQQQ", "SOXL")
     assert config.position.stage_weights == (
         Decimal("0.40"),
@@ -47,14 +48,19 @@ def test_default_config_is_valid_and_complete(config):
     assert config.idle_cash.cash_buffer == Decimal("0")
     assert config.portfolio.enabled is True
     assert config.portfolio.total_capital == Decimal("50000")
-    assert config.portfolio.core_initial_weight == Decimal("0.10")
-    assert config.portfolio.core_target_weight == Decimal("0.15")
-    assert config.portfolio.booster_max_weight == Decimal("0.40")
-    assert config.portfolio.trend_months == 6
-    assert config.portfolio.core_underlyings == {"TQQQ": "QQQ", "SOXL": "SOXX"}
     assert config.portfolio.live_enabled is False
+    assert config.portfolio.rebalance_tolerance_weight == Decimal("0")
     assert config.global_.capital_per_symbol == Decimal("20000")
     assert tuple(config.additional_entry.stages) == (2, 3)
+
+    policy = V322Policy.from_config(config)
+    assert policy.initial_capital == Decimal("50000")
+    assert policy.hwm_reinvestment_fraction == Decimal("0.75")
+    assert policy.volatility_brake == pytest.approx(0.30)
+    assert policy.rs_benchmark == "SOXX"
+    assert policy.rs_lookback == 126
+    assert policy.rs_sleeve_fraction == pytest.approx(0.50)
+    assert policy.jdss_overlay_weight == pytest.approx(0.05)
 
 
 def test_invalid_stage_weights_are_rejected(config):
