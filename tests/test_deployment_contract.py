@@ -94,6 +94,15 @@ def test_runtime_verifier_uses_oracle_environment_secrets():
     assert "ORACLE_HOST: ${{ secrets.ORACLE_HOST }}" in workflow
 
 
+def test_runtime_verifier_checks_release_directory_sha_without_git_metadata():
+    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+        encoding="utf-8"
+    )
+    assert 'deployed_sha="$(basename "$current")"' in workflow
+    assert 'test "$current" = "$TARGET_DIR/releases/$EXPECTED_SHA"' in workflow
+    assert 'git -C "$current" rev-parse HEAD' not in workflow
+
+
 def test_workflows_use_node24_actions():
     for name in (
         "ci.yml",
