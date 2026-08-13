@@ -1,103 +1,69 @@
 # JD_HOLDINGS
 
-JDSS V3.1.1은 QQQ·SOXX의 월간 추세를 따르는 TQQQ·SOXL 코어와 과매도·반등 H40-S3 부스터를 결합한 Telegram 승인형 반자동 매매 봇입니다. 현재 개발 기준은 **JDSS-3.1.1-TWIN-H40-S3**입니다.
+JD_HOLDINGS의 현재 전략은 **JDSS-3.2.2-RS6M-ONEWAY-HWM75**입니다. QQQ를 기본 시장참여 자산으로 사용하고, 추세·변동성에 따라 0.5/1.0/1.25/1.5배로 노출을 조절하며, 반도체 상대강도가 좋을 때 레버리지 슬리브 일부를 SOXL로 분산합니다. 기존 JDSS H40-S3는 독립 자금전략이 아니라 최대 5% 오버레이 신호엔진으로 사용합니다.
 
-> 현재 브랜치·Oracle 배포·검증 상태는 [`CURRENT_WORK.md`](CURRENT_WORK.md)에서만 관리한다. 실거래 승격은 별도 승인 전까지 금지한다.
+> V3.2.2는 정식 production 전략으로 승격하지만 **실거래는 별도 승인 전까지 잠금**입니다. Oracle과 Telegram은 forced dry-run으로 운영합니다.
 
-## V3.1.1 핵심 계약
+## V3.2.2 핵심 계약
 
-- JDSS 고정 전략원금 **$50,000**
-- JDSS 자체수익은 다음 매매 사이징에 재투자하지 않음
-- 월급·추가입금·개인 USD·QQQ/QQQM은 JDSS 자금에서 제외
-- 손실 시 개인자금 자동보충 없음
-- 개인 TQQQ/SOXL의 같은 Toss 계좌 혼합 보유 금지
-- SGOV **OFF**, 미투입 JDSS 원금은 USD 현금
-- 코어: QQQ/SOXX 완료 월말 종가와 6개월 이동평균
-- 코어 목표: 첫 ON 10%($5,000), 지속 ON 15%($7,500) — 종목별
-- 부스터 H40 cap: 종목당 **$20,000**, S3 실제 최대 신규투입 **$18,000**
-- S3 분할: 40% / 30% / 20%, 누적 40% / 70% / 90%
-- 부스터 진입: Score 55 이상, Reversal Score 5 이상, `Regime != RED`
-- 추가매수: 최초 체결가 대비 -2% / -5%
-- 익절: TP1 +4%에서 약 30%, TP2 +10%에서 잔량
-- 자동손절·재매수·기간강제청산 OFF
-- SOXL 섹터가드: SOXX/SMH EMA60 기준 1·3차 차단
-- 모든 BUY는 Telegram 2단계 승인
-- 위험축소 코어 SELL과 TP SELL은 자동
-- forced dry-run, live 잠금 유지
+- 시작 위험원금: **$50,000**
+- HWM75 통제복리: 새 최고자산 누적이익의 **75%만 위험예산 증가에 반영**
+- 손실 시 외부자금 자동보충 없음
+- SGOV OFF, 미투입 자금은 USD
+- QQQ 20일 연환산 변동성 30% 이상: **0.5x**
+- 일반: **1.0x**
+- 중간 추세: **1.25x**
+- 강한 추세: **1.5x**
+- 월간 reset: 새 달 첫 거래일 종가 판정 → 다음 세션 반영
+- 반도체 RS6M: SOXX 126거래일 수익률이 양수이면서 QQQ보다 높을 때 ON
+- RS ON 시 레버리지 슬리브: TQQQ 50% + SOXL 50%
+- 월중 RS 이탈: SOXL → TQQQ one-way exit, 다음 달까지 SOXL 재진입 금지
+- 기존 JDSS H40-S3 활성 시 QQQ 최대 5%를 TQQQ/SOXL로 교체
+- 모든 위험증가 BUY: Telegram 2단계 승인
+- 위험축소 SELL: 자동
+- QQQ/TQQQ/SOXL 개인물량을 같은 Toss 계좌에 혼합 보유 금지
+- `portfolio.live_enabled: false`, 애플리케이션 live hard-lock 유지
 
-## 현재 production 백테스트
+## Canonical 백테스트
 
-고정 $50,000 / 수익 재투자 OFF / SGOV OFF 계약 기준:
+2011-01-01~최신 완결 거래일, 초기 $50,000, 매수/매도 수수료 0.1%, 슬리피지 0.1%, SGOV OFF 기준입니다.
 
-| 지표 | 결과 |
-|---|---:|
-| Total Return | +414.80% |
-| CAGR | 11.07% |
-| MDD | -22.97% |
-| Sharpe | 0.839 |
-| 평균 노출 | 21.28% |
-| 코어 체결 | 319 |
-| 부스터 체결 | 443 |
-| 최대 원가투입 | $45,951.75 |
+| 지표 | V3.2.2 | QQQ B&H 참고 |
+|---|---:|---:|
+| CAGR | **약 22.4%** | 18.95% |
+| MDD | **약 -30.9%** | -35.12% |
+| Sharpe | **약 1.00** | 0.941 |
+| 평균 노출 | 약 80.6% | 100% |
 
-상세 조건과 한계는 [`docs/BACKTEST_REPORT.md`](docs/BACKTEST_REPORT.md)를 따른다.
+정식 CI canonical gate는 provider 데이터의 소폭 수정 가능성을 감안해 CAGR 22.0~22.8%, MDD -31.6~-30.3%, Sharpe 0.94~1.07 범위를 요구합니다.
 
-## 문서 읽는 순서
+## 연구 한계
 
-1. [`CURRENT_WORK.md`](CURRENT_WORK.md) — 현재 배포·검증 상태
-2. [`docs/STRATEGY_GUIDE.md`](docs/STRATEGY_GUIDE.md) — 쉬운 전략 설명
-3. [`docs/JDSS_FINAL_SPEC.md`](docs/JDSS_FINAL_SPEC.md) — 공식 전략·자금·주문 계약
-4. [`docs/TELEGRAM_BOT_GUIDE.md`](docs/TELEGRAM_BOT_GUIDE.md) — Telegram 운영
-5. [`docs/BACKTEST_REPORT.md`](docs/BACKTEST_REPORT.md) — 검증 결과
-6. [`docs/infra/DEVELOPMENT_WORKFLOW.md`](docs/infra/DEVELOPMENT_WORKFLOW.md) — 협업 절차
-7. [`docs/infra/DEPLOYMENT.md`](docs/infra/DEPLOYMENT.md) — Oracle 배포
-8. [`docs/infra/SECURITY.md`](docs/infra/SECURITY.md) — 보안 기준
+- 2023+ 데이터는 후보 선택 과정에서 반복 관찰되어 **pristine OOS가 아닙니다**.
+- 후보군 CSCV-style PBO가 약 **64.29%**로 과최적화 경고가 남아 있습니다.
+- 따라서 과거 초과수익을 미래 승리 보장으로 해석하지 않습니다.
+- 대표 승인으로 production 전략은 V3.2.2로 승격하되 live는 계속 잠급니다.
 
-## 구현 범위
+## 문서
 
-- 완료 미국 거래일·완료 월말 데이터만 사용하는 분석
-- 6개월 월간 쌍발 코어
-- JDSS 점수 기반 H40-S3 부스터
-- 고정원금 $50,000 주문게이트와 비복리 회계
-- 코어·부스터 분리 SQLite 원장과 브로커 합산 Reconciliation
-- Telegram `검토 → 최종 실행` 2단계 BUY 승인
-- 부분체결·UNKNOWN·재시작 SAFE_MODE
-- Toss Securities OAuth2/OpenAPI 어댑터
-- GitHub Actions CI/Security/Backtest/Oracle dry-run 배포
-
-SGOV 레거시 컴포넌트 코드는 회귀·이력 호환을 위해 일부 남아 있지만 production 설정에서는 비활성화하며 Bot 런타임에서 manager를 만들지 않는다.
+1. `CURRENT_WORK.md` — 현재 작업/배포 상태
+2. `docs/JDSS_FINAL_SPEC.md` — 공식 전략 계약
+3. `docs/STRATEGY_GUIDE.md` — 쉬운 전략 설명
+4. `docs/BACKTEST_REPORT.md` — 백테스트 및 한계
+5. `docs/TELEGRAM_BOT_GUIDE.md` — Telegram 운영
+6. `docs/infra/DEPLOYMENT.md` — Oracle 배포
+7. `docs/releases/V3.2.2.md` — V3.2.2 릴리즈 노트
 
 ## 빠른 시작
-
-Python 3.11 이상이 필요합니다.
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/pip install -e '.[dev]'
-cp .env.example .env
-chmod 600 .env
 .venv/bin/jdss validate-config
 .venv/bin/pytest
 .venv/bin/ruff check .
-```
-
-```bash
-.venv/bin/jdss analyze
 .venv/bin/jdss backtest --symbol ALL --start 2011-01-01 --output reports/baseline.json
-.venv/bin/jdss-bot
 ```
 
-## 주문 안전장치
-
-V3.1.1은 `portfolio.live_enabled: false`와 애플리케이션 시작 잠금으로 전체 live 모드를 거부합니다. 과거 live 환경변수가 설정돼 있어도 V3.1.1에서는 실주문이 열리지 않습니다.
-
-`toss-smoke`는 인증·현재가·미국 장 상태만 조회하고 주문을 만들지 않습니다.
-
-```bash
-.venv/bin/jdss toss-smoke
-```
-
-## 배포
-
-상세 절차는 [`docs/infra/DEPLOYMENT.md`](docs/infra/DEPLOYMENT.md)를 따른다. `.github/workflows/deploy-oracle-dry-run.yml`은 정확한 최신 `main`을 재검증한 뒤 Oracle 서버에 배포하고 forced dry-run과 조회 전용 Toss smoke test를 확인한다.
+Oracle 배포 workflow는 정확한 최신 `main`만 배포하고 서버 `.env`를 `JDSS_TRADING_MODE=dry_run`, 빈 `JDSS_LIVE_CONFIRMATION`으로 강제합니다. V3.1.1에서 V3.2.2로 원장 모델이 바뀌는 최초 배포에서는 기존 dry-run SQLite를 `v322-migration` 백업으로 보존한 뒤 새 V3.2.2 원장으로 시작합니다.
