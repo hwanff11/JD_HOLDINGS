@@ -77,11 +77,7 @@ def _max_equity_diff(left, right) -> float:
     if len(common) == 0:
         return 0.0
     return round(
-        float(
-            (left.equity_curve.loc[common] - right.equity_curve.loc[common])
-            .abs()
-            .max()
-        ),
+        float((left.equity_curve.loc[common] - right.equity_curve.loc[common]).abs().max()),
         6,
     )
 
