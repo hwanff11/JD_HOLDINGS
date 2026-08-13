@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   fix:
-    if: ${{ !contains(github.event.head_commit.message, '[v322-config-fix]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -18,26 +17,8 @@ jobs:
           ref: agent/v3.2.2-production-promotion
       - name: Update config validation
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("src/jd_holdings/config.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''        if set(config.portfolio.core_underlyings) != set(config.enabled_symbols):
-              errors.append("코어 기초자산 설정은 활성 종목과 정확히 일치해야 합니다")
-'''
-          new = '''        expected_core_symbols = set(config.enabled_symbols)
-          if config.config_version == "3.2.2":
-              expected_core_symbols.add("QQQ")
-          if set(config.portfolio.core_underlyings) != expected_core_symbols:
-              errors.append("코어 기초자산 설정이 현재 포트폴리오 자산과 정확히 일치해야 합니다")
-          if config.config_version == "3.2.2" and config.portfolio.core_underlyings.get("QQQ") != "QQQ":
-              errors.append("V3.2.2 QQQ allocation 원장은 QQQ를 기초자산으로 사용해야 합니다")
-'''
-          if old not in text:
-              raise SystemExit("target config validation block not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          Path(".github/workflows/v322-config-contract-fix.yml").unlink()
-          PY
+          python -c 'from pathlib import Path; p=Path("src/jd_holdings/config.py"); t=p.read_text(encoding="utf-8"); old="        if set(config.portfolio.core_underlyings) != set(config.enabled_symbols):\n            errors.append(\"코어 기초자산 설정은 활성 종목과 정확히 일치해야 합니다\")\n"; new="        expected_core_symbols = set(config.enabled_symbols)\n        if config.config_version == \"3.2.2\":\n            expected_core_symbols.add(\"QQQ\")\n        if set(config.portfolio.core_underlyings) != expected_core_symbols:\n            errors.append(\"코어 기초자산 설정이 현재 포트폴리오 자산과 정확히 일치해야 합니다\")\n        if config.config_version == \"3.2.2\" and config.portfolio.core_underlyings.get(\"QQQ\") != \"QQQ\":\n            errors.append(\"V3.2.2 QQQ allocation 원장은 QQQ를 기초자산으로 사용해야 합니다\")\n"; assert old in t; p.write_text(t.replace(old,new,1),encoding="utf-8")'
+          rm .github/workflows/v322-config-contract-fix.yml
       - name: Commit fix and self-delete
         run: |
           git config user.name "github-actions[bot]"
