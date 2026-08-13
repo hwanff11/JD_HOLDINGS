@@ -9,9 +9,11 @@ from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.idle_cash_manager import IdleCashManager
 from jd_holdings.application.managed_account import (
     available_managed_cash,
+    current_v322_capital_state,
     managed_cash_balance,
     managed_equity,
     raw_managed_cash_balance,
+    record_v322_equity,
 )
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.reconciliation import ReconciliationService
@@ -51,7 +53,7 @@ def test_managed_equity_and_cash_exclude_personal_account_assets(tmp_path, confi
     assert managed_equity(config, repository, broker) == Decimal("50000")
 
 
-def test_central_buy_gate_reserves_fixed_principal_not_personal_cash(tmp_path, config):
+def test_central_buy_gate_reserves_hwm75_budget_not_personal_cash(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     broker = DryRunBroker({"TQQQ": Decimal("100")}, buying_power=Decimal("90000"))
     manager = OrderManager(repository, broker, _settings(tmp_path))
@@ -78,12 +80,12 @@ def test_central_buy_gate_reserves_fixed_principal_not_personal_cash(tmp_path, c
         price=Decimal("99"),
         purpose="ENTRY_1",
     )
-    with pytest.raises(RuntimeError, match="고정 관리원금"):
+    with pytest.raises(RuntimeError, match="HWM75 위험예산"):
         manager.submit(second, cycle_id=None)
     assert repository.get_order_by_client_id("MANAGED-SECOND") is None
 
 
-def test_realized_profit_is_excluded_from_future_jdss_buying_power(tmp_path, config):
+def test_realized_profit_is_cash_but_not_risk_budget_until_hwm_is_recorded(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     for client_id, side, price in (
         ("BUY-ROUNDTRIP", "BUY", Decimal("100")),
@@ -112,17 +114,24 @@ def test_realized_profit_is_excluded_from_future_jdss_buying_power(tmp_path, con
     raw_expected += Decimal("1100") * Decimal("0.999")
     assert raw_managed_cash_balance(config, repository) == raw_expected
     assert raw_expected == Decimal("50097.900")
-    assert managed_cash_balance(config, repository) == Decimal("50000")
+    assert managed_cash_balance(config, repository) == raw_expected
+    assert current_v322_capital_state(config, repository)[1] == Decimal("50000")
 
     broker = DryRunBroker(
         {"TQQQ": Decimal("110"), "SOXL": Decimal("50")},
         buying_power=Decimal("999999"),
     )
     restore_dry_run_holdings(repository, broker)
-    assert broker.get_buying_power("USD") == Decimal("50000")
+    assert broker.get_buying_power("USD") == raw_expected
+    assert available_managed_cash(config, repository, broker) == Decimal("50000")
+
+    high_water, risk_budget = record_v322_equity(config, repository, raw_expected)
+    assert high_water == raw_expected
+    assert risk_budget == Decimal("50073.4250")
+    assert available_managed_cash(config, repository, broker) == risk_budget
 
 
-def test_existing_positions_reduce_remaining_fixed_principal(tmp_path, config):
+def test_existing_positions_reduce_remaining_hwm75_risk_budget(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     with repository.transaction() as connection:
         connection.execute(
@@ -140,7 +149,7 @@ def test_existing_positions_reduce_remaining_fixed_principal(tmp_path, config):
 def test_reconciliation_fails_safe_for_open_order_without_broker_id(tmp_path, config):
     repository = SQLiteRepository(tmp_path / "managed.db", config)
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "QQQ": Decimal("500")},
         buying_power=Decimal("50000"),
     )
     assert repository.reserve_order(
@@ -188,7 +197,7 @@ def test_restart_skips_ambiguous_partial_order_but_keeps_sequence(tmp_path, conf
         )
 
     broker = DryRunBroker(
-        {"TQQQ": Decimal("100"), "SOXL": Decimal("50")},
+        {"TQQQ": Decimal("100"), "SOXL": Decimal("50"), "QQQ": Decimal("500")},
         buying_power=Decimal("50000"),
     )
     restore_dry_run_orders(repository, broker)
