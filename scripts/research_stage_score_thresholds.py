@@ -129,12 +129,8 @@ def _evaluate(
         slippage=slippage,
     )
     metrics = dict(portfolio.metrics)
-    metrics["booster_signals"] = sum(
-        int(result.metrics["signals"]) for result in boosters.values()
-    )
-    metrics["booster_entries"] = sum(
-        int(result.metrics["executed_entries"]) for result in boosters.values()
-    )
+    metrics["booster_signals"] = sum(int(result.metrics["signals"]) for result in boosters.values())
+    metrics["booster_entries"] = sum(int(result.metrics["executed_entries"]) for result in boosters.values())
     metrics["booster_closed_cycles"] = sum(
         int(result.metrics["closed_cycles"]) for result in boosters.values()
     )
@@ -144,21 +140,14 @@ def _evaluate(
 
 
 def _utility(metrics: dict[str, Any]) -> float:
-    return (
-        float(metrics["cagr_pct"])
-        - 0.25 * abs(float(metrics["mdd_pct"]))
-        + 2.0 * float(metrics["sharpe"])
-    )
+    return float(metrics["cagr_pct"]) - 0.25 * abs(float(metrics["mdd_pct"])) + 2.0 * float(metrics["sharpe"])
 
 
 def _objective(
     candidate: dict[str, dict[str, Any]],
     baseline: dict[str, dict[str, Any]],
 ) -> float:
-    deltas = [
-        _utility(candidate[split]) - _utility(baseline[split])
-        for split in DEVELOPMENT
-    ]
+    deltas = [_utility(candidate[split]) - _utility(baseline[split]) for split in DEVELOPMENT]
     return min(deltas) + 0.30 * (sum(deltas) / len(deltas))
 
 
@@ -307,8 +296,7 @@ def main() -> int:
         }
         rows.append(_row(thresholds, development, baseline_dev))
         print(
-            f"evaluated {index}/{len(grid)}: "
-            f"S1/S2/S3={thresholds[0]}/{thresholds[1]}/{thresholds[2]}",
+            f"evaluated {index}/{len(grid)}: S1/S2/S3={thresholds[0]}/{thresholds[1]}/{thresholds[2]}",
             flush=True,
         )
 
@@ -336,9 +324,7 @@ def main() -> int:
     for split, (start, split_end) in FINAL.items():
         resolved_end = split_end or end
         final_periods[split] = {
-            label: _compact(
-                _evaluate(config, frames, thresholds, start, resolved_end, args.slippage)
-            )
+            label: _compact(_evaluate(config, frames, thresholds, start, resolved_end, args.slippage))
             for label, thresholds in locked.items()
         }
 
@@ -353,13 +339,9 @@ def main() -> int:
             "fees": float(config.global_.buy_fee),
             "slippage": args.slippage,
         },
-        "baseline_development": {
-            split: _compact(metrics) for split, metrics in baseline_dev.items()
-        },
+        "baseline_development": {split: _compact(metrics) for split, metrics in baseline_dev.items()},
         "development_top10": frame.head(10).to_dict(orient="records"),
-        "development_dominators": frame[frame["dominates_development"]].to_dict(
-            orient="records"
-        ),
+        "development_dominators": frame[frame["dominates_development"]].to_dict(orient="records"),
         "locked_specs": {label: list(spec) for label, spec in locked.items()},
         "final_periods": final_periods,
     }
