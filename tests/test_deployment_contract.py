@@ -124,10 +124,21 @@ def test_runtime_verifier_uses_current_market_clock_api():
     assert "closed|pre_market|regular|after_hours" in workflow
 
 
+def test_canonical_workflow_set_is_small_and_current():
+    workflow_dir = ROOT / ".github/workflows"
+    expected = {
+        "ci.yml",
+        "deploy-oracle-dry-run.yml",
+        "jdss-backtest.yml",
+        "security.yml",
+        "verify-oracle-v31-runtime.yml",
+    }
+    assert {path.name for path in workflow_dir.glob("*.yml")} == expected
+
+
 def test_workflows_use_node24_actions():
     for name in (
         "ci.yml",
-        "final-dry-run.yml",
         "deploy-oracle-dry-run.yml",
         "jdss-backtest.yml",
         "security.yml",
