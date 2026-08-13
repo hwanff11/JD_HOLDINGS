@@ -40,16 +40,23 @@ def _config_with_thresholds(
     s3: int,
 ) -> StrategyConfig:
     global_config = replace(config.global_, entry_score=s1)
-    score_by_stage = {"stage2": s2, "stage3": s3}
+    score_by_stage = {2: s2, 3: s3}
     stages = {
-        name: replace(rule, min_score=score_by_stage.get(name, rule.min_score))
-        for name, rule in config.additional_entry.stages.items()
+        stage: replace(rule, min_score=score_by_stage.get(stage, rule.min_score))
+        for stage, rule in config.additional_entry.stages.items()
     }
-    return replace(
+    scenario = replace(
         config,
         global_=global_config,
         additional_entry=replace(config.additional_entry, stages=stages),
     )
+    if scenario.global_.entry_score != s1:
+        raise RuntimeError("S1 threshold override was not applied")
+    if scenario.additional_entry.stages[2].min_score != s2:
+        raise RuntimeError("S2 threshold override was not applied")
+    if scenario.additional_entry.stages[3].min_score != s3:
+        raise RuntimeError("S3 threshold override was not applied")
+    return scenario
 
 
 def _prepare_frames(
