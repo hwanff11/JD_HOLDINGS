@@ -5,13 +5,57 @@ on:
   pull_request:
     paths:
       - "scripts/research_stage_score_thresholds.py"
+      - "scripts/research_stage_score_shard.py"
+      - "scripts/research_stage_score_finalize.py"
       - ".github/workflows/research-stage-score-thresholds.yml"
 
 permissions:
   contents: read
 
 jobs:
-  research:
+  development:
+    name: development-s1-${{ matrix.s1 }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        s1: [45, 50, 55, 60, 65]
+    steps:
+      - name: Checkout research branch
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Lint research scripts
+        run: |
+          ruff check scripts/research_stage_score_thresholds.py \
+            scripts/research_stage_score_shard.py \
+            scripts/research_stage_score_finalize.py
+      - name: Run S1 shard
+        run: |
+          mkdir -p reports/shards
+          python -m scripts.research_stage_score_shard \
+            --s1 ${{ matrix.s1 }} \
+            --output reports/shards/stage_score_s1_${{ matrix.s1 }}.json \
+            --csv reports/shards/stage_score_s1_${{ matrix.s1 }}.csv \
+            --slippage 0.001
+      - name: Upload shard
+        uses: actions/upload-artifact@v6
+        with:
+          name: stage-threshold-dev-${{ matrix.s1 }}
+          path: |
+            reports/shards/stage_score_s1_${{ matrix.s1 }}.json
+            reports/shards/stage_score_s1_${{ matrix.s1 }}.csv
+
+  finalize:
+    name: finalize-oos
+    needs: development
     runs-on: ubuntu-latest
     steps:
       - name: Checkout research branch
@@ -25,22 +69,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e '.[dev]'
-      - name: Lint research script
+      - name: Download development shards
+        uses: actions/download-artifact@v7
+        with:
+          pattern: stage-threshold-dev-*
+          path: reports/shards
+          merge-multiple: true
+      - name: Finalize locked candidates
         run: |
-          ruff format --check scripts/research_stage_score_thresholds.py
-          ruff check scripts/research_stage_score_thresholds.py
-      - name: Run stage threshold research
-        run: |
-          mkdir -p reports
-          python scripts/research_stage_score_thresholds.py \
+          python -m scripts.research_stage_score_finalize \
+            --grid-glob 'reports/shards/stage_score_s1_*.csv' \
             --output reports/stage_score_thresholds.json \
             --csv reports/stage_score_thresholds_grid.csv \
             --slippage 0.001
       - name: Publish research summary
-        if: always()
         run: |
-          if [ -f reports/stage_score_thresholds.json ]; then
-            python - <<'PY'
+          python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -72,9 +116,7 @@ jobs:
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as handle:
               handle.write(summary)
           PY
-          fi
-      - name: Upload research artifacts
-        if: always()
+      - name: Upload final research artifacts
         uses: actions/upload-artifact@v6
         with:
           name: stage-score-thresholds-${{ github.run_id }}
@@ -82,4 +124,3 @@ jobs:
             reports/stage_score_thresholds.json
             reports/stage_score_thresholds_grid.csv
             reports/stage_score_thresholds_summary.md
-          if-no-files-found: warn
