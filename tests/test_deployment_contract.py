@@ -44,12 +44,14 @@ def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
     assert "git push origin main || true" not in deploy
 
 
-def test_deploy_blocks_version_change_with_active_strategy_state():
+def test_deploy_has_safe_v322_version_transition_contract():
     deploy = (ROOT / "deploy.sh").read_text(encoding="utf-8")
     assert 'sudo systemctl stop "$service_name"' in deploy
+    assert "JDSS-3.2.2-RS6M-ONEWAY-HWM75" in deploy
     assert "old_version == new_version" in deploy
     assert "state <> 'EMPTY' OR qty <> 0" in deploy
     assert "'CREATED', 'SUBMITTED', 'PENDING', 'PARTIAL_FILLED', 'UNKNOWN'" in deploy
+    assert "v322-migration" in deploy
     assert "전략 버전 변경 사전점검 실패로 기존 서비스를 복구했습니다" in deploy
     assert 'sudo systemctl start "$service_name" || true' in deploy
 
@@ -74,20 +76,21 @@ def test_github_deploy_attaches_verified_sha_to_local_main():
     assert "actions/runs/" in workflow
 
 
-def test_github_deploy_validates_current_v311_contract():
+def test_github_deploy_validates_current_v322_contract():
     workflow = (ROOT / ".github/workflows/deploy-oracle-dry-run.yml").read_text(
         encoding="utf-8"
     )
-    assert "JDSS-3.1.1-TWIN-H40-S3" in workflow
-    assert 'config_version: "3.1.1"' in workflow
+    assert "JDSS-3.2.2-RS6M-ONEWAY-HWM75" in workflow
+    assert 'config_version: "3.2.2"' in workflow
     assert "total_capital: 50000" in workflow
-    assert "capital_per_symbol: 20000" in workflow
-    assert "JDSS-3.0.0-TWIN-H05" not in workflow
+    assert "hwm_reinvestment_fraction: 0.75" in workflow
+    assert "rs_lookback: 126" in workflow
+    assert "jdss_overlay_weight: 0.05" in workflow
     assert "live_enabled: false" in workflow
 
 
 def test_runtime_verifier_uses_oracle_environment_secrets():
-    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+    workflow = (ROOT / ".github/workflows/verify-oracle-v322-runtime.yml").read_text(
         encoding="utf-8"
     )
     assert "environment: oracle-dry-run" in workflow
@@ -96,7 +99,7 @@ def test_runtime_verifier_uses_oracle_environment_secrets():
 
 
 def test_runtime_verifier_checks_release_directory_sha_without_git_metadata():
-    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+    workflow = (ROOT / ".github/workflows/verify-oracle-v322-runtime.yml").read_text(
         encoding="utf-8"
     )
     assert 'deployed_sha="$(basename "$current")"' in workflow
@@ -105,7 +108,7 @@ def test_runtime_verifier_checks_release_directory_sha_without_git_metadata():
 
 
 def test_runtime_verifier_uses_shared_env_and_shared_venv():
-    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+    workflow = (ROOT / ".github/workflows/verify-oracle-v322-runtime.yml").read_text(
         encoding="utf-8"
     )
     assert 'env_file="$TARGET_DIR/shared/.env"' in workflow
@@ -116,7 +119,7 @@ def test_runtime_verifier_uses_shared_env_and_shared_venv():
 
 
 def test_runtime_verifier_uses_current_market_clock_api():
-    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+    workflow = (ROOT / ".github/workflows/verify-oracle-v322-runtime.yml").read_text(
         encoding="utf-8"
     )
     assert "MarketClock().classify_session()" in workflow
@@ -131,7 +134,7 @@ def test_canonical_workflow_set_is_small_and_current():
         "deploy-oracle-dry-run.yml",
         "jdss-backtest.yml",
         "security.yml",
-        "verify-oracle-v31-runtime.yml",
+        "verify-oracle-v322-runtime.yml",
     }
     assert {path.name for path in workflow_dir.glob("*.yml")} == expected
 
@@ -142,7 +145,7 @@ def test_workflows_use_node24_actions():
         "deploy-oracle-dry-run.yml",
         "jdss-backtest.yml",
         "security.yml",
-        "verify-oracle-v31-runtime.yml",
+        "verify-oracle-v322-runtime.yml",
     ):
         workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
         assert "actions/checkout@v7" in workflow
