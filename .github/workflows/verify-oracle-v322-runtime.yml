@@ -1,0 +1,196 @@
+name: Verify Oracle V3.2.2 Runtime
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: oracle-jdss-runtime-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.issue.title, '[verify-oracle-v322]'))
+    runs-on: ubuntu-latest
+    environment: oracle-dry-run
+    steps:
+      - name: Checkout exact latest main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify source contract
+        id: ref
+        run: |
+          set -Eeuo pipefail
+          git fetch origin main --no-tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' strategy.yaml
+          grep -q 'config_version: "3.2.2"' strategy.yaml
+          grep -q 'total_capital: 50000' strategy.yaml
+          grep -q 'hwm_reinvestment_fraction: 0.75' strategy.yaml
+          grep -q 'rs_lookback: 126' strategy.yaml
+          grep -q 'rs_sleeve_fraction: 0.50' strategy.yaml
+          grep -q 'jdss_overlay_weight: 0.05' strategy.yaml
+          grep -A3 '^idle_cash:' strategy.yaml | grep -q 'enabled: false'
+          grep -q 'live_enabled: false' strategy.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Run focused V3.2.2 runtime safety tests
+        run: |
+          set -Eeuo pipefail
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          python -m pytest \
+            tests/test_v322_allocation.py \
+            tests/test_v322_managed_account.py \
+            tests/test_v31_managed_account_safety.py \
+            tests/test_v31_core_approval_safety.py \
+            tests/test_v31_operational_faults.py \
+            tests/test_v31_runtime_resilience.py \
+            tests/test_final_dry_run.py
+
+      - name: Prepare SSH
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$ORACLE_SSH_KEY"
+          test -n "$ORACLE_HOST"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
+          chmod 600 ~/.ssh/oracle_jdss
+
+      - name: Verify deployed SHA and forced dry-run
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+          EXPECTED_SHA: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -Eeuo pipefail
+          ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' EXPECTED_SHA='$EXPECTED_SHA' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
+          test -d "$current"
+          test -f "$env_file"
+          deployed_sha="$(basename "$current")"
+          test "$deployed_sha" = "$EXPECTED_SHA"
+          test "$current" = "$TARGET_DIR/releases/$EXPECTED_SHA"
+          grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' "$current/strategy.yaml"
+          grep -q 'hwm_reinvestment_fraction: 0.75' "$current/strategy.yaml"
+          grep -q 'rs_lookback: 126' "$current/strategy.yaml"
+          grep -q 'live_enabled: false' "$current/strategy.yaml"
+          grep -q '^JDSS_TRADING_MODE=dry_run$' "$env_file"
+          grep -q '^JDSS_LIVE_CONFIRMATION=$' "$env_file"
+          sudo systemctl is-active --quiet jd_holdings_bot
+          cd "$current"
+          set -a
+          source "$env_file"
+          set +a
+          "$TARGET_DIR/venv/bin/jdss" --config "$current/strategy.yaml" validate-config
+          "$TARGET_DIR/venv/bin/jdss" --config "$current/strategy.yaml" toss-smoke
+          REMOTE
+
+      - name: Check whether restart verification is safe now
+        id: market
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+        run: |
+          set -Eeuo pipefail
+          phase="$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
+          cd "$current"
+          set -a
+          source "$env_file"
+          set +a
+          "$TARGET_DIR/venv/bin/python" - <<'PY'
+          from jd_holdings.infrastructure.market_clock import MarketClock
+          print(MarketClock().classify_session())
+          PY
+          REMOTE
+          )"
+          phase="$(printf '%s' "$phase" | tail -n1 | tr -d '\r')"
+          case "$phase" in
+            closed|pre_market|regular|after_hours) ;;
+            *) echo "Unexpected market phase: $phase" >&2; exit 1 ;;
+          esac
+          echo "phase=$phase" >> "$GITHUB_OUTPUT"
+
+      - name: Restart only during closed market and verify recovery
+        if: steps.market.outputs.phase == 'closed'
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+        run: |
+          set -Eeuo pipefail
+          ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          sudo systemctl restart jd_holdings_bot
+          sleep 3
+          sudo systemctl is-active --quiet jd_holdings_bot
+          current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
+          cd "$current"
+          set -a
+          source "$env_file"
+          set +a
+          "$TARGET_DIR/venv/bin/jdss" --config "$current/strategy.yaml" validate-config
+          REMOTE
+
+      - name: Record verifier outcome
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ steps.market.outputs.phase }}" == "closed" ]]; then
+            echo 'ORACLE_V322_RUNTIME_VERIFY=PASS_RESTARTED' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ORACLE_V322_RUNTIME_VERIFY=PASS_NO_RESTART' >> "$GITHUB_STEP_SUMMARY"
+            echo '시장 세션이 closed가 아니므로 안전규칙에 따라 systemd 재시작 검증은 생략했습니다.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment ChatOps result
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PHASE: ${{ steps.market.outputs.phase }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$JOB_STATUS" == "success" ]]; then
+            body="✅ V3.2.2 Oracle runtime 검증 성공. 시장 phase=\`${PHASE:-unknown}\`.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
+          else
+            body="❌ V3.2.2 Oracle runtime 검증 실패.\n\nActions run: [\`$RUN_ID\`]($RUN_URL)"
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body "$(printf '%b' "$body")"
