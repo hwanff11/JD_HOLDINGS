@@ -36,6 +36,7 @@ on:
       - "scripts/research_v32_qqq_alpha.py"
       - "scripts/research_v32_regime_ladder.py"
       - "scripts/research_v32_jdss_overlay.py"
+      - "scripts/research_v32_final_validation.py"
       - "tests/**"
       - ".github/workflows/jdss-backtest.yml"
   issues:
@@ -132,18 +133,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-      - name: Normalize and lint research scripts
+      - name: Normalize and lint final research scripts
         run: |
-          python -m ruff format scripts/research_v32_qqq_alpha.py scripts/research_v32_regime_ladder.py scripts/research_v32_jdss_overlay.py
-          python -m ruff check --fix --ignore E501 scripts/research_v32_qqq_alpha.py scripts/research_v32_regime_ladder.py scripts/research_v32_jdss_overlay.py
-      - name: Run V3.2 discovery phases
+          python -m ruff format scripts/research_v32_jdss_overlay.py scripts/research_v32_final_validation.py
+          python -m ruff check --fix --ignore E501 scripts/research_v32_jdss_overlay.py scripts/research_v32_final_validation.py
+      - name: Run frozen V3.2 final validation
         run: |
           mkdir -p reports
-          python scripts/research_v32_qqq_alpha.py --output reports/v32_qqq_alpha.json
-          python scripts/research_v32_regime_ladder.py --output reports/v32_regime_ladder.json
-          python scripts/research_v32_jdss_overlay.py --output reports/v32_jdss_overlay.json
-      - name: Upload V3.2 research artifacts
+          python scripts/research_v32_final_validation.py --output reports/v32_final_validation.json
+      - name: Upload V3.2 final research artifact
         uses: actions/upload-artifact@v6
         with:
-          name: v32-qqq-alpha-${{ github.run_id }}
-          path: reports/v32_*.json
+          name: v32-final-${{ github.run_id }}
+          path: reports/v32_final_validation.json
