@@ -73,8 +73,6 @@ class V322Policy:
         errors: list[str] = []
         if self.initial_capital != Decimal("50000"):
             errors.append("V3.2.2 initial_capital은 50000으로 고정합니다")
-        if config.portfolio.total_capital != self.initial_capital:
-            errors.append("portfolio.total_capital과 V3.2.2 initial_capital이 같아야 합니다")
         if self.hwm_reinvestment_fraction != Decimal("0.75"):
             errors.append("V3.2.2 HWM 재투자율은 0.75로 동결되어 있습니다")
         if (self.sma_short, self.sma_long, self.slope_lookback) != (50, 200, 21):
