@@ -1,3 +1,3 @@
-"""JD Holdings — JDSS 3.1.1 fixed-$50k twin-core H40/S3 trading system."""
+"""JD Holdings — JDSS 3.2.2 RS6M/HWM75 allocation system."""
 
-__version__ = "3.1.1"
+__version__ = "3.2.2"
