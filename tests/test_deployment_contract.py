@@ -85,6 +85,15 @@ def test_github_deploy_validates_current_v311_contract():
     assert "live_enabled: false" in workflow
 
 
+def test_runtime_verifier_uses_oracle_environment_secrets():
+    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "environment: oracle-dry-run" in workflow
+    assert "ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}" in workflow
+    assert "ORACLE_HOST: ${{ secrets.ORACLE_HOST }}" in workflow
+
+
 def test_workflows_use_node24_actions():
     for name in (
         "ci.yml",
@@ -92,6 +101,7 @@ def test_workflows_use_node24_actions():
         "deploy-oracle-dry-run.yml",
         "jdss-backtest.yml",
         "security.yml",
+        "verify-oracle-v31-runtime.yml",
     ):
         workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
         assert "actions/checkout@v7" in workflow
