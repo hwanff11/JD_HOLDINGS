@@ -40,8 +40,9 @@ def _config_with_thresholds(
     s3: int,
 ) -> StrategyConfig:
     global_config = replace(config.global_, entry_score=s1)
+    score_by_stage = {"stage2": s2, "stage3": s3}
     stages = {
-        name: replace(rule, min_score=s2 if name == "stage2" else s3)
+        name: replace(rule, min_score=score_by_stage.get(name, rule.min_score))
         for name, rule in config.additional_entry.stages.items()
     }
     return replace(
@@ -64,11 +65,15 @@ def _prepare_frames(
     return {symbol: calculate_indicators(frame, config) for symbol, frame in raw.items()}
 
 
-def _stage_reach(closed_cycles: list[dict[str, Any]]) -> dict[str, int]:
+def _stage_reach(result) -> dict[str, int]:
+    entry_counts = [int(cycle.get("entry_count", 0)) for cycle in result.closed_cycles]
+    open_entry_count = int(result.open_position.get("entry_count", 0))
+    if int(result.open_position.get("quantity", 0)) > 0 and open_entry_count > 0:
+        entry_counts.append(open_entry_count)
     return {
-        "cycles_stage1": len(closed_cycles),
-        "cycles_stage2": sum(int(cycle.get("entry_count", 0)) >= 2 for cycle in closed_cycles),
-        "cycles_stage3": sum(int(cycle.get("entry_count", 0)) >= 3 for cycle in closed_cycles),
+        "cycles_stage1": len(entry_counts),
+        "cycles_stage2": sum(count >= 2 for count in entry_counts),
+        "cycles_stage3": sum(count >= 3 for count in entry_counts),
     }
 
 
@@ -82,7 +87,7 @@ def _evaluate(
 ) -> dict[str, Any]:
     scenario = _config_with_thresholds(config, *thresholds)
     boosters = {}
-    all_cycles: list[dict[str, Any]] = []
+    stage_totals = {"cycles_stage1": 0, "cycles_stage2": 0, "cycles_stage3": 0}
     symbol_details: dict[str, dict[str, Any]] = {}
 
     for symbol in scenario.enabled_symbols:
@@ -101,13 +106,14 @@ def _evaluate(
             sector_data=sector_data,
         )
         boosters[symbol] = result
-        cycles = list(result.closed_cycles)
-        all_cycles.extend(cycles)
+        reach = _stage_reach(result)
+        for key, value in reach.items():
+            stage_totals[key] += value
         symbol_details[symbol] = {
             "signals": int(result.metrics["signals"]),
             "executed_entries": int(result.metrics["executed_entries"]),
             "closed_cycles": int(result.metrics["closed_cycles"]),
-            **_stage_reach(cycles),
+            **reach,
         }
 
     portfolio = PortfolioBacktestEngine(scenario).run(
@@ -132,7 +138,7 @@ def _evaluate(
     metrics["booster_closed_cycles"] = sum(
         int(result.metrics["closed_cycles"]) for result in boosters.values()
     )
-    metrics.update(_stage_reach(all_cycles))
+    metrics.update(stage_totals)
     metrics["symbol_details"] = symbol_details
     return metrics
 
@@ -257,6 +263,15 @@ def _spec(row: dict[str, Any]) -> tuple[int, int, int]:
     return int(row["s1"]), int(row["s2"]), int(row["s3"])
 
 
+def _add_locked(
+    locked: dict[str, tuple[int, int, int]],
+    label: str,
+    thresholds: tuple[int, int, int],
+) -> None:
+    if thresholds not in locked.values():
+        locked[label] = thresholds
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=ROOT / "strategy.yaml")
@@ -284,14 +299,12 @@ def main() -> int:
     }
 
     rows: list[dict[str, Any]] = []
-    evaluated: dict[tuple[int, int, int], dict[str, dict[str, Any]]] = {}
     grid = list(product(STAGE_VALUES, repeat=3))
     for index, thresholds in enumerate(grid, start=1):
         development = {
             split: _evaluate(config, frames, thresholds, start, split_end, args.slippage)
             for split, (start, split_end) in DEVELOPMENT.items()
         }
-        evaluated[thresholds] = development
         rows.append(_row(thresholds, development, baseline_dev))
         print(
             f"evaluated {index}/{len(grid)}: "
@@ -308,32 +321,16 @@ def main() -> int:
 
     locked: dict[str, tuple[int, int, int]] = {"baseline_55_55_55": BASELINE}
     for rank, (_, row) in enumerate(candidate_pool.head(5).iterrows(), start=1):
-        locked[f"top_{rank}"] = _spec(row.to_dict())
+        _add_locked(locked, f"top_{rank}", _spec(row.to_dict()))
 
     for family in ("stricter_deeper", "looser_deeper", "flat", "mixed"):
         subset = candidate_pool[candidate_pool["family"] == family]
         if not subset.empty:
-            locked[f"best_{family}"] = _spec(subset.iloc[0].to_dict())
+            _add_locked(locked, f"best_{family}", _spec(subset.iloc[0].to_dict()))
 
     s1_55 = candidate_pool[candidate_pool["s1"] == 55]
     if not s1_55.empty:
-        locked["best_s1_55"] = _spec(s1_55.iloc[0].to_dict())
-
-    locked = dict.fromkeys(locked.values()) | {}
-    locked_specs = {
-        f"candidate_{index}": thresholds
-        for index, thresholds in enumerate(locked, start=1)
-    }
-    if BASELINE not in locked_specs.values():
-        locked_specs = {"baseline_55_55_55": BASELINE, **locked_specs}
-    else:
-        baseline_label = next(
-            label for label, thresholds in locked_specs.items() if thresholds == BASELINE
-        )
-        locked_specs = {
-            "baseline_55_55_55": locked_specs.pop(baseline_label),
-            **locked_specs,
-        }
+        _add_locked(locked, "best_s1_55", _spec(s1_55.iloc[0].to_dict()))
 
     final_periods: dict[str, dict[str, dict[str, Any]]] = {}
     for split, (start, split_end) in FINAL.items():
@@ -342,7 +339,7 @@ def main() -> int:
             label: _compact(
                 _evaluate(config, frames, thresholds, start, resolved_end, args.slippage)
             )
-            for label, thresholds in locked_specs.items()
+            for label, thresholds in locked.items()
         }
 
     report = {
@@ -363,7 +360,7 @@ def main() -> int:
         "development_dominators": frame[frame["dominates_development"]].to_dict(
             orient="records"
         ),
-        "locked_specs": {label: list(spec) for label, spec in locked_specs.items()},
+        "locked_specs": {label: list(spec) for label, spec in locked.items()},
         "final_periods": final_periods,
     }
 
@@ -394,11 +391,11 @@ def main() -> int:
         .to_string(index=False)
     )
     print("\n=== LOCKED SPECS ===")
-    for label, thresholds in locked_specs.items():
+    for label, thresholds in locked.items():
         print(label, "/".join(str(value) for value in thresholds))
     print("\n=== OOS ===")
     for label, metrics in final_periods["oos"].items():
-        spec = locked_specs[label]
+        spec = locked[label]
         print(
             label,
             f"{spec[0]}/{spec[1]}/{spec[2]}",
