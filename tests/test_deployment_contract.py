@@ -115,6 +115,15 @@ def test_runtime_verifier_uses_shared_env_and_shared_venv():
     assert '.venv/bin/jdss' not in workflow
 
 
+def test_runtime_verifier_uses_current_market_clock_api():
+    workflow = (ROOT / ".github/workflows/verify-oracle-v31-runtime.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "MarketClock().classify_session()" in workflow
+    assert "MarketClock().phase()" not in workflow
+    assert "closed|pre_market|regular|after_hours" in workflow
+
+
 def test_workflows_use_node24_actions():
     for name in (
         "ci.yml",
