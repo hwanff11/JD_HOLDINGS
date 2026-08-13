@@ -141,13 +141,14 @@ jobs:
           python -m ruff check scripts/research_v321_controlled_compounding.py
           python -m ruff check scripts/research_v321_relative_strength_booster.py
           python -m ruff check scripts/research_v321_rs6m_split.py
-      - name: Run diversified RS6M sleeve comparison
+          python -m ruff check scripts/research_v321_rs6m_monthly_lock.py
+      - name: Run monthly-locked RS6M comparison
         run: |
           mkdir -p reports
-          python scripts/research_v321_rs6m_split.py \
-            --output reports/v321_rs6m_split.json
+          python scripts/research_v321_rs6m_monthly_lock.py \
+            --output reports/v321_rs6m_monthly_lock.json
       - name: Upload research artifact
         uses: actions/upload-artifact@v6
         with:
-          name: v321-rs6m-split-${{ github.run_id }}
-          path: reports/v321_rs6m_split.json
+          name: v321-rs6m-monthly-lock-${{ github.run_id }}
+          path: reports/v321_rs6m_monthly_lock.json
