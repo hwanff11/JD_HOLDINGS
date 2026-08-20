@@ -52,7 +52,27 @@ class ReconciliationService:
                 )
 
     def run(self) -> dict[str, list[str]]:
-        broker_holdings = {item["symbol"]: item for item in self.broker.get_holdings()}
+        try:
+            raw_holdings = self.broker.get_holdings()
+        except Exception as exc:
+            self.repository.set_system_value("v322_portfolio_safe_mode", "1")
+            self.repository.log_event(
+                "SAFE_MODE",
+                "BROKER_HOLDINGS_LOOKUP_FAILED",
+                "브로커 보유수량을 확인하지 못해 신규 BUY를 차단합니다",
+                context={"exception": type(exc).__name__},
+            )
+            raise RuntimeError("브로커 보유수량 조회 실패로 SAFE_MODE입니다") from exc
+
+        broker_holdings: dict[str, dict] = {}
+        duplicate_symbols: set[str] = set()
+        for item in raw_holdings:
+            symbol = str(item.get("symbol") or item.get("stockCode") or "").upper()
+            if symbol not in ALLOCATION_SYMBOLS:
+                continue
+            if symbol in broker_holdings:
+                duplicate_symbols.add(symbol)
+            broker_holdings[symbol] = item
         result: dict[str, list[str]] = {}
         allocation_problem = False
         for symbol in ALLOCATION_SYMBOLS:
@@ -65,15 +85,35 @@ class ReconciliationService:
                 booster_qty = position.quantity
                 booster_state = position.state
             holding = broker_holdings.get(symbol)
-            broker_qty = int(Decimal(str(holding["quantity"]))) if holding else 0
+            raw_broker_qty = (
+                holding.get("quantity", holding.get("holdingQuantity", "0"))
+                if holding
+                else "0"
+            )
+            try:
+                broker_qty = Decimal(str(raw_broker_qty))
+            except Exception:
+                broker_qty = Decimal("0")
+                quantity_invalid = True
+            else:
+                quantity_invalid = not broker_qty.is_finite() or broker_qty < 0
             expected_total = core_qty + booster_qty
             issues: list[str] = []
 
-            if booster_qty > 0 or booster_state != PositionState.EMPTY:
+            if symbol in duplicate_symbols:
+                issues.append("BROKER_DUPLICATE_HOLDING_ROWS")
+            if quantity_invalid:
+                issues.append("BROKER_INVALID_HOLDING_QUANTITY")
+            elif broker_qty != broker_qty.to_integral_value():
+                issues.append(f"BROKER_FRACTIONAL_HOLDING:{broker_qty}")
+            if booster_qty > 0 or booster_state not in {
+                PositionState.EMPTY,
+                PositionState.SAFE_MODE,
+            }:
                 issues.append(
                     f"V322_DIRECT_BOOSTER_STATE_PRESENT:{booster_state.value}:{booster_qty}"
                 )
-            if expected_total != broker_qty:
+            if Decimal(expected_total) != broker_qty:
                 issues.append(f"BROKER_DB_QTY_MISMATCH:{broker_qty}!={expected_total}")
             if expected_total == 0 and broker_qty > 0:
                 issues.append("UNMANAGED_PERSONAL_ALLOCATION_SYMBOL")
@@ -85,11 +125,13 @@ class ReconciliationService:
                 issues.append("V322_DIRECT_TP_PLAN_PRESENT")
 
             local_orders = self.repository.open_orders(symbol)
-            if any(
-                str(order["status"]) == "UNKNOWN" and not order.get("broker_order_id")
-                for order in local_orders
-            ):
-                issues.append("UNKNOWN_ORDER_WITHOUT_BROKER_ID")
+            unknown_orders = [
+                order for order in local_orders if str(order["status"]) == "UNKNOWN"
+            ]
+            if unknown_orders:
+                issues.append("UNKNOWN_ORDER_STATUS")
+                if any(not order.get("broker_order_id") for order in unknown_orders):
+                    issues.append("UNKNOWN_ORDER_WITHOUT_BROKER_ID")
             missing_id = _missing_broker_id_issue(local_orders, exclude_unknown=True)
             if missing_id:
                 issues.append(missing_id)
@@ -128,9 +170,8 @@ class ReconciliationService:
                     symbol=symbol,
                 )
 
-        self.repository.set_system_value(
-            "v322_portfolio_safe_mode", "1" if allocation_problem else "0"
-        )
+        if allocation_problem:
+            self.repository.set_system_value("v322_portfolio_safe_mode", "1")
         if self.config.idle_cash.enabled:
             cash_symbol = self.config.idle_cash.symbol
             state = self.repository.get_idle_cash_state()
@@ -146,11 +187,13 @@ class ReconciliationService:
                 for order in self.repository.open_orders(cash_symbol)
                 if str(order["purpose"]).startswith("SGOV_")
             ]
-            if any(
-                str(order["status"]) == "UNKNOWN" and not order.get("broker_order_id")
-                for order in local_orders
-            ):
-                issues.append("SGOV_UNKNOWN_ORDER_WITHOUT_BROKER_ID")
+            unknown_orders = [
+                order for order in local_orders if str(order["status"]) == "UNKNOWN"
+            ]
+            if unknown_orders:
+                issues.append("SGOV_UNKNOWN_ORDER_STATUS")
+                if any(not order.get("broker_order_id") for order in unknown_orders):
+                    issues.append("SGOV_UNKNOWN_ORDER_WITHOUT_BROKER_ID")
             missing_id = _missing_broker_id_issue(
                 local_orders, "SGOV_", exclude_unknown=True
             )

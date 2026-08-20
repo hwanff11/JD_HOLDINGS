@@ -138,12 +138,13 @@ class TradingService:
             quotes.append(self._issue_execution_approval(quote))
         return quotes
 
-    def cancel_approval(self, approval_id: int) -> None:
-        signal_id = self.repository.cancel_approval(approval_id)
+    def cancel_approval(self, approval_id: int) -> bool:
+        signal_id, canceled = self.repository.cancel_approval(approval_id)
         try:
             self.repository.update_cash_release_intent(signal_id, status="CANCELED")
         except KeyError:
             pass
+        return canceled > 0
 
     def cancel_cash_release(self, signal_id: int) -> None:
         if self.idle_cash_manager is not None:

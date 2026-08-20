@@ -46,6 +46,10 @@ def load_runtime_settings(env_path: str | Path | None = None) -> RuntimeSettings
         raise ValueError("TELEGRAM_ALLOWED_CHAT_IDS는 정수여야 합니다") from exc
     if len(set(chat_ids)) != len(chat_ids):
         raise ValueError("Telegram Chat ID가 중복되었습니다")
+    if any(chat_id <= 0 for chat_id in chat_ids):
+        raise ValueError(
+            "TELEGRAM_ALLOWED_CHAT_IDS는 개인 대화의 양수 관리자 사용자 ID만 허용합니다"
+        )
     return RuntimeSettings(
         trading_mode=mode,
         live_confirmation=os.getenv("JDSS_LIVE_CONFIRMATION", ""),

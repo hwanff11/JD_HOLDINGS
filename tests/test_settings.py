@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from jd_holdings.settings import load_runtime_settings
 
 
@@ -21,3 +23,11 @@ def test_runtime_settings_support_shared_cache_path(monkeypatch):
     assert settings.cache_path == Path("/srv/jdss/data/cache")
     assert settings.config_path == Path("/srv/jdss/current/strategy.yaml")
     assert not settings.live_trading_enabled
+
+
+@pytest.mark.parametrize("value", ["-100123", "0"])
+def test_runtime_settings_rejects_group_or_invalid_telegram_id(monkeypatch, value):
+    monkeypatch.setenv("TELEGRAM_ALLOWED_CHAT_IDS", value)
+
+    with pytest.raises(ValueError, match="개인 대화의 양수 관리자 사용자 ID"):
+        load_runtime_settings()

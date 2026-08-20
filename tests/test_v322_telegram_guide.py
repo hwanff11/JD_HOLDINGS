@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import jd_holdings.infrastructure.telegram_bot as telegram_bot_module
+from jd_holdings.infrastructure.telegram_bot import _guide_cards
 from jd_holdings.infrastructure.telegram_bot_v322 import (
     V322TelegramBotApp,
-    _v322_guide_cards,
     _v322_runtime_text,
 )
 
 
 def test_final_runtime_guide_matches_v322_contract():
     assert V322TelegramBotApp is not None
-    cards = _v322_guide_cards()
+    cards = _guide_cards()
     guide = "\n".join(cards)
     for expected in (
         "V3.2.2",
@@ -29,7 +29,7 @@ def test_final_runtime_guide_matches_v322_contract():
         assert expected in guide
     for rejected in ("V3.1.1", "독립 매수전략입니다", "SGOV 자동", "live 주문"):
         assert rejected not in guide
-    assert telegram_bot_module._guide_cards is _v322_guide_cards
+    assert telegram_bot_module._guide_cards is _guide_cards
     assert len(cards) == 5
     assert all(len(card) < 4096 for card in cards)
 

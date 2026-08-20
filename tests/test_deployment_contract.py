@@ -44,14 +44,16 @@ def test_deploy_requires_exact_remote_main_and_creates_shared_cache():
     assert "git push origin main || true" not in deploy
 
 
-def test_deploy_has_safe_v322_version_transition_contract():
+def test_deploy_never_reuses_completed_version_migration():
     deploy = (ROOT / "deploy.sh").read_text(encoding="utf-8")
     assert 'sudo systemctl stop "$service_name"' in deploy
     assert "JDSS-3.2.2-RS6M-ONEWAY-HWM75" in deploy
     assert "old_version == new_version" in deploy
     assert "state <> 'EMPTY' OR qty <> 0" in deploy
     assert "'CREATED', 'SUBMITTED', 'PENDING', 'PARTIAL_FILLED', 'UNKNOWN'" in deploy
-    assert "v322-migration" in deploy
+    assert "db_path.unlink()" not in deploy
+    assert "v322-migration" not in deploy
+    assert "별도 migration plan·DB 백업·호환성" in deploy
     assert "전략 버전 변경 사전점검 실패로 기존 서비스를 복구했습니다" in deploy
     assert 'sudo systemctl start "$service_name" || true' in deploy
 
