@@ -27,15 +27,15 @@ SKIP_LOCAL_CHECKS="${SKIP_LOCAL_CHECKS:-0}"
 : "${SSH_KEY_PATH:?SSH_KEY_PATH가 필요합니다}"
 : "${SERVER_HOST:?SERVER_HOST가 필요합니다}"
 SERVER_USER="${SERVER_USER:-ubuntu}"
-SERVER_TARGET_DIR="${SERVER_TARGET_DIR:-/home/ubuntu/JD_HOLDINGS}"
-SYSTEMD_SERVICE="${SYSTEMD_SERVICE:-jd_holdings_bot}"
+SERVER_TARGET_DIR="${SERVER_TARGET_DIR:-/home/ubuntu/JH_HOLDINGS}"
+SYSTEMD_SERVICE="${SYSTEMD_SERVICE:-jh_holdings_bot}"
 REMOTE_PYTHON_BIN="${REMOTE_PYTHON_BIN:-python3.12}"
 
-if [[ "$SERVER_TARGET_DIR" != /home/*/JD_HOLDINGS && "$SERVER_TARGET_DIR" != /opt/JD_HOLDINGS ]]; then
+if [[ "$SERVER_TARGET_DIR" != /home/*/JH_HOLDINGS && "$SERVER_TARGET_DIR" != /opt/JH_HOLDINGS ]]; then
   echo "안전하지 않은 SERVER_TARGET_DIR입니다: $SERVER_TARGET_DIR" >&2; exit 1
 fi
-if [[ "$SYSTEMD_SERVICE" != "jd_holdings_bot" ]]; then
-  echo "SYSTEMD_SERVICE는 jd_holdings_bot만 허용합니다." >&2; exit 1
+if [[ "$SYSTEMD_SERVICE" != "jh_holdings_bot" ]]; then
+  echo "SYSTEMD_SERVICE는 jh_holdings_bot만 허용합니다." >&2; exit 1
 fi
 if [[ ! -f "$SSH_KEY_PATH" ]]; then echo "SSH 키 파일이 없습니다." >&2; exit 1; fi
 if [[ "$SKIP_LOCAL_CHECKS" != "0" && "$SKIP_LOCAL_CHECKS" != "1" ]]; then exit 1; fi
@@ -54,14 +54,14 @@ fi
 
 grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' strategy.yaml
 COMMIT_SHA="$(git rev-parse HEAD)"
-ARCHIVE_PATH="$(mktemp "/tmp/jd_holdings_${COMMIT_SHA}.XXXXXX.tar.gz")"
-SERVICE_PATH="$(mktemp "/tmp/jd_holdings_service.XXXXXX")"
+ARCHIVE_PATH="$(mktemp "/tmp/jh_holdings_${COMMIT_SHA}.XXXXXX.tar.gz")"
+SERVICE_PATH="$(mktemp "/tmp/jh_holdings_service.XXXXXX")"
 trap 'rm -f "$ARCHIVE_PATH" "$SERVICE_PATH"' EXIT
 git archive --format=tar.gz --output="$ARCHIVE_PATH" HEAD
 sed -e "s|__SERVER_USER__|$SERVER_USER|g" -e "s|__TARGET_DIR__|$SERVER_TARGET_DIR|g" \
-  systemd/jd_holdings_bot.service.template > "$SERVICE_PATH"
+  systemd/jh_holdings_bot.service.template > "$SERVICE_PATH"
 SSH_ARGS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$SSH_KEY_PATH")
-REMOTE_ARCHIVE="/tmp/jd_holdings_${COMMIT_SHA}.tar.gz"
+REMOTE_ARCHIVE="/tmp/jh_holdings_${COMMIT_SHA}.tar.gz"
 REMOTE_SERVICE="/tmp/${SYSTEMD_SERVICE}.service"
 scp "${SSH_ARGS[@]}" "$ARCHIVE_PATH" "$SERVER_USER@$SERVER_HOST:$REMOTE_ARCHIVE"
 scp "${SSH_ARGS[@]}" "$SERVICE_PATH" "$SERVER_USER@$SERVER_HOST:$REMOTE_SERVICE"
@@ -89,7 +89,6 @@ fi
 "$target_dir/venv/bin/python" -m pip install "$release_dir"
 "$target_dir/venv/bin/jdss" --config "$release_dir/strategy.yaml" validate-config
 
-# Freeze the old process before changing strategy state.
 sudo systemctl stop "$service_name" || true
 if [[ -f "$target_dir/current/strategy.yaml" && -f "$target_dir/shared/data/jdss.db" ]]; then
   if ! "$remote_python" - \
