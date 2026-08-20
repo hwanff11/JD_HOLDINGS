@@ -12,15 +12,19 @@ SERVICE_TEMPLATE="${SERVICE_TEMPLATE:?SERVICE_TEMPLATE is required}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_ROOT="${OLD_DIR}.migration-backup-${STAMP}"
 
-[[ "$OLD_DIR" == /home/*/JD_HOLDINGS || "$OLD_DIR" == /opt/JD_HOLDINGS ]]
-[[ "$NEW_DIR" == /home/*/JH_HOLDINGS || "$NEW_DIR" == /opt/JH_HOLDINGS ]]
-[[ "$OLD_DIR" != "$NEW_DIR" ]]
-[[ "$OLD_SERVICE" == jd_holdings_bot ]]
-[[ "$NEW_SERVICE" == jh_holdings_bot ]]
-[[ -f "$OLD_DIR/shared/.env" ]]
-[[ -f "$OLD_DIR/shared/data/jdss.db" ]]
-command -v "$REMOTE_PYTHON" >/dev/null
-command -v git >/dev/null
+fail_preflight() { echo "Migration preflight failed: $*" >&2; exit 1; }
+[[ "$OLD_DIR" == /home/*/JD_HOLDINGS || "$OLD_DIR" == /opt/JD_HOLDINGS ]] || fail_preflight "unsafe OLD_DIR=$OLD_DIR"
+[[ "$NEW_DIR" == /home/*/JH_HOLDINGS || "$NEW_DIR" == /opt/JH_HOLDINGS ]] || fail_preflight "unsafe NEW_DIR=$NEW_DIR"
+[[ "$OLD_DIR" != "$NEW_DIR" ]] || fail_preflight "OLD_DIR and NEW_DIR are identical"
+[[ "$OLD_SERVICE" == jd_holdings_bot ]] || fail_preflight "unexpected OLD_SERVICE=$OLD_SERVICE"
+[[ "$NEW_SERVICE" == jh_holdings_bot ]] || fail_preflight "unexpected NEW_SERVICE=$NEW_SERVICE"
+[[ -d "$OLD_DIR" ]] || fail_preflight "legacy directory missing: $OLD_DIR"
+[[ -f "$OLD_DIR/shared/.env" ]] || fail_preflight "legacy env missing: $OLD_DIR/shared/.env"
+[[ -f "$OLD_DIR/shared/data/jdss.db" ]] || fail_preflight "legacy DB missing: $OLD_DIR/shared/data/jdss.db"
+command -v "$REMOTE_PYTHON" >/dev/null || fail_preflight "python missing: $REMOTE_PYTHON"
+command -v git >/dev/null || fail_preflight "git missing"
+sudo systemctl is-active --quiet "$OLD_SERVICE" || fail_preflight "legacy service is not active: $OLD_SERVICE"
+echo "Migration preflight OK: old_dir=$OLD_DIR old_service=$OLD_SERVICE new_dir=$NEW_DIR new_service=$NEW_SERVICE"
 
 rollback() {
   rc=$?
@@ -36,7 +40,6 @@ rollback() {
 }
 trap rollback ERR
 
-sudo systemctl is-active --quiet "$OLD_SERVICE"
 mkdir -p "$BACKUP_ROOT"
 cp -a "$OLD_DIR/shared" "$BACKUP_ROOT/shared"
 if [[ -L "$OLD_DIR/current" ]]; then readlink -f "$OLD_DIR/current" > "$BACKUP_ROOT/old-current-target.txt"; fi
