@@ -94,12 +94,25 @@ def test_v322_allocation_run_is_idempotent_and_creates_approval_signals(tmp_path
 
     assert result is not None
     assert result.trade_date == completed.isoformat()
-    assert len(result.signals) == 3
+    assert result.signals == ()
     assert repository.get_core_position("QQQ")["target_weight"] == "0.75"
+    assert repository.get_core_position("QQQ")["target_qty"] == 0
     assert repository.get_core_position("TQQQ")["target_weight"] == "0.125"
     assert repository.get_core_position("SOXL")["target_weight"] == "0.125"
     assert repository.open_orders() == []
     assert service.run_allocation(now) is None
+
+    next_session_closed = datetime(2026, 8, 3, 6, tzinfo=UTC)
+    assert service.run_allocation(next_session_closed) is None
+    assert repository.get_core_position("QQQ")["target_qty"] == 0
+    assert repository.open_orders() == []
+
+    next_session_premarket = datetime(2026, 8, 3, 12, tzinfo=UTC)
+    execution = service.run_allocation(next_session_premarket)
+    assert execution is not None
+    assert len(execution.signals) == 3
+    assert repository.get_core_position("QQQ")["target_qty"] == 74
+    assert service.run_allocation(next_session_premarket) is None
 
 
 def test_target_change_cancels_stale_core_orders_before_rebalancing(tmp_path, config):
@@ -197,9 +210,14 @@ def test_target_change_cancels_stale_core_orders_before_rebalancing(tmp_path, co
     assert result is not None
     assert repository.get_order_by_client_id("STALE-CORE-BUY")["status"] == "CANCELED"
     assert repository.get_order_by_client_id("STALE-CORE-SELL")["status"] == "CANCELED"
-    assert repository.get_core_position("SOXL")["qty"] == 0
+    assert repository.get_core_position("SOXL")["qty"] == 10
     assert any("기존 CORE_REBALANCE_BUY 주문 취소" in event for event in result.events)
     assert any("기존 CORE_REBALANCE_SELL 주문 취소" in event for event in result.events)
+
+    execution = service.run_allocation(datetime(2026, 8, 3, 12, tzinfo=UTC))
+    assert execution is not None
+    assert repository.get_core_position("SOXL")["qty"] == 0
+    assert len(execution.signals) == 1
 
 
 def test_v322_refuses_live_mode_before_any_data_or_order_access(tmp_path, config):

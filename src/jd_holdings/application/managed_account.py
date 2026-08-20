@@ -9,9 +9,8 @@ from jd_holdings.core.twin_core import target_quantity
 from jd_holdings.core.v322_allocation import V322Policy, hwm_risk_budget
 
 from .broker import Broker
-from .database import SQLiteRepository
+from .database import OPEN_ORDER_STATUSES, SQLiteRepository
 
-OPEN_ORDER_STATUSES = ("CREATED", "SUBMITTED", "PENDING", "PARTIAL_FILLED", "UNKNOWN")
 HIGH_WATER_KEY = "v322_high_water_equity"
 RISK_BUDGET_KEY = "v322_risk_budget"
 
@@ -254,17 +253,24 @@ def reserve_buy_order_with_managed_cash(
         reserved = _reserved_open_buy_from_connection(config, connection)
         if purpose == "CORE_REBALANCE_BUY":
             core = connection.execute(
-                "SELECT qty, target_weight FROM core_positions WHERE symbol = ?",
+                """
+                SELECT qty, target_weight, target_qty
+                FROM core_positions WHERE symbol = ?
+                """,
                 (symbol.upper(),),
             ).fetchone()
             if core is None:
                 raise RuntimeError(f"V3.2.2 코어 목표 종목이 아닙니다: {symbol.upper()}")
-            target = target_quantity(
-                risk_budget,
-                Decimal(str(core["target_weight"])),
-                price,
-                config.global_.buy_fee,
-            )
+            target = int(core["target_qty"])
+            # Compatibility for legacy databases/tests whose target predates the
+            # persisted V3.2.2 target-quantity generation.
+            if target == 0 and Decimal(str(core["target_weight"])) > 0:
+                target = target_quantity(
+                    risk_budget,
+                    Decimal(str(core["target_weight"])),
+                    price,
+                    config.global_.buy_fee,
+                )
             committed = _committed_core_buy_quantity_from_connection(
                 connection, symbol
             )

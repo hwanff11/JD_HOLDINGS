@@ -95,10 +95,8 @@ if [[ -f "$target_dir/current/strategy.yaml" && -f "$target_dir/shared/data/jdss
   if ! "$remote_python" - \
     "$target_dir/current/strategy.yaml" "$release_dir/strategy.yaml" "$target_dir/shared/data/jdss.db" <<'PY'
 import re
-import shutil
 import sqlite3
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 old_path, new_path, db_path = map(Path, sys.argv[1:])
@@ -124,22 +122,13 @@ open_orders = connection.execute(
 ).fetchall()
 connection.close()
 
-# V3.1.1 -> V3.2.2 changes the ledger model. Deployment is already forced to
-# dry_run above, so preserve the entire old simulation DB and start a clean one.
-if new_version == "3.2.2":
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = db_path.with_name(f"jdss.v322-migration.{old_version}.{stamp}.db")
-    shutil.copy2(db_path, backup)
-    db_path.unlink()
-    print(
-        f"V3.2.2 dry-run 원장 전환: {old_version} -> {new_version}; "
-        f"backup={backup}; legacy_positions={len(active_positions)}; open_orders={len(open_orders)}"
-    )
-    raise SystemExit(0)
-
 if active_positions or open_orders:
     raise SystemExit(42)
-print(f"전략 버전 변경 사전점검 통과: {old_version} -> {new_version}")
+raise SystemExit(
+    f"전략 버전 변경은 별도 migration plan·DB 백업·호환성 "
+    f"테스트가 필요합니다: {old_version} -> {new_version} "
+    f"(legacy_positions={len(active_positions)}, open_orders={len(open_orders)})"
+)
 PY
   then
     sudo systemctl start "$service_name" || true

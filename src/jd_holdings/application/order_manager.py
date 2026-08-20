@@ -9,10 +9,14 @@ from jd_holdings.infrastructure.toss_client import TossApiError, receipt_from_or
 from jd_holdings.settings import RuntimeSettings
 
 from .broker import Broker
-from .database import SQLiteRepository
+from .database import ALL_ORDER_STATUSES, SQLiteRepository
 from .managed_account import reserve_buy_order_with_managed_cash
 
 LOGGER = logging.getLogger(__name__)
+
+
+class BrokerReceiptValidationError(RuntimeError):
+    """The broker response cannot be proven to belong to the reserved order."""
 
 
 def build_client_order_id(
@@ -49,6 +53,20 @@ class OrderManager:
                         self.broker.get_order(str(existing["broker_order_id"])),
                         request.client_order_id,
                     )
+                    self._validate_receipt(
+                        receipt,
+                        expected_client_order_id=request.client_order_id,
+                        expected_symbol=request.symbol,
+                        expected_side=request.side,
+                        expected_quantity=request.quantity,
+                    )
+                except BrokerReceiptValidationError as exc:
+                    self.repository.update_order(
+                        request.client_order_id,
+                        status="UNKNOWN",
+                        raw={"error": type(exc).__name__, "message": str(exc)},
+                    )
+                    raise
                 except Exception as exc:
                     LOGGER.warning("주문 상태 최신화 중 오류 발생: %s", exc)
                 else:
@@ -106,6 +124,13 @@ class OrderManager:
             self.settings.require_live_trading()
         try:
             receipt = self.broker.place_order(request)
+            self._validate_receipt(
+                receipt,
+                expected_client_order_id=request.client_order_id,
+                expected_symbol=request.symbol,
+                expected_side=request.side,
+                expected_quantity=request.quantity,
+            )
         except TossApiError as exc:
             status = "UNKNOWN" if exc.retryable else "REJECTED"
             self.repository.update_order(
@@ -139,9 +164,23 @@ class OrderManager:
         local = self.repository.get_order_by_client_id(client_order_id)
         if not local or not local.get("broker_order_id"):
             raise KeyError(client_order_id)
-        receipt = receipt_from_order(
-            self.broker.get_order(str(local["broker_order_id"])), client_order_id
-        )
+        raw = self.broker.get_order(str(local["broker_order_id"]))
+        receipt = receipt_from_order(raw, client_order_id)
+        try:
+            self._validate_receipt(
+                receipt,
+                expected_client_order_id=client_order_id,
+                expected_symbol=str(local["symbol"]),
+                expected_side=str(local["side"]),
+                expected_quantity=int(local["qty"]),
+            )
+        except Exception as exc:
+            self.repository.update_order(
+                client_order_id,
+                status="UNKNOWN",
+                raw={"error": type(exc).__name__, "message": str(exc)},
+            )
+            raise
         self.repository.update_order(
             client_order_id,
             status=receipt.status,
@@ -150,3 +189,60 @@ class OrderManager:
             raw=receipt.raw,
         )
         return receipt
+
+    @staticmethod
+    def _validate_receipt(
+        receipt: OrderReceipt,
+        *,
+        expected_client_order_id: str,
+        expected_symbol: str,
+        expected_side: str,
+        expected_quantity: int,
+    ) -> None:
+        """Reject a broker response that cannot be tied to the reserved order."""
+        if receipt.client_order_id != expected_client_order_id:
+            raise BrokerReceiptValidationError(
+                "브로커 응답 clientOrderId가 예약 주문과 다릅니다"
+            )
+        if not receipt.broker_order_id:
+            raise BrokerReceiptValidationError("브로커 응답에 orderId가 없습니다")
+        if receipt.status.upper() not in ALL_ORDER_STATUSES:
+            raise BrokerReceiptValidationError(
+                f"브로커 응답 주문상태가 잘못됐습니다: {receipt.status}"
+            )
+        if receipt.quantity != expected_quantity:
+            raise BrokerReceiptValidationError(
+                "브로커 응답 주문수량이 예약 수량과 다릅니다"
+            )
+        if not 0 <= receipt.filled_quantity <= expected_quantity:
+            raise BrokerReceiptValidationError(
+                "브로커 응답 체결수량이 유효하지 않습니다"
+            )
+        if receipt.filled_quantity > 0 and (
+            receipt.average_fill_price is None or receipt.average_fill_price <= 0
+        ):
+            raise BrokerReceiptValidationError(
+                "체결된 주문의 평균체결가가 유효하지 않습니다"
+            )
+
+        raw = receipt.raw if isinstance(receipt.raw, dict) else {}
+        raw_client_id = raw.get("clientOrderId")
+        if raw_client_id is not None and str(raw_client_id) != expected_client_order_id:
+            raise BrokerReceiptValidationError(
+                "브로커 raw clientOrderId가 예약 주문과 다릅니다"
+            )
+        raw_symbol = raw.get("symbol") or raw.get("stockCode")
+        if raw_symbol is not None and str(raw_symbol).upper() != expected_symbol.upper():
+            raise BrokerReceiptValidationError(
+                "브로커 응답 종목이 예약 주문과 다릅니다"
+            )
+        raw_side = raw.get("side")
+        if raw_side is not None and str(raw_side).upper() != expected_side.upper():
+            raise BrokerReceiptValidationError(
+                "브로커 응답 매매방향이 예약 주문과 다릅니다"
+            )
+        raw_quantity = raw.get("quantity")
+        if raw_quantity is not None and Decimal(str(raw_quantity)) != expected_quantity:
+            raise BrokerReceiptValidationError(
+                "브로커 raw 주문수량이 예약 수량과 다릅니다"
+            )

@@ -1,126 +1,136 @@
 # JD_HOLDINGS 보안 기준
 
-이 문서는 JDSS의 비밀정보, Telegram 관리자 인증, 주문 승인, Toss API, SQLite, GitHub Actions와 Oracle 배포에 적용하는 현재 보안 기준이다. 현재 브랜치·배포 SHA·점검 진행 상태는 `CURRENT_WORK.md`에서 관리한다.
+이 문서는 비밀정보, Telegram 관리자 인증, 주문 승인, Toss API, SQLite, GitHub Actions와 Oracle 배포의 **기술적 안전 경계**를 소유합니다. 정확한 현재 전략·자금 수치는 [`../JDSS_FINAL_SPEC.md`](../JDSS_FINAL_SPEC.md)와 [`../../strategy.yaml`](../../strategy.yaml), 배포·live 상태는 [`../../CURRENT_WORK.md`](../../CURRENT_WORK.md)를 따릅니다.
 
 ## 1. 신뢰 경계
 
 | 경계 | 신뢰하는 정보 | 반드시 검증할 정보 |
 |---|---|---|
-| Telegram | 허용된 관리자 Chat ID | 메시지/콜백 사용자, 형식, 토큰, 만료 |
-| JDSS 애플리케이션 | 검증된 `strategy.yaml`과 내부 상태 모델 | 환경변수, DB 기존 상태, 외부 시세·주문 응답 |
-| Toss OpenAPI | TLS 공식 고정 호스트 | HTTP 상태, JSON 형식, 필수 응답값, 주문 경계 |
-| SQLite | 트랜잭션으로 확정된 JDSS 원장 | 브로커 잔고·미체결 주문과의 일치 |
-| GitHub Actions | 최신 원격 `main`과 Environment | 배포 SHA, 요청 주체, Secret 존재 |
-| Oracle | commit별 릴리스 | shared DB·로그·환경파일 권한, 서비스 상태 |
+| Telegram | 허용된 관리자 Chat ID | 메시지/콜백 사용자, 형식, 토큰, 단계, 만료 |
+| JDSS 애플리케이션 | 검증된 설정과 트랜잭션으로 확정된 내부 상태 | 환경변수, 기존 DB, 외부 시세·주문 응답 |
+| Dry-run broker | 현재 프로세스와 SQLite로 증명한 모의 주문 상태 | 재시작 복원, 부분체결 delta, 열린 주문 |
+| Toss OpenAPI | TLS 공식 고정 호스트 | 인증·HTTP·JSON·필수값·실제 계좌 수량과 주문 상태 |
+| GitHub Actions | 최신 원격 `main`과 승인된 Environment | 배포 SHA, 요청 주체, Secret 존재 |
+| Oracle | commit별 release와 protected shared 경로 | 환경파일·DB·로그 권한, 서비스·원장 상태 |
+
+Dry-run broker와 Toss OpenAPI는 서로 다른 경계입니다. 한쪽의 성공·수량을 다른 쪽의 성공·수량으로 간주하지 않습니다.
 
 ## 2. 비밀정보
 
-- `.env`, Telegram Bot Token, Toss 앱 키·시크릿, SSH 개인키, 전체 계좌번호와 인증 헤더는 Git에 저장하지 않는다.
-- 애플리케이션은 Toss 계좌 선택에 필요한 최소 정보만 사용한다.
-- GitHub Actions 배포 비밀값은 `oracle-dry-run` Environment Secret으로 관리한다.
-- 예외·API 원문·주문 응답에 인증정보나 승인 토큰이 노출되지 않게 한다.
-- 비밀값 노출이 의심되면 live를 잠그고 해당 자격증명을 폐기·재발급한다.
+- `.env`, Telegram Bot Token, Toss 앱 키·시크릿, SSH 개인키, 전체 계좌번호와 인증 헤더를 Git·로그·문서·Issue에 저장하지 않습니다.
+- 애플리케이션은 계좌 선택과 read-only/주문 작업에 필요한 최소 정보만 사용합니다.
+- GitHub Actions 비밀값은 승인된 Environment Secret으로 관리합니다.
+- 예외·API 원문·주문 응답에 인증정보나 승인 토큰이 노출되지 않게 합니다.
+- 노출이 의심되면 live를 잠그고 해당 자격증명을 폐기·재발급합니다.
 
-## 3. Telegram 인증과 승인
+## 3. Telegram 인증과 반자동 BUY
 
-- 허용된 관리자 Chat ID만 명령과 콜백을 처리한다.
-- BUY는 검토 승인과 최종 실행 승인의 2단계를 유지한다.
-- 승인 토큰은 난수로 만들고 DB에는 SHA-256 해시만 저장한다.
-- 토큰은 상수시간 비교, 만료, 승인단계, 1회사용 상태를 모두 검증한다.
-- 가격·수량·세션이 바뀌면 이전 토큰으로 주문하지 않고 재검토를 요구한다.
-- 코어 BUY는 신호 당시 계획주수와 최종 시점 잔여 목표주수 중 작은 값을 사용한다.
+- 허용된 관리자 Chat ID만 명령과 콜백을 처리합니다.
+- 위험증가 BUY는 가격·수량 검토와 최종 실행의 2단계 승인을 모두 요구합니다.
+- 승인 토큰은 난수로 만들고 DB에는 SHA-256 해시만 저장합니다.
+- 토큰은 상수시간 비교, 승인단계, 만료와 1회사용 상태를 모두 검증합니다.
+- 가격·수량·세션이 바뀌면 이전 토큰으로 주문하지 않고 재검토를 요구합니다.
+- 코어 BUY는 신호 당시 계획수량과 최종 시점 잔여 목표수량 중 작은 값을 사용합니다.
+- 목표주수는 완결봉 생성일이 아니라 다음 거래세션이 시작된 후 한 번만 고정하여 백테스트 실행 시점과 맞춥니다.
+- 목표주수 고정·자동 SELL·BUY 실행은 허용 세션에서만 수행하고 토스 08:50~08:59 KST 주문 점검시간에는 차단합니다.
+- 누적 체결수량 감소와 종료 주문의 열린 상태 회귀를 거부합니다.
+- 위험축소 SELL은 승인 대기를 하지 않지만, 실패·부분체결·UNKNOWN이면 신규 BUY를 차단합니다.
 
-## 4. V3.2.2 HWM75 자금경계
+## 4. 전략자금 경계
 
-V3.2.2의 가장 중요한 자금 안전장치는 **JDSS가 Toss 전체 현금을 전략자금으로 착각하지 않는 것**이다.
+- 초기 위험원금, HWM 이익 재투자율과 공식은 설정·사양을 직접 읽습니다. 보안 문서에 숫자를 별도 정답으로 복제하지 않습니다.
+- 위험예산은 현재 평가액보다 클 수 없고, JDSS 손실을 개인 현금으로 자동 보충하지 않습니다.
+- 기존 allocation 원가와 미체결 BUY의 잔여 지정가·예상수수료를 위험예산에서 예약합니다.
+- 열린 코어 BUY와 아직 원장에 반영되지 않은 체결수량도 종목 잔여 목표에서 예약합니다.
+- 목표 변경 전에 기존 allocation BUY·SELL 상태를 최신화하고 취소·정산합니다.
+- 신규 BUY는 위험예산, JDSS 원장상 현금, 브로커 주문가능금액과 종목 잔여 목표 중 가장 제한적인 경계를 넘지 않습니다.
+- 관리 티커는 공식 사양을 따르며, 같은 Toss 계좌의 개인 동일 티커와 JDSS 수량을 혼합하지 않습니다. 브로커 합산수량으로 소유권을 증명할 수 없기 때문입니다.
+- production에서 비활성화된 유휴자금 기능은 자금경계에 포함하거나 주문하지 않습니다.
 
-- 시작 위험원금은 `$50,000`이다.
-- 완결 거래일 새 최고자산 증가분의 75%만 위험예산을 확대한다.
-- 위험예산은 현재 평가액보다 클 수 없다.
-- 통합 allocation 원가가 위험예산을 점유한다.
-- 미체결 BUY의 잔여 지정가와 예상수수료도 예약한다.
-- 열린 코어 BUY와 아직 원장에 반영되지 않은 체결수량도 종목 목표수량에서 예약한다.
-- 목표 변경 전에 기존 allocation BUY·SELL 상태를 최신화하고 취소·정산한다.
-- 신규 BUY는 HWM75 잔여 위험예산과 종목 잔여 목표수량을 넘을 수 없다.
-- 새 최고자산 이익의 나머지 25%는 JDSS 현금이지만 위험예산 확대에 쓰지 않는다.
-- JDSS 손실로 전략 가용현금이 줄어도 개인 USD로 자동 보충하지 않는다.
-- 실제 Toss 주문가능금액이 JDSS 원장상 가용금액보다 작으면 더 작은 값을 사용한다.
-- 같은 Toss 계좌의 개인 USD·QQQM은 JDSS 원장 밖에 둘 수 있다.
-- **개인 QQQ·TQQQ·SOXL과 JDSS 수량을 같은 계좌에 혼합 보유하지 않는다.** 브로커 합산수량 때문에 JDSS 원장을 증명할 수 없다.
-- SGOV는 production에서 비활성화하며 JDSS 자금경계에 포함하지 않는다.
+BUY 주문예약은 SQLite `BEGIN IMMEDIATE` 트랜잭션 안에서 현금과 목표수량을 함께 다시 검사해 동시 승인으로 한도를 이중 사용하지 못하게 합니다.
 
-managed cash 계산과 BUY 주문예약은 SQLite `BEGIN IMMEDIATE` 트랜잭션으로 처리해 두 승인 콜백이 동시에 같은 위험예산과 목표수량을 예약하지 못하게 한다.
+## 5. dry-run 원장과 실제 Toss 조회
 
-## 5. 주문·정합성 안전장치
+- forced dry-run의 주문·보유수량·현금·reconciliation은 SQLite와 모의 브로커를 기준으로 합니다.
+- `/account`, 계좌 요약과 `toss-smoke`는 실제 Toss 정보를 조회만 하는 별도 경로입니다.
+- 실제 Toss 보유수량을 모의원장에 자동 채택하거나 모의 주문을 실제 주문으로 변환하지 않습니다.
+- dry-run reconciliation 성공을 실제 Toss 수량 일치 또는 실주문 검증 완료로 표현하지 않습니다.
+- 실제 Toss 조회가 실패하거나 값이 불완전하면 0·정상·미보유로 추정하지 않습니다.
 
-- 모든 주문은 결정적 client order ID와 DB 예약으로 멱등성을 확보한다.
-- Toss 경계에서 종목, 주문방향, 주문유형, 양수수량, 유한·양수 가격을 검증한다.
-- 브로커 QQQ/TQQQ/SOXL 기대수량은 JDSS 통합 allocation 원장 수량이다.
-- DB/브로커 수량 또는 미체결 주문 불일치는 SAFE_MODE로 전환한다.
-- 주문응답 유실은 성공으로 추정하거나 재주문하지 않고 UNKNOWN으로 유지한다.
-- TP 부분체결은 누적수량과 신규 delta를 구분해 이중반영하지 않는다.
-- 종목 또는 portfolio SAFE_MODE에서는 allocation 신규 BUY 승인과 실행을 차단한다.
-- 실거래 잠금, 2단계 승인, HWM75 게이트, 멱등성, Reconciliation, SAFE_MODE를 약화하는 변경은 별도 승인 없이 허용하지 않는다.
+향후 실제 계좌 적용 전에는 전략·설정·SHA, DB 세대·백업, 실제 보유·열린 주문·주문가능금액, 개인 동일 티커, SAFE_MODE, 승인·재시작 한 사이클을 별도 preflight로 증명해야 합니다. 어느 항목이 자동화됐는지는 구현과 `CURRENT_WORK.md`의 검증 결과를 기준으로 판단합니다.
 
-## 6. 재시작 안전성
+## 6. 주문·정합성 안전장치
 
-- dry-run raw cash는 $50,000에서 시작해 전체 JDSS 실제 체결과 설정 수수료로 재구성하되 신규 BUY는 별도의 HWM75 위험예산으로 제한한다.
-- 체결 0으로 증명되는 DRY 미체결 주문만 cold restart에서 복원한다.
-- `UNKNOWN`과 재시작 시점 `PARTIAL_FILLED`는 메모리 브로커 상태를 추정하지 않는다.
-- DRY broker order sequence는 완료 주문까지 포함한 전체 역사 최대번호 다음부터 이어간다.
-- 누적 부분체결은 이전 누적값과의 delta만 수량·현금에 반영한다.
-- DB 열린 주문에 broker order id가 없거나 브로커에서 찾지 못하면 SAFE_MODE 이벤트로 남긴다.
+- 모든 주문은 결정적 client order ID와 DB 예약으로 멱등성을 확보합니다.
+- 브로커 경계에서 종목, 주문방향, 주문유형, 양수수량, 유한·양수 가격을 검증합니다.
+- 동일 주문 재시도는 브로커 최신 receipt를 먼저 저장하고 새 체결 delta만 원장에 반영합니다.
+- DB/현재 주문 브로커의 수량 또는 열린 주문 불일치는 SAFE_MODE로 전환합니다.
+- 주문응답 유실은 성공으로 추정하거나 재주문하지 않고 UNKNOWN으로 유지합니다.
+- 누적 부분체결은 이전 적용값과 신규 누적값의 delta만 반영하고, 누적 금액도 같은 방식으로 계산합니다.
+- 목표 변경이나 새로운 BUY 전에 기존 SELL이 종료·원장 반영·정합성 확인까지 끝났는지 검사합니다.
+- 종목 또는 portfolio SAFE_MODE에서는 신규 BUY 승인과 실행을 차단합니다.
+- 실거래 잠금, 2단계 승인, 위험예산 게이트, 멱등성, reconciliation과 SAFE_MODE를 약화하는 변경은 별도 승인 없이 허용하지 않습니다.
 
-## 7. live 잠금
+## 7. 시작·재시작 안전성
 
-- Oracle은 forced `dry_run`으로 배포한다.
-- `portfolio.live_enabled=false`를 유지한다.
-- V3.2.2 애플리케이션은 전체 `live` 시작도 거부한다.
-- 배포 스크립트는 서버 `.env`의 `JDSS_TRADING_MODE=dry_run`, 빈 `JDSS_LIVE_CONFIRMATION`을 유지한다.
-- live 전환은 백테스트·dry-run·Toss 실제 주문동작 검증과 운영자의 별도 명시적 승인 없이는 하지 않는다.
+- 서비스 시작 시 DB의 전략 세대·schema와 현재 설정의 호환성을 확인합니다.
+- dry-run 보유수량과 현금은 증명 가능한 전체 체결·수수료로 복원합니다.
+- 체결 0으로 증명되는 DRY 미체결 주문만 cold restart에서 그대로 복원합니다.
+- UNKNOWN과 재시작 시점 PARTIAL_FILLED를 메모리 상태로 추정 복구하지 않습니다.
+- DRY broker order sequence는 완료 주문을 포함한 역사상 최대번호 다음부터 이어갑니다.
+- 시작 시 아직 allocation 원장에 반영되지 않은 확정 체결은 누적 delta만 한 번 반영합니다.
+- DB 열린 주문에 broker order ID가 없거나 현재 브로커에서 찾지 못하면 SAFE_MODE 이벤트를 남깁니다.
+- 저장된 목표수량·전략 generation과 현재 보유·열린 주문을 이용해 복구하되, 새로운 BUY는 SELL 완결과 정합성 확인 뒤에만 허용합니다.
 
-## 8. API와 네트워크
+## 8. live 잠금
 
-- Toss API 호스트는 공식 HTTPS 기본 URL로 고정한다.
-- 연결·응답 시간제한을 적용한다.
-- 401 토큰갱신은 제한된 횟수만 재시도한다.
-- 성공 응답도 JSON 객체와 필수값을 검증한다.
-- API 오류 문자열을 셸 명령으로 사용하지 않는다.
+- 현재 배포는 forced dry-run이며 정확한 상태는 `CURRENT_WORK.md`를 확인합니다.
+- 설정의 `portfolio.live_enabled=false`, 애플리케이션 live hard lock과 빈 live confirmation을 함께 유지합니다.
+- live 전환은 백테스트·dry-run·실제 Toss 주문 경계·최초 적용 preflight와 운영자의 별도 명시적 승인 없이는 하지 않습니다.
+- 문서 체크리스트만 추가됐거나 read-only smoke가 성공했다는 이유로 live를 준비 완료로 판단하지 않습니다.
 
-## 9. SQLite·로그·파일권한
+## 9. API와 네트워크
 
-- 외부 값은 SQL 파라미터 바인딩을 사용한다.
-- WAL, foreign key, busy timeout과 `BEGIN IMMEDIATE`를 유지한다.
-- DB·로그·캐시는 Oracle shared 경로만 쓰기 가능하게 한다.
-- systemd `UMask=0077`을 유지한다.
-- 승인 토큰·인증헤더·앱시크릿·SSH 키를 이벤트로그에 기록하지 않는다.
+- Toss API 호스트는 공식 HTTPS 기본 URL로 고정합니다.
+- 연결·응답 시간제한을 적용하고 401 토큰갱신은 제한된 횟수만 재시도합니다.
+- 성공 응답도 JSON 객체, 필수값, 숫자 범위와 주문 상태를 검증합니다.
+- API 오류 문자열을 셸 명령으로 사용하지 않습니다.
+- 유지보수 시간과 일시적 장애를 주문 성공 또는 미보유 상태로 바꾸지 않습니다.
 
-## 10. GitHub·Oracle 배포권한
+## 10. SQLite·로그·파일권한
 
-- 배포 대상은 원격과 일치하는 최신 `main`으로 제한한다.
-- ChatOps 요청은 저장소 소유자가 생성한 전용 접두어 이슈만 허용한다.
-- Actions는 `contents: read`를 기본으로 하고 필요한 경우에만 `issues: write`를 사용한다.
-- Oracle 서비스는 비루트 사용자, `NoNewPrivileges`, 빈 capability, private devices/tmp, 커널·control group 보호를 유지한다.
-- Secret이나 Oracle 환경파일이 없으면 배포를 중단하고 우회하지 않는다.
+- 외부 값은 SQL 파라미터 바인딩을 사용합니다.
+- WAL, foreign key, busy timeout과 `BEGIN IMMEDIATE`를 유지합니다.
+- DB·로그·캐시는 Oracle shared 경로만 쓰기 가능하게 합니다.
+- systemd `UMask=0077`을 유지합니다.
+- 승인 토큰·인증헤더·앱시크릿·SSH 키를 이벤트로그에 기록하지 않습니다.
+- 마이그레이션 전 복구 가능한 백업과 기존 DB 호환성 테스트를 요구하며 실제 거래원장을 자동 삭제하지 않습니다.
 
-## 11. 의존성 관리
+## 11. GitHub·Oracle 배포권한
 
-- Python과 GitHub Actions 의존성은 Dependabot으로 확인한다.
-- 의존성 업데이트는 기능변경과 분리하고 CI와 Dry Run을 통과해야 한다.
-- 보안 업데이트라도 전략 결과·주문 동작에 영향을 주면 회귀 테스트한다.
+- 배포 대상은 원격과 일치하는 최신 `main`으로 제한합니다.
+- ChatOps 요청은 저장소 소유자가 생성한 허용된 접두어 이슈만 처리합니다.
+- Actions는 `contents: read`를 기본으로 하고 필요한 경우에만 권한을 추가합니다.
+- Oracle 서비스는 비루트 사용자, `NoNewPrivileges`, 빈 capability, private devices/tmp와 커널·control group 보호를 유지합니다.
+- Secret이나 Oracle 환경파일이 없으면 배포를 중단하고 우회하지 않습니다.
 
-## 12. 변경 전 체크리스트
+## 12. 의존성 관리
+
+- Python과 GitHub Actions 의존성은 Dependabot으로 확인합니다.
+- 의존성 업데이트는 기능 변경과 분리하고 CI와 Dry Run을 통과해야 합니다.
+- 보안 업데이트라도 전략 결과·주문 동작에 영향을 주면 회귀 테스트합니다.
+
+## 13. 변경 전 체크리스트
 
 - [ ] 새로운 비밀값을 저장·출력하지 않는가
-- [ ] Telegram 명령·콜백 관리자 검사가 유지되는가
-- [ ] live 잠금과 2단계 BUY 승인이 유지되는가
-- [ ] 현재 원가 + 열린 BUY + 신규 BUY가 HWM75 위험예산을 넘지 않는가
-- [ ] 새 최고자산 이익 중 75%만 위험예산 확대에 반영하는가
-- [ ] 코어 보유 + 주문중 + 신규 BUY가 종목 목표수량을 넘지 않는가
-- [ ] 개인자금으로 손실을 자동 보충하지 않는가
-- [ ] SGOV production 경로가 비활성화되어 있는가
-- [ ] 미체결 BUY 예약과 동시성 트랜잭션이 유지되는가
-- [ ] 주문 멱등성·Reconciliation·SAFE_MODE가 유지되는가
-- [ ] 재시작에서 UNKNOWN/PARTIAL을 추정복구하지 않는가
+- [ ] Telegram 메시지·콜백 관리자 검사가 유지되는가
+- [ ] live 잠금과 반자동 BUY 2단계 승인이 유지되는가
+- [ ] 위험축소 SELL 실패·부분체결·UNKNOWN 뒤 신규 BUY가 차단되는가
+- [ ] 현재 원가 + 열린 BUY + 신규 BUY가 위험예산과 목표수량을 넘지 않는가
+- [ ] 개인자금으로 손실을 자동 보충하거나 개인 동일 티커를 JDSS로 채택하지 않는가
+- [ ] dry-run 모의원장과 실제 Toss read-only 조회를 명확히 구분하는가
+- [ ] 주문 멱등성·부분체결 delta·reconciliation·SAFE_MODE가 유지되는가
+- [ ] 시작/재시작에서 불명확한 주문·체결을 추정하지 않는가
+- [ ] DB 변경에 백업·호환성·rollback 검증이 있는가
 - [ ] systemd·Actions 권한이 불필요하게 확대되지 않았는가
-- [ ] 관련 테스트와 문서가 함께 갱신됐는가
+- [ ] 관련 테스트와 소유 문서가 함께 갱신됐는가

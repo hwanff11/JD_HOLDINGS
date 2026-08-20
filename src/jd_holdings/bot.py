@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import logging
 import logging.handlers
@@ -7,6 +8,7 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+from jd_holdings.application.account_preflight import RealAccountPreflight
 from jd_holdings.application.allocation_trading_service import AllocationTradingService
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.broker import MarketDataDryRunBroker
@@ -25,6 +27,32 @@ from jd_holdings.infrastructure.market_data import YFinanceDataSource
 from jd_holdings.infrastructure.telegram_bot_runtime import RuntimeTelegramBotApp
 from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import load_runtime_settings
+
+
+def recover_unapplied_core_fills(repository: SQLiteRepository) -> tuple[str, ...]:
+    """Close the crash window between order persistence and core-ledger apply."""
+    recovered: list[str] = []
+    for client_order_id in repository.unapplied_core_fill_order_ids():
+        repository.apply_core_fill(client_order_id)
+        recovered.append(client_order_id)
+    return tuple(recovered)
+
+
+def notify_startup_account_preflight(app, issues: tuple[str, ...]) -> None:
+    """Warn about the read-only real-account check without gating dry-run orders."""
+    if not issues:
+        return
+    lines = [
+        "⚠️ <b>[실계좌 읽기 전용 사전점검]</b>",
+        "",
+        "토스 실계좌에서 아래 운영 준비 항목을 확인했습니다.",
+        "이 경고는 모의투자 원장과 분리되며 모의주문을 자동 차단하지 않습니다.",
+    ]
+    lines.extend(f"• <code>{html.escape(issue)}</code>" for issue in issues)
+    try:
+        app._send("\n".join(lines))
+    except Exception:
+        logging.getLogger(__name__).exception("실계좌 사전점검 경고 Telegram 전송 실패")
 
 
 def restore_dry_run_holdings(
@@ -92,9 +120,9 @@ def restore_dry_run_orders(
             continue
         local_status = str(local.get("status") or "PENDING")
         filled_qty = int(local.get("filled_qty") or 0)
-        if local_status == "UNKNOWN":
+        if local_status not in {"CREATED", "SUBMITTED", "PENDING"}:
             continue
-        if local_status == "PARTIAL_FILLED" or filled_qty > 0:
+        if filled_qty > 0:
             continue
         try:
             raw = json.loads(str(local.get("raw_json") or "{}"))
@@ -149,6 +177,12 @@ def main() -> None:
     config = load_config(settings.config_path)
     configure_logging(settings.log_path)
     repository = SQLiteRepository(settings.database_path, config)
+    recovered_core_fills = recover_unapplied_core_fills(repository)
+    if recovered_core_fills:
+        logging.getLogger(__name__).warning(
+            "시작 중 미반영 코어 체결 %d건을 원장에 복구했습니다",
+            len(recovered_core_fills),
+        )
     data_source = YFinanceDataSource(settings.cache_path)
     market_clock = MarketClock()
     if config.portfolio.enabled and settings.trading_mode == "live":
@@ -168,6 +202,16 @@ def main() -> None:
         if os.getenv("TOSS_APP_KEY") and os.getenv("TOSS_APP_SECRET")
         else None
     )
+    account_preflight = (
+        RealAccountPreflight(repository, account_client).run()
+        if account_client is not None
+        else None
+    )
+    if account_preflight is not None and account_preflight.issues:
+        logging.getLogger(__name__).warning(
+            "실계좌 읽기 전용 사전점검 경고: %s",
+            account_preflight.issues,
+        )
     order_manager = OrderManager(repository, broker, settings)
     idle_cash_manager = None
     if config.idle_cash.enabled:
@@ -228,6 +272,8 @@ def main() -> None:
     )
     if mismatches:
         app.notify_startup_reconciliation(mismatches)
+    if account_preflight is not None:
+        notify_startup_account_preflight(app, account_preflight.issues)
     app.run()
 
 

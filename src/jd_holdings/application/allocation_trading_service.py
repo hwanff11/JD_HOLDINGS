@@ -8,14 +8,15 @@ from decimal import Decimal
 from jd_holdings.core.enums import DecisionType, PositionState
 from jd_holdings.core.execution import calculate_limit_price, calculate_order_quantity
 from jd_holdings.core.models import OrderReceipt, OrderRequest
-from jd_holdings.core.twin_core import target_quantity
-from jd_holdings.infrastructure.market_clock import session_is_allowed
+from jd_holdings.infrastructure.market_clock import (
+    is_toss_order_maintenance_window,
+    session_is_allowed,
+)
 
 from .database import ApprovalError
 from .managed_account import (
     available_managed_cash,
     committed_core_buy_quantity,
-    managed_equity,
 )
 from .order_manager import build_client_order_id
 from .trading_service import QuoteChangedError, ReviewQuote, TradingService
@@ -25,13 +26,17 @@ TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
 _execution_approval_id: ContextVar[int | None] = ContextVar(
     "jdss_execution_approval_id", default=None
 )
+_execution_now: ContextVar[datetime | None] = ContextVar(
+    "jdss_execution_now", default=None
+)
 
 
 class AllocationTradingService(TradingService):
     """Production trading service with the V3.2.2 operational safety layer."""
 
     def execute(self, approval_id: int, token: str, *, now=None) -> OrderReceipt:
-        marker = _execution_approval_id.set(approval_id)
+        approval_marker = _execution_approval_id.set(approval_id)
+        now_marker = _execution_now.set(now)
         try:
             return super().execute(approval_id, token, now=now)
         except Exception as exc:
@@ -46,7 +51,8 @@ class AllocationTradingService(TradingService):
             )
             raise
         finally:
-            _execution_approval_id.reset(marker)
+            _execution_now.reset(now_marker)
+            _execution_approval_id.reset(approval_marker)
 
     def _build_quote(
         self,
@@ -63,6 +69,14 @@ class AllocationTradingService(TradingService):
 
         current = now or datetime.now(UTC)
         signal = self._active_signal(signal_id, now=current)
+        signal_date = datetime.fromisoformat(str(signal["trade_date"])).date()
+        if not self.market_clock.next_session_has_started(signal_date, current):
+            raise ApprovalError(
+                "완결봉 다음 거래일부터 매수할 수 있습니다 "
+                f"({self.market_clock.next_session_date(signal_date)})"
+            )
+        if is_toss_order_maintenance_window(current):
+            raise ApprovalError("토스 주문 점검시간(08:50~08:59 KST)에는 매수할 수 없습니다")
         session = self.market_clock.classify_session(current)
         if not session_is_allowed(session, self.config):
             raise ApprovalError(f"현재 주문 허용 세션이 아닙니다: {session}")
@@ -78,16 +92,14 @@ class AllocationTradingService(TradingService):
         )
         planned_quantity = int(budget / planned_per_share) if planned_per_share > 0 else 0
         core = self.repository.get_core_position(str(signal["symbol"]))
-        target_weight = Decimal(str(core["target_weight"]))
-        current_target = target_quantity(
-            managed_equity(self.config, self.repository, self.broker),
-            target_weight,
-            limit,
-            self.config.global_.buy_fee,
-        )
+        current_target = int(core["target_qty"])
         committed_quantity = committed_core_buy_quantity(
             self.repository, str(signal["symbol"])
         )
+        if current_target <= 0:
+            # A pre-migration signal has no persisted target_qty. Freeze its
+            # already-persisted signal-time share plan instead of repricing it.
+            current_target = planned_quantity
         remaining_target = max(
             0,
             current_target - int(core["qty"]) - committed_quantity,
@@ -155,6 +167,19 @@ class AllocationTradingService(TradingService):
 
         symbol = str(signal["symbol"])
         signal_id = int(signal["signal_id"])
+        current = _execution_now.get() or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        signal_date = datetime.fromisoformat(str(signal["trade_date"])).date()
+        if not self.market_clock.next_session_has_started(signal_date, current):
+            raise QuoteChangedError("완결봉의 다음 거래일 전이어서 승인을 취소했습니다")
+        if is_toss_order_maintenance_window(current):
+            raise QuoteChangedError("토스 주문 점검시간이어서 승인을 취소했습니다")
+        session = self.market_clock.classify_session(current)
+        if not session_is_allowed(session, self.config):
+            raise QuoteChangedError(
+                f"주문 허용 세션이 끝나 승인을 취소했습니다: {session}"
+            )
         core = self.repository.get_core_position(symbol)
         if not bool(core["trend_active"]):
             raise QuoteChangedError("V3.2.2 목표비중이 0으로 바뀌어 승인을 취소했습니다")

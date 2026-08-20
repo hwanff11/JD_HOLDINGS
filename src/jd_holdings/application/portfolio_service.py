@@ -18,12 +18,17 @@ from jd_holdings.core.v322_allocation import (
     replay_targets,
     virtual_active_series,
 )
-from jd_holdings.infrastructure.market_clock import MarketClock
+from jd_holdings.infrastructure.market_clock import (
+    MarketClock,
+    is_toss_order_maintenance_window,
+    session_is_allowed,
+)
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
 
 from .broker import Broker
 from .database import SQLiteRepository
 from .managed_account import (
+    committed_core_buy_quantity,
     current_v322_capital_state,
     managed_equity,
     marked_managed_equity,
@@ -31,9 +36,11 @@ from .managed_account import (
     record_v322_equity,
 )
 from .order_manager import OrderManager, build_client_order_id
+from .reconciliation import ReconciliationService
 
 TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
 CORE_ORDER_PURPOSES = {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}
+TARGET_QTY_GENERATION_KEY = "v322_target_qty_generation"
 
 
 @dataclass(frozen=True)
@@ -91,96 +98,218 @@ class PortfolioService:
         if self.trading_mode == "live" or self.config.portfolio.live_enabled:
             raise RuntimeError("JDSS V3.2.2는 live 모드가 잠겨 있습니다")
         current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
         completed = self.market_clock.latest_completed_session(
             current, delay_minutes=self.config.scheduler.signal_delay_minutes
         )
-        marker = self.repository.get_system_value("last_v322_allocation_trade_date")
-        if marker == completed.isoformat():
+
+        # Never size or trade from a stale account view. SAFE_MODE is sticky:
+        # a later clean read does not silently authorize new orders.
+        mismatches = ReconciliationService(
+            self.config, self.repository, self.broker
+        ).run()
+        if mismatches or self._portfolio_is_safe():
             return None
 
-        raw, target = self._calculate_target(completed)
-        completed_ts = next(
-            (timestamp for timestamp in target.index if timestamp.date() == completed), None
-        )
-        if completed_ts is None:
-            raise ValueError(
-                f"V3.2.2 target에 완결 거래일이 없습니다: {completed.isoformat()}"
-            )
-        target_row = target.loc[completed_ts]
-        marked_equity = self._completed_marked_equity(raw, completed_ts)
-        high_water, risk_budget = record_v322_equity(
-            self.config, self.repository, marked_equity
-        )
-
-        old_weights = {
-            symbol: Decimal(str(self.repository.get_core_position(symbol)["target_weight"]))
-            for symbol in ALLOCATION_SYMBOLS
-        }
-        new_weights = {
-            symbol: Decimal(str(float(target_row[symbol])))
-            for symbol in ALLOCATION_SYMBOLS
-        }
-        changed = any(old_weights[symbol] != new_weights[symbol] for symbol in ALLOCATION_SYMBOLS)
+        marker = self.repository.get_system_value("last_v322_allocation_trade_date")
         signal_ids: list[int] = []
         events: list[str] = []
+        calculated = marker != completed.isoformat()
 
-        if changed:
-            for symbol in ALLOCATION_SYMBOLS:
-                self.repository.invalidate_active_signals(
-                    symbol, reason="SUPERSEDED_BY_V322_ALLOCATION"
+        if calculated:
+            raw, target = self._calculate_target(completed)
+            completed_ts = next(
+                (timestamp for timestamp in target.index if timestamp.date() == completed),
+                None,
+            )
+            if completed_ts is None:
+                raise ValueError(
+                    f"V3.2.2 target에 완결 거래일이 없습니다: {completed.isoformat()}"
                 )
-            events.extend(self._cancel_open_core_orders())
-            # Risk-reducing sells are completed before any new buy approval is created.
+            target_row = target.loc[completed_ts]
+            marked_equity = self._completed_marked_equity(raw, completed_ts)
+            high_water, risk_budget = record_v322_equity(
+                self.config, self.repository, marked_equity
+            )
+            old_weights = {
+                symbol: Decimal(
+                    str(self.repository.get_core_position(symbol)["target_weight"])
+                )
+                for symbol in ALLOCATION_SYMBOLS
+            }
+            new_weights = {
+                symbol: Decimal(str(float(target_row[symbol])))
+                for symbol in ALLOCATION_SYMBOLS
+            }
+            changed = any(
+                old_weights[symbol] != new_weights[symbol]
+                for symbol in ALLOCATION_SYMBOLS
+            )
+
+            if changed:
+                # Stale orders are canceled immediately, while the new fixed
+                # generation cannot submit SELL/BUY until the next session.
+                for symbol in ALLOCATION_SYMBOLS:
+                    self.repository.invalidate_active_signals(
+                        symbol, reason="SUPERSEDED_BY_V322_ALLOCATION"
+                    )
+                events.extend(self._cancel_open_core_orders())
+                for symbol in ALLOCATION_SYMBOLS:
+                    self.repository.set_core_target(
+                        symbol,
+                        active=new_weights[symbol] > 0,
+                        target_weight=new_weights[symbol],
+                        signal_trade_date=completed,
+                        # Quantity is intentionally frozen only when the next
+                        # exchange session starts.  This keeps production
+                        # sizing aligned with the backtest's next-session
+                        # execution and prevents signal-day after-hours trades.
+                        target_qty=0,
+                    )
+                self.repository.set_system_value(TARGET_QTY_GENERATION_KEY, "")
+
+            events.append(
+                "V3.2.2 배분 "
+                f"레버리지 {float(target_row['leverage']):.2f}x · "
+                f"RS6M {'ON' if bool(target_row['semiconductor_active']) else 'OFF'} · "
+                f"JDSS TQQQ {'ON' if bool(target_row['jdss_tqqq_active']) else 'OFF'} / "
+                f"SOXL {'ON' if bool(target_row['jdss_soxl_active']) else 'OFF'} · "
+                f"목표 QQQ {new_weights['QQQ'] * 100:.2f}% / "
+                f"TQQQ {new_weights['TQQQ'] * 100:.2f}% / "
+                f"SOXL {new_weights['SOXL'] * 100:.2f}%"
+            )
+            events.append(
+                f"HWM USD {high_water:,.2f} · 위험예산 USD {risk_budget:,.2f} · "
+                f"완결종가 평가액 USD {marked_equity:,.2f}"
+            )
+            self.repository.set_system_value(
+                "last_v322_allocation_trade_date", completed.isoformat()
+            )
+            self.repository.set_system_value(
+                "last_v322_allocation_state",
+                (
+                    f"{float(target_row['leverage']):.2f}|"
+                    f"{int(bool(target_row['semiconductor_active']))}|"
+                    f"{new_weights['QQQ']}|{new_weights['TQQQ']}|"
+                    f"{new_weights['SOXL']}"
+                ),
+            )
+
+        generations = {
+            str(core["signal_trade_date"])
+            for core in self.repository.core_positions()
+            if core["signal_trade_date"]
+        }
+        if len(generations) != 1 or any(
+            not self.market_clock.next_session_has_started(
+                datetime.fromisoformat(value).date(), current
+            )
+            for value in generations
+        ):
+            return (
+                PortfolioRunResult(
+                    trade_date=completed.isoformat(),
+                    signals=(),
+                    events=tuple(events),
+                )
+                if calculated
+                else None
+            )
+
+        generation = next(iter(generations))
+        session = self.market_clock.classify_session(current)
+        if is_toss_order_maintenance_window(current) or not session_is_allowed(
+            session, self.config
+        ):
+            return (
+                PortfolioRunResult(
+                    trade_date=completed.isoformat(),
+                    signals=(),
+                    events=tuple(events),
+                )
+                if calculated
+                else None
+            )
+        if self.repository.get_system_value(TARGET_QTY_GENERATION_KEY) != generation:
+            # This also safely migrates an existing V3.2.2 DB where the new
+            # target_qty column was added with its default zero.  Read every
+            # price before writing anything so a partial quote outage cannot
+            # leave a half-initialized generation.
+            _high_water, current_risk_budget = current_v322_capital_state(
+                self.config, self.repository
+            )
+            fixed_targets = {
+                symbol: target_quantity(
+                    current_risk_budget,
+                    Decimal(
+                        str(
+                            self.repository.get_core_position(symbol)[
+                                "target_weight"
+                            ]
+                        )
+                    ),
+                    self.broker.get_price(symbol),
+                    self.config.global_.buy_fee,
+                )
+                for symbol in ALLOCATION_SYMBOLS
+            }
+            generation_date = datetime.fromisoformat(generation).date()
             for symbol in ALLOCATION_SYMBOLS:
-                signal_id, event = self._apply_target(
+                core = self.repository.get_core_position(symbol)
+                self.repository.set_core_target(
                     symbol,
-                    new_weights[symbol],
-                    risk_budget,
+                    active=Decimal(str(core["target_weight"])) > 0,
+                    target_weight=Decimal(str(core["target_weight"])),
+                    signal_trade_date=generation_date,
+                    target_qty=fixed_targets[symbol],
+                )
+            self.repository.set_system_value(TARGET_QTY_GENERATION_KEY, generation)
+
+        # A nonterminal risk-reducing SELL is a hard BUY barrier.
+        if not self._has_open_core_sell():
+            for symbol in ALLOCATION_SYMBOLS:
+                _signal_id, event = self._apply_target(
+                    symbol,
                     completed,
                     allow_buy=False,
+                    current=current,
                 )
-                if signal_id is not None:
-                    signal_ids.append(signal_id)
                 if event:
                     events.append(event)
-            for symbol in ALLOCATION_SYMBOLS:
-                signal_id, event = self._apply_target(
-                    symbol,
-                    new_weights[symbol],
-                    risk_budget,
-                    completed,
-                    allow_buy=True,
-                )
-                if signal_id is not None:
-                    signal_ids.append(signal_id)
-                if event:
-                    events.append(event)
+        if self._has_open_core_sell():
+            return PortfolioRunResult(
+                trade_date=completed.isoformat(),
+                signals=(),
+                events=tuple(events),
+            )
 
-        events.append(
-            "V3.2.2 배분 "
-            f"레버리지 {float(target_row['leverage']):.2f}x · "
-            f"RS6M {'ON' if bool(target_row['semiconductor_active']) else 'OFF'} · "
-            f"JDSS TQQQ {'ON' if bool(target_row['jdss_tqqq_active']) else 'OFF'} / "
-            f"SOXL {'ON' if bool(target_row['jdss_soxl_active']) else 'OFF'} · "
-            f"목표 QQQ {new_weights['QQQ'] * 100:.2f}% / "
-            f"TQQQ {new_weights['TQQQ'] * 100:.2f}% / "
-            f"SOXL {new_weights['SOXL'] * 100:.2f}%"
-        )
-        events.append(
-            f"HWM ${high_water:,.2f} · 위험예산 ${risk_budget:,.2f} · "
-            f"완결종가 평가액 ${marked_equity:,.2f}"
-        )
-        self.repository.set_system_value(
-            "last_v322_allocation_trade_date", completed.isoformat()
-        )
-        self.repository.set_system_value(
-            "last_v322_allocation_state",
-            (
-                f"{float(target_row['leverage']):.2f}|"
-                f"{int(bool(target_row['semiconductor_active']))}|"
-                f"{new_weights['QQQ']}|{new_weights['TQQQ']}|{new_weights['SOXL']}"
-            ),
-        )
+        # A terminal SELL is still insufficient until broker and DB agree.
+        post_sell_mismatches = ReconciliationService(
+            self.config, self.repository, self.broker
+        ).run()
+        if post_sell_mismatches or self._portfolio_is_safe():
+            return PortfolioRunResult(
+                trade_date=completed.isoformat(),
+                signals=(),
+                events=tuple(events),
+            )
+
+        self.repository.expire_stale_signals(current)
+        for symbol in ALLOCATION_SYMBOLS:
+            signal_id, event = self._apply_target(
+                symbol,
+                completed,
+                allow_buy=True,
+                current=current,
+            )
+            if signal_id is not None:
+                signal_ids.append(signal_id)
+            if event:
+                events.append(event)
+
+        if not calculated and not signal_ids and not events:
+            return None
         return PortfolioRunResult(
             trade_date=completed.isoformat(),
             signals=tuple(dict.fromkeys(signal_ids)),
@@ -264,30 +393,22 @@ class PortfolioService:
     def _apply_target(
         self,
         symbol: str,
-        weight: Decimal,
-        risk_budget: Decimal,
-        trade_date,
+        evaluation_date,
         *,
         allow_buy: bool,
+        current: datetime,
     ) -> tuple[int | None, str | None]:
         core = self.repository.get_core_position(symbol)
-        previous_weight = Decimal(str(core["target_weight"]))
-        if previous_weight != weight:
-            self.repository.set_core_target(
-                symbol,
-                active=weight > 0,
-                target_weight=weight,
-                signal_trade_date=trade_date,
-            )
-            core = self.repository.get_core_position(symbol)
-
-        price = self.broker.get_price(symbol)
-        target = target_quantity(
-            risk_budget, weight, price, self.config.global_.buy_fee
-        )
+        target = int(core["target_qty"])
         difference = target - int(core["qty"])
         if difference < 0 and not allow_buy:
-            receipt = self._sell_core(symbol, -difference, price, trade_date.isoformat())
+            price = self.broker.get_price(symbol)
+            receipt = self._sell_core(
+                symbol,
+                -difference,
+                price,
+                str(core["signal_trade_date"]),
+            )
             return (
                 None,
                 f"{symbol} 위험축소 {-difference}주 ({receipt.status}, "
@@ -296,6 +417,14 @@ class PortfolioService:
         if difference <= 0 or not allow_buy:
             return None, None
 
+        committed = committed_core_buy_quantity(self.repository, symbol)
+        difference = max(0, difference - committed)
+        if difference <= 0:
+            return None, None
+        if self._symbol_is_safe(symbol):
+            return None, None
+
+        price = self.broker.get_price(symbol)
         planned_budget = (
             Decimal(difference)
             * price
@@ -304,15 +433,43 @@ class PortfolioService:
         )
         signal_id, created = self.repository.create_core_buy_signal(
             symbol=symbol,
-            trade_date=trade_date,
+            trade_date=datetime.fromisoformat(
+                str(core["signal_trade_date"])
+            ).date(),
             signal_close=price,
             planned_budget=planned_budget,
-            valid_until=self.market_clock.next_session_close(trade_date),
+            valid_until=self.market_clock.next_session_close(evaluation_date),
             code_version=__version__,
+            reactivate_existing=True,
         )
         if not created:
             return None, None
-        return signal_id, f"{symbol} 목표 {weight * 100:.2f}% · {difference}주 매수 승인 대기"
+        weight = Decimal(str(core["target_weight"]))
+        return (
+            signal_id,
+            f"{symbol} 목표 {weight * 100:.2f}% · {difference}주 매수 승인 대기",
+        )
+
+    def _has_open_core_sell(self) -> bool:
+        return any(
+            str(order["purpose"]) == "CORE_REBALANCE_SELL"
+            for order in self.repository.open_orders()
+        )
+
+    def _symbol_is_safe(self, symbol: str) -> bool:
+        if self.repository.get_system_value("v322_portfolio_safe_mode") == "1":
+            return True
+        if symbol not in self.config.enabled_symbols:
+            return False
+        return self.repository.get_position(symbol).state == PositionState.SAFE_MODE
+
+    def _portfolio_is_safe(self) -> bool:
+        if self.repository.get_system_value("v322_portfolio_safe_mode") == "1":
+            return True
+        return any(
+            self.repository.get_position(symbol).state == PositionState.SAFE_MODE
+            for symbol in self.config.enabled_symbols
+        )
 
     def _cancel_open_core_orders(self) -> list[str]:
         """Settle stale allocation orders before a changed target is applied."""
