@@ -57,6 +57,8 @@ cp -a "$OLD_DIR/shared" "$BACKUP_ROOT/shared"
 if [[ -L "$OLD_DIR/current" ]]; then readlink -f "$OLD_DIR/current" > "$BACKUP_ROOT/old-current-target.txt"; fi
 sudo systemctl stop "$OLD_SERVICE"
 
+# Stage only relocatable repository/shared data. Python virtualenvs are not
+# relocatable because console-script shebangs contain the absolute venv path.
 rm -rf "$NEW_DIR.migrating"
 mkdir -p "$NEW_DIR.migrating"
 git clone --no-checkout "$REPO_URL" "$NEW_DIR.migrating/repo"
@@ -69,13 +71,16 @@ rm -rf "$NEW_DIR.migrating/releases/$COMMIT_SHA/.git"
 cp -a "$OLD_DIR/shared/." "$NEW_DIR.migrating/shared/"
 chmod 600 "$NEW_DIR.migrating/shared/.env"
 ln -s "releases/$COMMIT_SHA" "$NEW_DIR.migrating/current"
-"$REMOTE_PYTHON" -m venv "$NEW_DIR.migrating/venv"
-"$NEW_DIR.migrating/venv/bin/python" -m pip install --upgrade pip
-"$NEW_DIR.migrating/venv/bin/python" -m pip install "$NEW_DIR.migrating/releases/$COMMIT_SHA"
-"$NEW_DIR.migrating/venv/bin/jdss" --config "$NEW_DIR.migrating/current/strategy.yaml" validate-config
 
 if [[ -e "$NEW_DIR" ]]; then mv "$NEW_DIR" "${NEW_DIR}.pre-migration-${STAMP}"; fi
 mv "$NEW_DIR.migrating" "$NEW_DIR"
+
+# Create the venv only after the runtime has reached its final absolute path.
+"$REMOTE_PYTHON" -m venv "$NEW_DIR/venv"
+"$NEW_DIR/venv/bin/python" -m pip install --upgrade pip
+"$NEW_DIR/venv/bin/python" -m pip install "$NEW_DIR/releases/$COMMIT_SHA"
+"$NEW_DIR/venv/bin/jdss" --config "$NEW_DIR/current/strategy.yaml" validate-config
+
 sed -e "s|__SERVER_USER__|$(id -un)|g" -e "s|__TARGET_DIR__|$NEW_DIR|g" "$SERVICE_TEMPLATE" > "/tmp/${NEW_SERVICE}.service"
 sudo install -m 0644 "/tmp/${NEW_SERVICE}.service" "/etc/systemd/system/${NEW_SERVICE}.service"
 sudo systemctl daemon-reload
