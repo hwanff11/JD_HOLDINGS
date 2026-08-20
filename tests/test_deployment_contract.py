@@ -11,7 +11,7 @@ def test_deploy_script_has_valid_bash_syntax():
 
 
 def test_systemd_uses_shared_writable_runtime_paths():
-    service = (ROOT / "systemd/jd_holdings_bot.service.template").read_text(encoding="utf-8")
+    service = (ROOT / "systemd/jh_holdings_bot.service.template").read_text(encoding="utf-8")
     assert "JDSS_DB_PATH=__TARGET_DIR__/shared/data/jdss.db" in service
     assert "JDSS_LOG_PATH=__TARGET_DIR__/shared/logs/jdss.log" in service
     assert "JDSS_CACHE_PATH=__TARGET_DIR__/shared/data/cache" in service
@@ -135,6 +135,7 @@ def test_canonical_workflow_set_is_small_and_current():
         "ci.yml",
         "deploy-oracle-dry-run.yml",
         "jdss-backtest.yml",
+        "migrate-oracle-runtime-to-jh.yml",
         "security.yml",
         "verify-oracle-v322-runtime.yml",
     }
@@ -146,12 +147,14 @@ def test_workflows_use_node24_actions():
         "ci.yml",
         "deploy-oracle-dry-run.yml",
         "jdss-backtest.yml",
+        "migrate-oracle-runtime-to-jh.yml",
         "security.yml",
         "verify-oracle-v322-runtime.yml",
     ):
         workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
         assert "actions/checkout@v7" in workflow
-        assert "actions/setup-python@v7" in workflow
+        if name != "migrate-oracle-runtime-to-jh.yml":
+            assert "actions/setup-python@v7" in workflow
         assert "actions/checkout@v4" not in workflow
         assert "actions/setup-python@v5" not in workflow
 
