@@ -141,7 +141,7 @@ jobs:
               f.write(summary)
           PY
       - name: Upload detailed report archive
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: jdss-backtest-${{ github.run_id }}
           path: reports/backtest.*
