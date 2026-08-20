@@ -1,4 +1,4 @@
-# JD_HOLDINGS 개발 협업 워크플로
+# JH_HOLDINGS 개발 협업 워크플로
 
 ## 목적
 
