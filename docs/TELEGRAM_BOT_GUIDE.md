@@ -1,74 +1,150 @@
-# JDSS V3.2.2 Telegram Bot 운영 가이드
+# JDSS Telegram Bot 운영 가이드 — 현재판
 
-Telegram 봇은 허용된 관리자 Chat ID만 사용합니다. V3.2.2는 **forced dry-run 전용**이며 live는 별도 승인 전까지 잠겨 있습니다.
+이 문서는 Telegram 명령 문법, 화면에 표시되는 데이터의 출처, 버튼·승인 흐름과 오류 대응의 소유 문서입니다. 다음 릴리즈에서도 새 파일을 만들지 않고 코드의 명령 등록·`/help`·메시지 포맷 테스트와 함께 이 파일을 갱신합니다.
 
-전략 설명은 `STRATEGY_GUIDE.md`, 정확한 계약은 `JDSS_FINAL_SPEC.md`를 따릅니다.
+현재 배포·운용 모드는 [`CURRENT_WORK.md`](../CURRENT_WORK.md), 전략 설명은 [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md), 정확한 주문 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)를 따릅니다.
 
-## 주요 명령
+## 1. 가장 중요한 세 가지
 
-| 명령 | 설명 |
+1. 현재 봇은 허용된 관리자와의 **1:1 private chat**에서만 명령과 버튼을 처리합니다.
+2. 위험증가 BUY는 사람이 `매수 검토`와 `최종 매수 실행`을 각각 누르는 **반자동 2단계 승인**입니다.
+3. 위험축소 SELL은 자동 실행 대상이지만, 현재 forced dry-run에서는 BUY와 SELL 모두 모의주문입니다. `/account`의 실제 Toss 조회와 혼동하지 않습니다.
+
+## 2. 화면별 데이터 출처
+
+| 표시 | 데이터 출처 | 의미 |
+|---|---|---|
+| `/dashboard`, `/portfolio`, `/status`, `/order`, `/signal` | SQLite JDSS 원장 + 현재 모의 브로커 | 모의운용의 목표·보유·주문·승인 상태 |
+| `/score`, `/history` | 완결 일봉과 가상 H40-S3 분석 | 5% 오버레이 입력이며 독립 직접매수 신호가 아님 |
+| `/account` | 실제 Toss OpenAPI read-only | 실제 계좌 조회이며 모의원장에 자동 반영하지 않음 |
+| `/backtest` | production과 공유하는 전략·포트폴리오 백테스트 경로 | 실제 주문이나 현재 보유수량을 사용하지 않는 과거 시뮬레이션 |
+| `/errors` | SQLite 이벤트 로그 | 최근 오류·SAFE_MODE·운영 경고 |
+
+`/account`가 정상이라고 dry-run reconciliation이 실제 Toss와 끝난 것이 아니고, dry-run이 정상이라고 실제 Toss 계좌가 전략 적용 준비를 마친 것도 아닙니다.
+
+## 3. 명령 빠른 표
+
+| 명령 | 입력 | 무엇을 보여주나 |
+|---|---|---|
+| `/ping` | 없음 | 봇 버전·운영 모드·실주문 잠금 |
+| `/dashboard` | 없음 | 완결봉 기준일·SAFE_MODE·모의 목표/현재 배분·승인 대기 |
+| `/portfolio` | 없음 | 모의 평가액·HWM·위험예산·QQQ/TQQQ/SOXL 목표/현재 비중 |
+| `/account` | 없음 | 실제 Toss 주문가능금액·보유종목 read-only 조회 |
+| `/status [QQQ|TQQQ|SOXL]` | 종목 생략 가능 | allocation 목표·원장수량·열린 주문·안전상태 |
+| `/score [TQQQ|SOXL]` | 종목 생략 가능 | 5% 가상 오버레이 점수·시장국면·활성 후보 |
+| `/history [TQQQ|SOXL] [1~90]` | 둘 다 생략 가능 | 최근 가상 오버레이 점수 이력; 기본 7거래일 |
+| `/signal` | 없음 | 현재 유효한 위험증가 BUY 승인 대기 |
+| `/backtest` 또는 `/bt` | 아래 제4절 형식 | 현재 production 포트폴리오 기준 백테스트 |
+| `/order` | 없음 | SQLite/모의 브로커의 열린 주문 |
+| `/errors` | 없음 | 최근 시스템 이벤트와 SAFE_MODE 원인 |
+| `/guide` | 없음 | 봇 안에서 보는 현재 전략 요약 카드 |
+| `/help` | 없음 | 현재 명령과 대표 예시 |
+
+짧은 별칭으로 `/p`, `/d`, `/pf`, `/acct`, `/st`, `/sc`, `/h`, `/sg`, `/bt`, `/o`, `/err`, `/g` 등을 사용할 수 있지만, 운영 기록과 문서에서는 표의 기본 명령을 우선 사용합니다.
+
+## 4. `/backtest` 사용법
+
+Telegram 백테스트는 임의 종목 단독 시험이 아니라 **현재 production V3.2.2 전체 포트폴리오 경로**를 실행합니다. CLI와 같은 공통 runner를 사용하고, 보고 기간이 짧아도 가상 오버레이 상태는 전략 시작일부터 재생해 기간 시작점에서 상태가 임의 초기화되지 않게 합니다.
+
+| 입력 | 기간 |
 |---|---|
-| `/dashboard` | V3.2.2 통합 대시보드 |
-| `/portfolio` | QQQ/TQQQ/SOXL 목표비중, HWM, 위험예산 |
-| `/account` | Toss 계좌 조회 |
-| `/status [종목]` | allocation 보유수량/목표상태 |
-| `/score [TQQQ|SOXL]` | 기존 JDSS 5% virtual overlay 분석 |
-| `/history [종목]` | 최근 JDSS 점수 이력 |
-| `/signal` | 현재 위험증가 BUY 승인 대기 신호 |
-| `/backtest` | V3.2.2 production-equivalent 백테스트 |
-| `/order` | 열린 주문 확인 |
-| `/errors` | 최근 이벤트/SAFE_MODE 기록 |
-| `/guide` | V3.2.2 전략 설명 |
-| `/help` | 전체 명령 안내 |
+| `/bt` | 최신 완결 거래일까지 최근 300거래일 |
+| `/bt 250` | 최신 250거래일; 2~5,000 범위 |
+| `/bt full` 또는 `/bt all` | 설정의 기준 시작일부터 최신 완결 거래일까지 |
+| `/bt 2020-01-01 2024-12-31` | 입력한 시작일~종료일 |
 
-## 매수 승인
+날짜는 `YYYY-MM-DD`, 시작일은 설정의 기준 시작일 이상, 종료일은 최신 완결 거래일 이하여야 합니다. 미국 거래일이 2개 미만인 범위는 거부합니다.
 
-V3.2.2에서 목표비중이 증가해 BUY가 필요하면 기존 2단계 승인 흐름을 유지합니다.
+명령을 받으면 다음 순서로 동작합니다.
 
-1. 최신 가격/목표수량 검토
-2. 짧은 유효시간의 최종 실행 승인
-3. dry-run broker에 주문 제출
-4. 체결 결과를 allocation 원장에 반영
+1. 입력과 최신 완결 거래일을 먼저 검증합니다.
+2. `백테스트 시작` 메시지를 보낸 뒤 별도 worker에서 계산해 봇의 주문 감시를 막지 않습니다.
+3. 동시에 두 개를 실행하지 않고, 이미 실행 중이면 완료 후 재시도하라고 안내합니다.
+4. QQQ·TQQQ·SOXL·SOXX 등 production 계산에 필요한 데이터를 같은 공통 경로로 읽습니다.
+5. 결과에는 기간, 초기/최종자산, 누적수익률, CAGR, MDD, Sharpe, 평균노출과 최근 거래를 표시합니다.
+6. 한 메시지가 Telegram 4,096자 제한을 넘지 않도록 안전한 길이로 나눠 보냅니다.
 
-위험예산은 HWM75, JDSS 보유현금, 브로커 주문가능금액 중 가장 제한적인 값으로 계산됩니다.
-이미 대기 중인 코어 BUY와 아직 원장에 반영되지 않은 체결수량도 잔여 목표수량에서 빼며,
-최종 주문예약 트랜잭션에서 이 수량을 다시 확인합니다.
-목표비중이 바뀌면 기존 allocation BUY·SELL을 먼저 취소·정산하고, 만료된 BUY도 주문 감시기가 취소합니다.
+### 백테스트가 안 될 때
 
-## 자동으로 처리되는 것
+| 메시지/상황 | 뜻 | 조치 |
+|---|---|---|
+| `형식은 ... 중 하나입니다` | 종목명이나 인자 수가 현재 문법과 다름 | 위 네 형식 중 하나로 다시 입력 |
+| `거래일은 2~5000` | 최근 거래일수 범위 오류 | 2~5,000 사이 숫자 사용 |
+| `최신 완결 거래일 이하여야` | 아직 끝나지 않은 거래일 포함 | 종료일을 메시지의 최신 완결일 이하로 변경 |
+| `다른 백테스트가 이미 실행 중` | 중복 실행 잠금 동작 | 기존 결과가 올 때까지 기다린 뒤 재시도 |
+| 데이터 부족·조회 실패 | 상장기간, 네트워크 또는 시세 공급 문제 | 더 짧은 기간을 시도하고 `/errors` 확인; 결과를 임의 추정하지 않음 |
+| 요청일보다 최신 확보일이 과거 | 캐시 fallback으로 최신 구간이 없음 | 결과의 실제 종료일·경고를 확인하고 최신 데이터 확보 후 재실행 |
 
-- QQQ 변동성 30% 브레이크에 따른 위험축소 SELL
-- 월간 레짐/RS6M 변화에 따른 목표비중 감소 SELL
-- 월중 SOXL 상대강도 이탈 시 SOXL→TQQQ one-way 전환의 위험축소 부분
-- 주문/원장 정합성 점검
+오류가 나도 주문·원장 상태를 바꾸지 않습니다. 장기 canonical 검증은 Telegram보다 GitHub Actions를 우선합니다.
 
-위험을 늘리는 BUY는 자동실행하지 않습니다.
+## 5. BUY는 반자동, SELL은 자동
 
-## `/score`의 의미
+### 위험증가 BUY
 
-V3.1.1과 달리 `/score`의 TQQQ/SOXL JDSS 점수는 독립 $20k 직접 매수전략이 아닙니다. 기존 H40-S3 가상 사이클이 활성화되는지를 계산해 **QQQ 최대 5%를 TQQQ/SOXL로 교체하는 overlay 입력**으로 사용합니다.
+1. 시스템이 완결봉과 현재 목표 차이로 BUY 신호를 만듭니다.
+2. Telegram이 계획금액·신호가격·추격상한과 `1차 · 최신 시세·수량 검토` 버튼을 보냅니다.
+3. 1차 버튼을 누르면 최신 가격·잔여 목표수량·현금·시장 세션을 다시 계산합니다.
+4. 최종 지정가·수량·예상수수료와 짧은 만료시간을 표시합니다.
+5. 사람이 `최종 매수 실행`을 눌러야 주문을 제출합니다. 취소하거나 토큰이 만료되면 실행하지 않습니다.
 
-## SAFE_MODE
+두 단계 사이에 가격·수량·세션이 바뀌면 기존 승인을 폐기하고 다시 확인합니다. 열린 BUY, 아직 원장에 반영되지 않은 체결과 HWM 위험예산도 최종 시점에 다시 검사합니다.
 
-다음 상황에서는 신규 위험증가를 막습니다.
+현재 forced dry-run에서 버튼이 제출하는 것은 `DRY-*` 모의주문입니다. 이 흐름이 있다는 이유로 실주문이 활성화된 것은 아닙니다.
 
-- Toss 수량과 SQLite allocation 원장 불일치
-- 주문 결과 UNKNOWN
-- 위험축소 SELL 불완전
-- V3.1.1 direct H40 position 또는 TP plan 잔존
-- V3.2.2에서 허용하지 않는 과거 direct H40 BUY 신호
-- 같은 계좌에서 JDSS가 관리하지 않는 개인 QQQ/TQQQ/SOXL 수량 발견
+### 위험축소 SELL
 
-QQQ 문제는 portfolio SAFE_MODE로, TQQQ/SOXL 문제는 종목 및 portfolio reconciliation에 반영됩니다.
+목표비중 감소는 승인 버튼을 기다리지 않고 자동 실행합니다. 한 리밸런싱에 SELL과 BUY가 함께 있으면 SELL을 먼저 종료·원장 반영·정합성 확인한 뒤 BUY 승인 신호를 만듭니다.
 
-## 계좌 주의사항
+- SOXL→TQQQ 전환: SOXL 축소 SELL은 자동, 새 TQQQ 증가 BUY는 2단계 승인
+- SELL이 부분체결·UNKNOWN·취소확인 실패: 신규 BUY 차단 및 SAFE_MODE
+- 주문 상태가 `PENDING_CANCEL`·`PENDING_REPLACE` 등 종료 전이면 계속 열린 주문으로 표시
 
-V3.2.2가 직접 관리하는 종목은 QQQ, TQQQ, SOXL입니다. 같은 Toss 계좌에 개인 QQQ/TQQQ/SOXL을 혼합 보유하지 않습니다. QQQM처럼 별도 티커는 수량을 분리할 수 있습니다.
+## 6. 주문 메시지 읽기
 
-## live 잠금
+| 표시 상태 | 뜻 | 운영자 행동 |
+|---|---|---|
+| `PENDING`·`SUBMITTED`·`CREATED` | 접수됐지만 완료되지 않음 | `/order`로 계속 확인 |
+| `PARTIAL_FILLED` | 일부만 체결 | 남은 수량을 주문 모니터가 감시; 중복 승인 금지 |
+| `FILLED` | 전량 체결 | 원장 반영과 다음 reconciliation 확인 |
+| `CANCELED`·`REJECTED`·`REPLACED` | 전량 완료가 아님 | `/signal`, `/order`, `/errors`로 재승인 가능 여부 확인 |
+| `UNKNOWN` | 제출 결과를 증명할 수 없음 | 성공으로 추정·재주문하지 말고 SAFE_MODE 확인 |
 
-- `strategy.yaml`: `live_enabled: false`
-- 애플리케이션: V3.2.2 live hard-lock
-- Oracle `.env`: `JDSS_TRADING_MODE=dry_run`, `JDSS_LIVE_CONFIRMATION=`
+같은 알림이 반복 폭주하지 않도록 동일 오류는 일정 시간 묶어서 알릴 수 있습니다. 알림이 줄어도 오류가 해결됐다는 뜻은 아니므로 `/errors`의 최신 기록을 봅니다.
 
-이번 V3.2.2 릴리즈는 전략 승격과 dry-run 배포까지이며 live 활성화는 포함하지 않습니다.
+## 7. SAFE_MODE 대응
+
+다음과 같은 상황은 신규 위험증가를 차단합니다.
+
+- SQLite와 현재 주문 브로커의 보유수량·열린 주문 불일치
+- 주문결과 `UNKNOWN` 또는 broker order ID 누락
+- 위험축소 SELL 불완전·취소 미확정
+- 누적 부분체결과 원장 적용 delta 불일치
+- 구버전 direct position·TP plan·직접 BUY 신호 잔존
+
+확인 순서는 `/errors` → `/order` → `/status [종목]` → `/portfolio`입니다. 실제 Toss 상태는 `/account`에서 별도로 확인합니다. 원인을 모른 채 DB를 수정하거나 같은 BUY를 다시 승인하지 않습니다.
+
+실제 Toss 계좌 preflight에서 관리 티커 보유·열린 주문·조회 실패가 발견되면 **향후 live 적용 검토를 중단**합니다. 이 read-only 게이트와 현재 dry-run 원장 SAFE_MODE는 데이터 출처와 적용 범위가 다르므로 하나의 통과 결과로 합치지 않습니다.
+
+## 8. 처음 전략을 운영 계좌에 적용하기 전
+
+`/account`는 조회 화면이지 live 활성화 버튼이나 preflight 합격 증명서가 아닙니다. 실제 계좌 적용을 검토하려면 다음 항목을 별도 배포·운영 절차에서 확인합니다.
+
+- 배포 SHA와 strategy/config/package ID 일치
+- 기존 SQLite 세대·schema·열린 주문·부분체결·UNKNOWN·legacy 상태와 백업
+- 실제 Toss QQQ/TQQQ/SOXL 보유수량 0 또는 출처가 명확한 승인된 전환계획
+- 실제 Toss 관리 티커 열린 주문 없음, 유효한 주문가능금액
+- forced dry-run에서 자동 SELL → 반자동 BUY → 부분체결 → 재시작 → reconciliation 전체 사이클
+- SAFE_MODE 없음, 관리자 1:1 인증과 만료·1회용 승인 버튼 검증
+- 실제 주문 경계에 대한 해당 릴리즈의 테스트와 대표의 명시적 승인
+
+현재 어느 검사가 자동화돼 있는지는 실제 메시지·코드·배포 검증과 `CURRENT_WORK.md`를 함께 확인합니다. 목록이 문서에 있다는 이유만으로 완료됐다고 판단하지 않습니다.
+
+## 9. live 잠금과 계좌 주의사항
+
+- 현재 정확한 모드는 `CURRENT_WORK.md`와 `/ping`에서 확인합니다.
+- 설정 live OFF, 애플리케이션 hard lock과 Oracle forced dry-run을 함께 유지합니다.
+- 같은 Toss 계좌에 개인 QQQ/TQQQ/SOXL을 섞으면 JDSS 수량을 증명할 수 없으므로 금지합니다.
+- QQQM처럼 별도 티커는 수량상 구분되지만, 실제 계좌 preflight와 자금경계를 생략하는 근거가 되지 않습니다.
+- SGOV가 현재 계약에서 OFF라면 메뉴에 보이지 않으며 자동 운용하지 않습니다.
+
+live 전환은 이 가이드의 Telegram 조작만으로 수행할 수 없고, 별도 구현·검증·문서·대표 승인이 필요합니다.

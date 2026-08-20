@@ -15,7 +15,7 @@
 3. 전략·주문·자금관리 계약: `docs/JDSS_FINAL_SPEC.md`
 4. 실제 구현: `src/jd_holdings/`
 5. 사용자·운영 절차: 해당 가이드 문서
-6. 과거 기록: `docs/archive/` 및 현행 문서의 Archive 구역
+6. 과거 기록: `docs/HISTORY.md`, Git tag, 병합 PR 및 Actions artifact
 
 `strategy.yaml`, 공식 계약, 구현이 서로 다르면 임의로 하나에 맞추지 말고 불일치로 보고한 뒤 수정 범위를 확정한다. 변동 가능한 브랜치, SHA, 테스트 개수, 서버 상태를 README나 전략 문서에 복제하지 않고 `CURRENT_WORK.md`에서만 관리한다.
 
@@ -24,15 +24,23 @@
 | 변경 유형 | 함께 확인·갱신할 기준 | 필수 검증 |
 |---|---|---|
 | 전략 조건·점수·비중·익절 | `strategy.yaml`, `JDSS_FINAL_SPEC.md`, `ONE_PAGE_REPORT.md`, `STRATEGY_GUIDE.md`, 관련 테스트 | 설정 검증, 단위 테스트, 노룩어헤드 백테스트 |
-| 주문·승인·포지션·SGOV | 공식 사양, `TELEGRAM_BOT_GUIDE.md`, 관련 결정 기록과 테스트 | Dry Run, 멱등성·재시작·Reconciliation 테스트 |
+| 주문·승인·포지션·SGOV | 공식 사양, `TELEGRAM_BOT_GUIDE.md`, `docs/infra/SECURITY.md`, 관련 테스트 | Dry Run, 멱등성·재시작·Reconciliation 테스트 |
 | Telegram 명령·버튼·문구 | `TELEGRAM_BOT_GUIDE.md`, 도움말·포맷 테스트 | 권한 검사, 4,096자 제한, 콜백 만료·1회성 |
 | Toss API·인증·네트워크 | `docs/infra/SECURITY.md`, 배포 문서, 어댑터 테스트 | 오류 응답·타임아웃·입력 경계 테스트 |
-| DB 스키마·상태 전이 | 공식 사양, 결정 기록, 마이그레이션·복구 테스트 | 기존 DB 호환성, WAL, 트랜잭션, 재시작 검증 |
+| DB 스키마·상태 전이 | 공식 사양, `docs/infra/SECURITY.md`, 배포·마이그레이션 절차, 관련 테스트 | 기존 DB 호환성, WAL, 트랜잭션, 재시작 검증 |
 | 배포·systemd·Actions | `DEPLOYMENT.md`, `SECURITY.md`, 배포 계약 테스트 | 셸 문법, 최소권한, 강제 dry-run, smoke test |
 | 현재 브랜치·배포·다음 작업 | `CURRENT_WORK.md`만 갱신 | 원격 SHA와 실제 상태 대조 |
-| 과거 자료·연구 기록 | Archive 경계를 유지하고 현행 기준 문서에서 링크만 제공 | 현행 수치로 오인될 표현 점검 |
+| 과거 자료·연구 기록 | `HISTORY.md`에 요약하고 상세 결과는 Git tag·PR·Actions artifact로 보존 | 현행 수치로 오인될 표현 점검 |
 
 코드 변경으로 사용자 동작이나 운영 절차가 달라졌는데 관련 Markdown이 그대로라면 작업 완료로 간주하지 않는다. 반대로 구현 변화가 없는 단순 리팩터링은 문서의 동작 설명을 불필요하게 다시 쓰지 않고 `CURRENT_WORK.md`에 검증 결과만 남긴다.
+
+## 문서 수명주기
+
+- 현행 Markdown은 [`docs/README.md`](docs/README.md)에 정의된 고정 파일을 제자리에서 갱신한다. 버전·날짜를 붙인 새 전략 문서, 백테스트 보고서, 인수인계 문서를 `main`에 추가하지 않는다.
+- `CURRENT_WORK.md`는 누적 일지가 아니라 **롤링 상태판**이다. 현재 릴리즈·배포·검증·활성 목표와 바로 다음 작업만 남기고 지난 상태는 Git 이력과 PR에서 확인한다.
+- `docs/HISTORY.md`만 과거 요약을 append-only로 관리한다. 릴리즈당 한 항목, 대표 미채택 연구당 한 항목을 추가하고 과거 전체 문서는 Git tag에서 복구한다.
+- 일회성 연구 스크립트와 상세 결과는 연구 PR 및 Actions artifact에 보관한다. 채택된 계약만 현행 문서·설정·코드에 반영한다.
+- 같은 내용을 여러 문서가 자세히 소유하지 않는다. 정확한 수치·계약·절차의 소유 문서를 링크하고, 한 장 요약과 안전 경고처럼 필요한 파생 설명만 제한적으로 반복한다.
 
 ## 코드 품질·보안 규칙
 

@@ -4,6 +4,7 @@
 
 - API 키, Telegram 토큰, SSH 개인키, 전체 계좌번호와 인증 헤더를 커밋하거나 공개 Issue에 쓰지 않습니다.
 - 기본 운영은 forced dry-run이며 live 전환에는 별도 명시적 승인이 필요합니다.
+- forced dry-run의 모의원장과 `/account`의 실제 Toss read-only 조회는 별개이며 어느 쪽도 다른 쪽의 수량을 자동 채택하지 않습니다.
 - 모든 위험증가 BUY는 만료되는 2단계 승인을 거칩니다.
 - 불명확한 주문, 원장 불일치, 위험축소 미완료는 SAFE_MODE로 신규 BUY를 막습니다.
 
