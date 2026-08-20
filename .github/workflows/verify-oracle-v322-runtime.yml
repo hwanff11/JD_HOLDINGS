@@ -83,7 +83,7 @@ jobs:
           SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
           SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
-          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+          SERVER_TARGET_DIR: /home/ubuntu/JH_HOLDINGS
           EXPECTED_SHA: ${{ steps.ref.outputs.ref }}
         run: |
           set -Eeuo pipefail
@@ -103,7 +103,7 @@ jobs:
           grep -q 'live_enabled: false' "$current/strategy.yaml"
           grep -q '^JDSS_TRADING_MODE=dry_run$' "$env_file"
           grep -q '^JDSS_LIVE_CONFIRMATION=$' "$env_file"
-          sudo systemctl is-active --quiet jd_holdings_bot
+          sudo systemctl is-active --quiet jh_holdings_bot
           cd "$current"
           set -a
           source "$env_file"
@@ -118,7 +118,7 @@ jobs:
           SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
           SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
-          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+          SERVER_TARGET_DIR: /home/ubuntu/JH_HOLDINGS
         run: |
           set -Eeuo pipefail
           phase="$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
@@ -149,15 +149,15 @@ jobs:
           SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
           SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
-          SERVER_TARGET_DIR: ${{ vars.ORACLE_TARGET_DIR || '/home/ubuntu/JD_HOLDINGS' }}
+          SERVER_TARGET_DIR: /home/ubuntu/JH_HOLDINGS
         run: |
           set -Eeuo pipefail
           ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "$SERVER_USER@$SERVER_HOST" \
             "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
           set -Eeuo pipefail
-          sudo systemctl restart jd_holdings_bot
+          sudo systemctl restart jh_holdings_bot
           sleep 3
-          sudo systemctl is-active --quiet jd_holdings_bot
+          sudo systemctl is-active --quiet jh_holdings_bot
           current="$(readlink -f "$TARGET_DIR/current")"
           env_file="$TARGET_DIR/shared/.env"
           cd "$current"
