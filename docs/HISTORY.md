@@ -38,7 +38,7 @@ V3.1.1은 최대낙폭이 비교적 낮았지만 평균노출 약 21%로 자금 
 | v3.2.2 | BUY 2단계 승인, 위험축소 SELL 자동, UNKNOWN·불일치 시 SAFE_MODE | 보안 불변식은 [`infra/SECURITY.md`](infra/SECURITY.md) |
 | v3.2.2 | forced dry-run 모의원장과 실제 Toss read-only 조회를 분리 | 실제 계좌를 모의 보유수량으로 오인하거나 자동 채택하지 않기 위함 |
 | v3.2.2 전환 | 기존 dry-run SQLite를 `v322-migration` 이름으로 백업하고 새 allocation 원장을 초기화 | 완료된 일회성 전환이며, 다음 릴리즈의 일반 배포 절차로 재사용하지 않음 |
-| v3.2.2 운영 보강 | 공용 백테스트 runner, Telegram V3.2.2 UX, 고정 목표수량·체결 crash 복구·브로커 응답 검증·실계좌 read-only preflight 도입 | 병합 PR [#137](https://github.com/hwanff11/JD_HOLDINGS/pull/137); live hard lock 유지 |
+| v3.2.2 운영 보강 | 공용 백테스트 runner, Telegram V3.2.2 UX, 고정 목표수량·체결 crash 복구·브로커 응답 검증·실계좌 read-only preflight 도입 | 병합 PR [#137](https://github.com/hwanff11/JH_HOLDINGS/pull/137); live hard lock 유지 |
 | 문서 정리 | 현행 문서는 고정 파일을 제자리 갱신하고 역사만 이 파일에 추가 | 버전별 복사 문서의 불일치 방지; 전체 규칙은 [`README.md`](README.md) |
 
 ## 대표적인 미채택 연구

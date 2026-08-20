@@ -1,6 +1,6 @@
-# JD_HOLDINGS 문서 안내
+# JH_HOLDINGS 문서 안내
 
-이 문서는 JD_HOLDINGS 문서의 **역할과 수명주기**를 정하는 기준입니다. 현재 버전과 운영 상태는 여기 복제하지 않고 [`CURRENT_WORK.md`](../CURRENT_WORK.md)에서 확인합니다.
+이 문서는 JH_HOLDINGS 문서의 **역할과 수명주기**를 정하는 기준입니다. 현재 버전과 운영 상태는 여기 복제하지 않고 [`CURRENT_WORK.md`](../CURRENT_WORK.md)에서 확인합니다.
 
 ## 읽는 순서
 

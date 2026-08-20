@@ -1,6 +1,8 @@
-# JD_HOLDINGS Agent Instructions
+# JH_HOLDINGS Agent Instructions
 
 이 파일은 Codex, ChatGPT, 그리고 Antigravity(안티그라비티)가 이 저장소에서 작업할 때 공통으로 따라야 할 작업 규칙을 정의한다.
+
+GitHub 저장소명은 `JH_HOLDINGS`이다. 호환성을 위해 Python 패키지 `jd_holdings`, systemd 서비스 `jd_holdings_bot`, Oracle 런타임 경로 `/home/ubuntu/JD_HOLDINGS`는 기존 식별자를 유지하며, 별도 migration 계획과 검증 없이 이름을 바꾸지 않는다.
 
 세부 절차는 `docs/infra/DEVELOPMENT_WORKFLOW.md`를 따른다.
 현재 작업 상태와 인수인계 정보는 `CURRENT_WORK.md`를 Source of Truth로 사용한다.

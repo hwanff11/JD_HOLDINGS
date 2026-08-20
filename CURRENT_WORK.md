@@ -1,14 +1,15 @@
-# JD_HOLDINGS Current Work
+# JH_HOLDINGS Current Work
 
 > 현재 전략·개발·배포·검증 상태의 단일 상태판입니다. 이전 값을 교체하는 롤링 문서이며, 상세 전략과 승인된 기준 백테스트는 [`docs/STRATEGY_GUIDE.md`](docs/STRATEGY_GUIDE.md), 공식 계약은 [`docs/JDSS_FINAL_SPEC.md`](docs/JDSS_FINAL_SPEC.md)를 따릅니다.
 
 ## 현재 릴리즈와 운영
 
+- GitHub 저장소: **`hwanff11/JH_HOLDINGS`**
 - 공식 릴리즈: **`v3.2.2`**
 - 전략 ID: **`JDSS-3.2.2-RS6M-ONEWAY-HWM75`**
 - config/package: **3.2.2**
 - 배포 코드·Oracle runtime SHA: **`6dcc9d755b1ed7d82ce613cdf6540528f29a9845`**
-- 병합 PR: **[#137](https://github.com/hwanff11/JD_HOLDINGS/pull/137)**
+- 병합 PR: **[#137](https://github.com/hwanff11/JH_HOLDINGS/pull/137)**
 - Oracle `jd_holdings_bot`: **active / V3.2.2 forced dry-run**
 - 모의원장 reconciliation: **정상 / `v322_portfolio_safe_mode=0`**
 - 실제 Toss read-only preflight: **live 준비 실패 / SOXL 기존 보유 발견**
