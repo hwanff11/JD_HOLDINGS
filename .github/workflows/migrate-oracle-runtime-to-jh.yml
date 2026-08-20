@@ -2,9 +2,12 @@ name: Migrate Oracle Runtime to JH_HOLDINGS
 
 on:
   workflow_dispatch:
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
+  issues: read
 
 concurrency:
   group: oracle-jdss-deploy
@@ -12,17 +15,25 @@ concurrency:
 
 jobs:
   migrate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.issue.title, '[migrate-oracle-jh-runtime]'))
     runs-on: ubuntu-latest
     environment: oracle-dry-run
     steps:
-      - name: Checkout migration ref
+      - name: Checkout exact latest main
         uses: actions/checkout@v7
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Verify migration safety contract
         run: |
           set -Eeuo pipefail
+          git fetch origin main --no-tags
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           grep -q 'live_enabled: false' strategy.yaml
           grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' strategy.yaml
           test -f scripts/migrate_oracle_runtime_to_jh.sh
