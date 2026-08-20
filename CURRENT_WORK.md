@@ -11,7 +11,7 @@
 - 작업 시작 기준 `origin/main`: **`eab9440a12b9c58672970fcee903df0d3944e616`**
 - 마지막 확인 production/runtime SHA: **`6f7d93fb839b9fb0c183c98db5af162889880dd6`**
 - Oracle 운영: **V3.2.2 forced dry-run / live LOCKED OFF**
-- 현재 변경분: **로컬 검증 완료, PR·CI·Oracle 재배포 전**
+- 현재 변경분: **PR #137 검증 완료, 병합·Oracle 재배포 전**
 
 ## 현재 활성 목표
 
@@ -28,6 +28,9 @@
 - `jdss validate-config`: **passed**
 - `bash -n deploy.sh`: **passed**
 - `git diff --check`: **passed**
+- GitHub Quality Gate run **`32381339442`**: **SUCCESS**
+- GitHub Backtest run **`32381339337`**: **SUCCESS**
+- GitHub Security run **`32381339241`**: **SUCCESS** (dependency audit·CodeQL·secret scan)
 - 공용 runner 로컬 재현: **2011-01-01 요청, 확보 데이터 2011-01-03~2026-08-04**
 - 최신 재현값: **Total Return +2,232.26% / CAGR 22.40% / MDD -30.93% / Sharpe 1.005**
 - 데이터 공급자 수정 허용범위 안이며 승인된 인간용 기준값과 QQQ 비교는 [`docs/STRATEGY_GUIDE.md`](docs/STRATEGY_GUIDE.md)에만 유지합니다.
@@ -54,7 +57,6 @@
 
 ## 바로 다음 작업
 
-1. 변경분을 명시적으로 stage·commit하고 PR을 생성합니다.
-2. GitHub Quality/Security/Backtest CI 결과와 기준 백테스트 artifact를 확인합니다.
-3. 병합 뒤 `env -u GITHUB_TOKEN ./deploy.sh`로 Oracle forced dry-run을 갱신하고 exact SHA·서비스·Telegram·read-only Toss smoke를 확인합니다.
-4. 배포 결과와 남은 live 차단 조건을 이 상태판에 반영합니다.
+1. PR #137을 병합합니다.
+2. `env -u GITHUB_TOKEN ./deploy.sh`로 Oracle forced dry-run을 갱신하고 exact SHA·서비스·Telegram·read-only Toss smoke를 확인합니다.
+3. 배포 결과와 남은 live 차단 조건을 이 상태판에 반영합니다.
