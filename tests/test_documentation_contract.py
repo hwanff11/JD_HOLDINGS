@@ -40,12 +40,43 @@ def test_document_roles_and_change_impact_are_explicit():
         "DEPLOYMENT.md",
         "DEVELOPMENT_WORKFLOW.md",
         "SECURITY.md",
-        "DECISIONS.md",
         "ONE_PAGE_REPORT.md",
         "STRATEGY_GUIDE.md",
         "HISTORY.md",
     ):
         assert required in guide
+
+
+def test_document_lifecycle_uses_fixed_current_files_and_git_history():
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    guide = (ROOT / "docs/README.md").read_text(encoding="utf-8")
+    history = (ROOT / "docs/HISTORY.md").read_text(encoding="utf-8")
+    workflow = (ROOT / "docs/infra/DEVELOPMENT_WORKFLOW.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "롤링 상태판" in agents
+    assert "현재판으로 제자리 갱신" in guide
+    assert "현행 파일명은 고정" in guide
+    assert "append-only 역사 색인" in history
+    assert "Git tag" in history
+    assert not (ROOT / "docs/infra/DECISIONS.md").exists()
+
+    lifecycle_text = "\n".join((agents, guide, workflow))
+    assert "docs/archive/" not in lifecycle_text
+
+    versioned_name = re.compile(r"(?:^|[_-])v\d+(?:[._-]\d+)+", re.IGNORECASE)
+    dated_name = re.compile(r"(?:19|20)\d{2}[-_]\d{2}[-_]\d{2}")
+    forbidden_reports = {"BACKTEST_REPORT.md", "FINAL_REPORT.md"}
+    unexpected = []
+    managed_documents = [*ROOT.glob("*.md"), *(ROOT / "docs").rglob("*.md")]
+    for document in managed_documents:
+        relative = document.relative_to(ROOT)
+        if versioned_name.search(document.stem) or dated_name.search(document.stem):
+            unexpected.append(str(relative))
+        if document.name.upper() in forbidden_reports:
+            unexpected.append(str(relative))
+    assert unexpected == []
 
 
 def test_mutable_runtime_status_has_single_source():

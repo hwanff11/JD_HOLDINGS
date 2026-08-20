@@ -3,15 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pandas as pd
 
 from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.database import SQLiteRepository
-from jd_holdings.backtest.portfolio_engine import PortfolioBacktestEngine
-from jd_holdings.backtest.strategy_engine import StrategyBacktestEngine
+from jd_holdings.backtest.runner import run_production_backtest, serialize_backtest_run
 from jd_holdings.config import load_config
 from jd_holdings.core.v322_allocation import V322Policy
 from jd_holdings.infrastructure.market_clock import MarketClock
@@ -87,136 +84,31 @@ def main(argv: list[str] | None = None) -> int:
         start = args.start or config.backtest.default_start
         end = args.end or completed.isoformat()
         symbols = config.enabled_symbols if args.symbol == "ALL" else (args.symbol,)
-        requested_start = datetime.fromisoformat(start).date()
-        strategy_start = datetime.fromisoformat(config.backtest.default_start).date()
-        data_start = min(requested_start, strategy_start)
-        warmup_start = (data_start - timedelta(days=420)).isoformat()
-
-        spy = data_source.daily("SPY", warmup_start, end, refresh=args.refresh)
-        qqq = data_source.daily("QQQ", warmup_start, end, refresh=args.refresh)
-        idle_cash_data = None
-        if config.idle_cash.enabled:
-            idle_cash_data = data_source.daily(
-                config.idle_cash.symbol, warmup_start, end, refresh=args.refresh
-            )
-
-        guard = config.market_regime.get("soxl_sector_guard", {})
-        sector_data: dict[str, pd.DataFrame] = {}
-        if "SOXL" in config.enabled_symbols and guard.get("enabled", False):
-            for benchmark in guard.get("benchmark_candidates", ("SOXX", "SMH")):
-                name = str(benchmark).upper()
-                try:
-                    sector_data[name] = data_source.daily(
-                        name, warmup_start, end, refresh=args.refresh
-                    )
-                except Exception as exc:
-                    print(
-                        f"warning: {name} sector data unavailable; continuing with "
-                        f"available benchmarks ({exc})",
-                        file=sys.stderr,
-                    )
-
-        output: dict[str, object] = {
-            "generated_at": datetime.now(UTC).isoformat(),
-            "strategy_version": config.version,
-            "config_version": config.config_version,
-            "results": {},
-        }
-        engine = StrategyBacktestEngine(config)
-        completed_results: dict[str, object] = {}
-        target_frames: dict[str, pd.DataFrame] = {}
-        for symbol in symbols:
-            target = data_source.daily(symbol, warmup_start, end, refresh=args.refresh)
-            target_frames[symbol] = target
-            result = engine.run(
-                symbol,
-                target,
-                spy,
-                qqq,
-                start=start,
-                end=end,
-                slippage=args.slippage,
-                sector_data=sector_data if symbol == "SOXL" else None,
-                idle_cash_data=idle_cash_data,
-            )
-            output["results"][symbol] = result.to_dict(include_equity=False)
-            completed_results[symbol] = result
+        run = run_production_backtest(
+            config,
+            data_source,
+            symbols=symbols,
+            start=start,
+            end=end,
+            slippage=args.slippage,
+            refresh=args.refresh,
+        )
+        for warning in run.warnings:
+            print(f"warning: {warning}", file=sys.stderr)
+        for symbol, result in run.results.items():
             metrics = result.metrics
             print(
                 f"{symbol} virtual-JDSS: return={metrics['total_return_pct']:+.2f}% "
                 f"CAGR={metrics['cagr_pct']:+.2f}% MDD={metrics['mdd_pct']:.2f}% "
                 f"cycles={metrics['closed_cycles']} signals={metrics['signals']}"
             )
-
-        if config.portfolio.enabled and symbols == config.enabled_symbols:
-            virtual_results = {}
-            for symbol in config.enabled_symbols:
-                target = target_frames.get(symbol)
-                if target is None:
-                    target = data_source.daily(
-                        symbol, warmup_start, end, refresh=args.refresh
-                    )
-                    target_frames[symbol] = target
-                virtual_results[symbol] = engine.run(
-                    symbol,
-                    target,
-                    spy,
-                    qqq,
-                    start=config.backtest.default_start,
-                    end=end,
-                    slippage=args.slippage,
-                    sector_data=sector_data if symbol == "SOXL" else None,
-                )
-            raw_frames: dict[str, pd.DataFrame] = {
-                **target_frames,
-                "SPY": spy,
-                "QQQ": qqq,
-            }
-            policy = V322Policy.from_config(config)
-            if policy.rs_benchmark not in raw_frames:
-                rs_frame = sector_data.get(policy.rs_benchmark)
-                if rs_frame is None:
-                    rs_frame = data_source.daily(
-                        policy.rs_benchmark, warmup_start, end, refresh=args.refresh
-                    )
-                raw_frames[policy.rs_benchmark] = rs_frame
-            portfolio_result = PortfolioBacktestEngine(config).run(
-                raw_frames,
-                virtual_results,
-                start=start,
-                end=end,
-                slippage=args.slippage,
-            )
-            portfolio_metrics = portfolio_result.metrics
-            serialized = portfolio_result.to_dict(include_equity=False)
-            output["v322_portfolio"] = serialized
-            output["v3_portfolio"] = serialized
-        else:
-            portfolio = pd.concat(
-                [
-                    result.equity_curve.rename(symbol)
-                    for symbol, result in completed_results.items()
-                ],
-                axis=1,
-                join="inner",
-            ).sum(axis=1)
-            years = (portfolio.index[-1] - portfolio.index[0]).days / 365.2425
-            portfolio_metrics = {
-                "initial_equity": round(float(portfolio.iloc[0]), 2),
-                "final_equity": round(float(portfolio.iloc[-1]), 2),
-                "total_return_pct": round(
-                    float((portfolio.iloc[-1] / portfolio.iloc[0] - 1) * 100), 2
-                ),
-                "cagr_pct": round(
-                    float(((portfolio.iloc[-1] / portfolio.iloc[0]) ** (1 / years) - 1) * 100),
-                    2,
-                ),
-                "mdd_pct": round(
-                    float((portfolio / portfolio.cummax() - 1).min() * 100), 2
-                ),
-                "idle_cash_income": 0.0,
-            }
-        output["portfolio_metrics"] = portfolio_metrics
+        output = serialize_backtest_run(
+            run,
+            strategy_version=config.version,
+            config_version=config.config_version,
+            generated_at=datetime.now(UTC).isoformat(),
+        )
+        portfolio_metrics = output["portfolio_metrics"]
         print(
             "PORTFOLIO: "
             f"return={portfolio_metrics['total_return_pct']:+.2f}% "

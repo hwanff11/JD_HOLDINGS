@@ -17,6 +17,18 @@ from jd_holdings.config import StrategyConfig
 from jd_holdings.core.enums import ApprovalStage, PositionState, RiskReviewLevel
 from jd_holdings.core.models import IdleCashState, PositionSnapshot, ScoreResult, TradeDecision
 
+OPEN_ORDER_STATUSES = (
+    "CREATED",
+    "SUBMITTED",
+    "PENDING",
+    "PARTIAL_FILLED",
+    "PENDING_CANCEL",
+    "PENDING_REPLACE",
+    "UNKNOWN",
+)
+TERMINAL_ORDER_STATUSES = ("FILLED", "CANCELED", "REJECTED", "REPLACED")
+ALL_ORDER_STATUSES = (*OPEN_ORDER_STATUSES, *TERMINAL_ORDER_STATUSES)
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -249,6 +261,7 @@ class SQLiteRepository:
                     avg_price TEXT NOT NULL DEFAULT '0',
                     cost_basis TEXT NOT NULL DEFAULT '0',
                     target_weight TEXT NOT NULL DEFAULT '0',
+                    target_qty INTEGER NOT NULL DEFAULT 0 CHECK(target_qty >= 0),
                     trend_active INTEGER NOT NULL DEFAULT 0,
                     signal_trade_date TEXT,
                     version INTEGER NOT NULL DEFAULT 0,
@@ -258,6 +271,7 @@ class SQLiteRepository:
                 CREATE TABLE IF NOT EXISTS core_fill_progress (
                     client_order_id TEXT PRIMARY KEY REFERENCES orders(client_order_id),
                     applied_filled_qty INTEGER NOT NULL DEFAULT 0,
+                    applied_notional TEXT NOT NULL DEFAULT '0',
                     updated_at TEXT NOT NULL
                 );
 
@@ -301,6 +315,58 @@ class SQLiteRepository:
                     ADD COLUMN applied_notional TEXT NOT NULL DEFAULT '0'
                     """
                 )
+            core_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(core_positions)"
+                ).fetchall()
+            }
+            if "target_qty" not in core_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE core_positions
+                    ADD COLUMN target_qty INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            core_fill_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(core_fill_progress)"
+                ).fetchall()
+            }
+            if "applied_notional" not in core_fill_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE core_fill_progress
+                    ADD COLUMN applied_notional TEXT NOT NULL DEFAULT '0'
+                    """
+                )
+                legacy_rows = connection.execute(
+                    """
+                    SELECT progress.client_order_id, progress.applied_filled_qty,
+                           orders.average_fill_price, orders.price
+                    FROM core_fill_progress AS progress
+                    JOIN orders
+                      ON orders.client_order_id = progress.client_order_id
+                    WHERE progress.applied_filled_qty > 0
+                    """
+                ).fetchall()
+                for legacy in legacy_rows:
+                    price = _decimal(
+                        legacy["average_fill_price"] or legacy["price"]
+                    )
+                    connection.execute(
+                        """
+                        UPDATE core_fill_progress
+                        SET applied_notional = ?, updated_at = ?
+                        WHERE client_order_id = ?
+                        """,
+                        (
+                            str(price * int(legacy["applied_filled_qty"])),
+                            now,
+                            legacy["client_order_id"],
+                        ),
+                    )
             for symbol in self.config.enabled_symbols:
                 connection.execute(
                     """
@@ -773,9 +839,15 @@ class SQLiteRepository:
                     "UPDATE approvals SET status = 'EXPIRED' WHERE approval_id = ?",
                     (approval_id,),
                 )
+                if expected_stage == ApprovalStage.EXECUTION:
+                    ttl_label = (
+                        f"{self.config.global_.execution_token_ttl_seconds}초"
+                    )
+                else:
+                    ttl_label = f"{self.config.global_.review_token_ttl_minutes}분"
                 raise ApprovalError(
-                    f"승인 유효시간({self.config.global_.review_token_ttl_minutes}분)이 만료되었습니다. "
-                    "다시 매수 신호를 기다려 주세요."
+                    f"{expected_stage.value} 승인 유효시간({ttl_label})이 만료되었습니다. "
+                    "최신 조건으로 다시 확인해 주세요."
                 )
             if not hmac.compare_digest(row["approval_token_hash"], token_hash):
                 raise ApprovalError("승인 토큰이 올바르지 않습니다")
@@ -785,19 +857,20 @@ class SQLiteRepository:
             )
             return int(row["signal_id"]), json.loads(row["payload_json"])
 
-    def cancel_approval(self, approval_id: int) -> int:
+    def cancel_approval(self, approval_id: int) -> tuple[int, int]:
         with self.transaction() as connection:
             row = connection.execute(
                 "SELECT signal_id, status FROM approvals WHERE approval_id = ?", (approval_id,)
             ).fetchone()
             if row is None:
                 raise ApprovalError("승인 요청을 찾을 수 없습니다")
-            if row["status"] == "ACTIVE":
-                connection.execute(
-                    "UPDATE approvals SET status = 'CANCELED' WHERE approval_id = ?",
-                    (approval_id,),
-                )
-            return int(row["signal_id"])
+            signal_id = int(row["signal_id"])
+            cursor = connection.execute(
+                "UPDATE approvals SET status = 'CANCELED' "
+                "WHERE signal_id = ? AND status = 'ACTIVE'",
+                (signal_id,),
+            )
+            return signal_id, cursor.rowcount
 
     def upsert_cash_release_intent(
         self, signal_id: int, required_amount: Decimal, expires_at: datetime
@@ -989,8 +1062,11 @@ class SQLiteRepository:
         average_fill_price: Decimal | None = None,
         raw: dict[str, Any] | None = None,
     ) -> None:
+        normalized_status = status.upper()
+        if normalized_status not in ALL_ORDER_STATUSES:
+            raise ValueError(f"지원하지 않는 주문 상태입니다: {status}")
         updates = ["status = ?", "updated_at = ?"]
-        params: list[Any] = [status, utc_now().isoformat()]
+        params: list[Any] = [normalized_status, utc_now().isoformat()]
         if broker_order_id:
             updates.append("broker_order_id = ?")
             params.append(broker_order_id)
@@ -1005,11 +1081,41 @@ class SQLiteRepository:
             params.append(json.dumps(raw, ensure_ascii=False, sort_keys=True))
         params.append(client_order_id)
         with self.transaction() as connection:
+            existing = connection.execute(
+                "SELECT qty, filled_qty, status FROM orders WHERE client_order_id = ?",
+                (client_order_id,),
+            ).fetchone()
+            if existing is None:
+                raise KeyError(client_order_id)
+            prior_status = str(existing["status"]).upper()
+            if (
+                prior_status in TERMINAL_ORDER_STATUSES
+                and normalized_status != prior_status
+            ):
+                raise StateConflictError(
+                    f"종료 주문 상태를 되돌릴 수 없습니다: "
+                    f"{prior_status} -> {normalized_status}"
+                )
+            if filled_qty is not None:
+                prior_filled = int(existing["filled_qty"])
+                ordered = int(existing["qty"])
+                if filled_qty < prior_filled:
+                    raise StateConflictError(
+                        "주문 누적 체결수량이 이전 저장값보다 작습니다"
+                    )
+                if filled_qty > ordered:
+                    raise StateConflictError(
+                        "주문 누적 체결수량이 주문수량을 초과합니다"
+                    )
+                if filled_qty > 0 and (
+                    average_fill_price is not None and average_fill_price <= 0
+                ):
+                    raise StateConflictError("체결평균가는 0보다 커야 합니다")
             cursor = connection.execute(
                 f"UPDATE orders SET {', '.join(updates)} WHERE client_order_id = ?", params  # nosec B608
             )
-            if cursor.rowcount != 1:
-                raise KeyError(client_order_id)
+            if cursor.rowcount != 1:  # pragma: no cover - guarded by SELECT above
+                raise StateConflictError("주문 갱신 중 상태가 변경됐습니다")
 
     def mark_order_applied(self, client_order_id: str) -> bool:
         with self.transaction() as connection:
@@ -1030,10 +1136,9 @@ class SQLiteRepository:
         return dict(row) if row else None
 
     def open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
-        statuses = ("CREATED", "SUBMITTED", "PENDING", "PARTIAL_FILLED", "UNKNOWN")
-        placeholders = ",".join("?" for _ in statuses)
+        placeholders = ",".join("?" for _ in OPEN_ORDER_STATUSES)
         query = f"SELECT * FROM orders WHERE status IN ({placeholders})"  # nosec B608
-        params: list[Any] = list(statuses)
+        params: list[Any] = list(OPEN_ORDER_STATUSES)
         if symbol:
             query += " AND symbol = ?"
             params.append(symbol.upper())
@@ -1207,22 +1312,29 @@ class SQLiteRepository:
         active: bool,
         target_weight: Decimal,
         signal_trade_date: date,
+        target_qty: int | None = None,
     ) -> None:
+        if target_qty is not None and target_qty < 0:
+            raise ValueError("target_qty는 0 이상이어야 합니다")
         with self.transaction() as connection:
+            assignments = [
+                "trend_active = ?",
+                "target_weight = ?",
+                "signal_trade_date = ?",
+            ]
+            values: list[Any] = [
+                int(active),
+                str(target_weight),
+                signal_trade_date.isoformat(),
+            ]
+            if target_qty is not None:
+                assignments.append("target_qty = ?")
+                values.append(target_qty)
+            assignments.extend(["version = version + 1", "updated_at = ?"])
+            values.extend([utc_now().isoformat(), symbol.upper()])
             connection.execute(
-                """
-                UPDATE core_positions
-                SET trend_active = ?, target_weight = ?, signal_trade_date = ?,
-                    version = version + 1, updated_at = ?
-                WHERE symbol = ?
-                """,
-                (
-                    int(active),
-                    str(target_weight),
-                    signal_trade_date.isoformat(),
-                    utc_now().isoformat(),
-                    symbol.upper(),
-                ),
+                f"UPDATE core_positions SET {', '.join(assignments)} WHERE symbol = ?",  # nosec B608
+                values,
             )
 
     def create_core_buy_signal(
@@ -1234,6 +1346,7 @@ class SQLiteRepository:
         planned_budget: Decimal,
         valid_until: datetime,
         code_version: str,
+        reactivate_existing: bool = False,
     ) -> tuple[int, bool]:
         now = utc_now().isoformat()
         with self.transaction() as connection:
@@ -1273,7 +1386,7 @@ class SQLiteRepository:
                 return int(cursor.lastrowid), True
             row = connection.execute(
                 """
-                SELECT signal_id FROM signals
+                SELECT signal_id, status FROM signals
                 WHERE symbol = ? AND trade_date = ? AND strategy_version = ?
                   AND config_version = ? AND action = 'CORE_REBALANCE_BUY'
                 """,
@@ -1286,7 +1399,72 @@ class SQLiteRepository:
             ).fetchone()
             if row is None:
                 raise StateConflictError("코어 리밸런싱 신호 생성에 실패했습니다")
+            if reactivate_existing and str(row["status"]) not in {"ACTIVE", "UNKNOWN"}:
+                signal_id = int(row["signal_id"])
+                connection.execute(
+                    """
+                    UPDATE approvals SET status = 'CANCELED'
+                    WHERE signal_id = ? AND status = 'ACTIVE'
+                    """,
+                    (signal_id,),
+                )
+                connection.execute(
+                    """
+                    UPDATE signals
+                    SET signal_close = ?, max_chase_price = ?, planned_budget = ?,
+                        cycle_exposure_cap = ?, valid_until = ?, code_version = ?,
+                        status = 'ACTIVE', processed = 0, expired_reason = NULL,
+                        updated_at = ?
+                    WHERE signal_id = ?
+                    """,
+                    (
+                        str(signal_close),
+                        str(
+                            signal_close
+                            * (Decimal("1") + self.config.global_.entry_max_chase_pct)
+                        ),
+                        str(planned_budget),
+                        str(planned_budget),
+                        valid_until.isoformat(),
+                        code_version,
+                        now,
+                        signal_id,
+                    ),
+                )
+                return signal_id, True
             return int(row["signal_id"]), False
+
+    def unapplied_core_fill_order_ids(self) -> list[str]:
+        """Return core orders whose cumulative quantity/notional is not in the ledger."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT orders.client_order_id, orders.filled_qty,
+                       orders.average_fill_price, orders.price,
+                       COALESCE(core_fill_progress.applied_filled_qty, 0)
+                           AS applied_filled_qty,
+                       COALESCE(core_fill_progress.applied_notional, '0')
+                           AS applied_notional
+                FROM orders
+                LEFT JOIN core_fill_progress
+                  ON core_fill_progress.client_order_id = orders.client_order_id
+                WHERE orders.purpose IN ('CORE_REBALANCE_BUY', 'CORE_REBALANCE_SELL')
+                  AND orders.filled_qty > 0
+                ORDER BY orders.order_id
+                """
+            ).fetchall()
+        pending: list[str] = []
+        for row in rows:
+            filled = int(row["filled_qty"])
+            cumulative_notional = (
+                _decimal(row["average_fill_price"] or row["price"]) * filled
+            )
+            if (
+                filled != int(row["applied_filled_qty"])
+                or cumulative_notional != _decimal(row["applied_notional"])
+            ):
+                pending.append(str(row["client_order_id"]))
+        return pending
 
     def apply_core_fill(self, client_order_id: str) -> None:
         with self.transaction() as connection:
@@ -1297,13 +1475,19 @@ class SQLiteRepository:
                 raise KeyError(client_order_id)
             filled = int(order["filled_qty"])
             progress = connection.execute(
-                "SELECT applied_filled_qty FROM core_fill_progress WHERE client_order_id = ?",
+                """
+                SELECT applied_filled_qty, applied_notional
+                FROM core_fill_progress WHERE client_order_id = ?
+                """,
                 (client_order_id,),
             ).fetchone()
             applied = int(progress["applied_filled_qty"]) if progress else 0
+            applied_notional = (
+                _decimal(progress["applied_notional"]) if progress else Decimal("0")
+            )
             delta = filled - applied
-            if delta <= 0:
-                return
+            if delta < 0:
+                raise StateConflictError("코어 누적 체결수량이 이전 반영값보다 작습니다")
             row = connection.execute(
                 "SELECT * FROM core_positions WHERE symbol = ?", (order["symbol"],)
             ).fetchone()
@@ -1312,16 +1496,26 @@ class SQLiteRepository:
             current_qty = int(row["qty"])
             avg = _decimal(row["avg_price"])
             price = _decimal(order["average_fill_price"] or order["price"])
+            cumulative_notional = price * filled
+            delta_notional = cumulative_notional - applied_notional
+            if delta > 0 and delta_notional < 0:
+                raise StateConflictError("코어 누적 체결금액이 이전 반영값보다 작습니다")
+            if delta == 0 and delta_notional == 0:
+                return
             if order["side"] == "BUY":
                 next_qty = current_qty + delta
-                next_cost = avg * current_qty + price * delta
+                next_cost = _decimal(row["cost_basis"]) + delta_notional
+                if next_cost < 0:
+                    raise StateConflictError("코어 체결가 정정으로 원가가 음수가 됩니다")
                 next_avg = next_cost / next_qty if next_qty else Decimal("0")
-            else:
+            elif order["side"] == "SELL":
                 if delta > current_qty:
                     raise StateConflictError("코어 보유수량보다 많은 매도 체결입니다")
                 next_qty = current_qty - delta
                 next_avg = avg if next_qty else Decimal("0")
                 next_cost = next_avg * next_qty
+            else:
+                raise ValueError("코어 주문 방향이 BUY/SELL이 아닙니다")
             connection.execute(
                 """
                 UPDATE core_positions
@@ -1338,11 +1532,19 @@ class SQLiteRepository:
             )
             connection.execute(
                 """
-                INSERT INTO core_fill_progress(client_order_id, applied_filled_qty, updated_at)
-                VALUES (?, ?, ?)
+                INSERT INTO core_fill_progress(
+                    client_order_id, applied_filled_qty, applied_notional, updated_at
+                )
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(client_order_id) DO UPDATE SET
                     applied_filled_qty = excluded.applied_filled_qty,
+                    applied_notional = excluded.applied_notional,
                     updated_at = excluded.updated_at
                 """,
-                (client_order_id, filled, utc_now().isoformat()),
+                (
+                    client_order_id,
+                    filled,
+                    str(cumulative_notional),
+                    utc_now().isoformat(),
+                ),
             )

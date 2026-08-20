@@ -81,6 +81,64 @@ def test_core_quote_never_exceeds_signal_time_planned_quantity(tmp_path, config)
     assert quote.quantity == 49
 
 
+def test_core_quote_blocks_signal_day_after_hours(tmp_path, config):
+    _repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    same_day_after_hours = datetime(2026, 8, 3, 21, 0, tzinfo=UTC)
+
+    review_id, review_token = trading.create_review_approval(
+        signal_id, now=same_day_after_hours
+    )
+    with pytest.raises(ApprovalError, match="다음 거래일부터"):
+        trading.consume_review(review_id, review_token, now=same_day_after_hours)
+
+
+def test_core_execution_rechecks_session_after_quote(tmp_path, config):
+    _repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    premarket = datetime(2026, 8, 4, 13, 29, 50, tzinfo=UTC)
+    regular_open = datetime(2026, 8, 4, 13, 30, 1, tzinfo=UTC)
+
+    review_id, review_token = trading.create_review_approval(signal_id, now=premarket)
+    quote = trading.consume_review(review_id, review_token, now=premarket)
+    with pytest.raises(ApprovalError, match="주문 허용 세션"):
+        trading.execute(
+            quote.execution_approval_id,
+            quote.execution_token,
+            now=regular_open,
+        )
+
+
+def test_old_review_cancel_also_cancels_active_execution_approval(tmp_path, config):
+    repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+    quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
+
+    assert trading.cancel_approval(review_id)
+    with pytest.raises(ApprovalError, match="이미 사용되었거나 취소"):
+        trading.execute(
+            quote.execution_approval_id,
+            quote.execution_token,
+            now=APPROVAL_TIME,
+        )
+
+
+def test_execution_expiry_message_uses_seconds_not_review_minutes(tmp_path, config):
+    repository, _broker, trading, signal_id = _build_core_signal(tmp_path, config)
+    review_id, review_token = trading.create_review_approval(signal_id, now=APPROVAL_TIME)
+    quote = trading.consume_review(review_id, review_token, now=APPROVAL_TIME)
+    with repository.transaction() as connection:
+        connection.execute(
+            "UPDATE approvals SET expires_at = ? WHERE approval_id = ?",
+            ((APPROVAL_TIME - timedelta(seconds=1)).isoformat(), quote.execution_approval_id),
+        )
+
+    with pytest.raises(ApprovalError, match=r"EXECUTION 승인 유효시간\(60초\)"):
+        trading.execute(
+            quote.execution_approval_id,
+            quote.execution_token,
+            now=APPROVAL_TIME,
+        )
+
+
 def test_core_quote_reduces_quantity_when_core_was_filled_after_signal(tmp_path, config):
     repository, broker, trading, signal_id = _build_core_signal(tmp_path, config)
     client_id = "CORE-CONCURRENT-FILL"

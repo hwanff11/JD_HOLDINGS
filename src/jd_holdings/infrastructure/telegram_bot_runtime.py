@@ -23,7 +23,7 @@ def _operator_text(text: str) -> str:
         ("SGOV_RECONCILIATION_FAILED", "SGOV 원장 불일치 · 신규매수 차단"),
         ("CORE_SELL_INCOMPLETE", "코어 위험축소 미완료 · SAFE_MODE"),
         ("CORE_ORDER_SUBMISSION_UNKNOWN", "코어 주문 결과 불명 · SAFE_MODE"),
-        ("ORDER_SUBMISSION_UNKNOWN", "부스터 주문 결과 불명 · SAFE_MODE"),
+        ("ORDER_SUBMISSION_UNKNOWN", "구버전 direct 주문 결과 불명 · SAFE_MODE"),
         (
             "• 부분체결·TP 주문 복구·재시작 정합성 검증은 계속 동작합니다.",
             "• 코어 부분체결·TP 주문 복구·재시작 정합성 검증은 계속 동작합니다.\n"
@@ -185,7 +185,7 @@ class RuntimeTelegramBotApp(V322TelegramBotApp):
                             self._send_signal(self.repository.get_signal(signal_id))
                 except Exception as exc:
                     self._notify_runtime_error(
-                        "PORTFOLIO_SCHEDULER_ERROR", "월간 코어 점검 오류", exc
+                        "PORTFOLIO_SCHEDULER_ERROR", "V3.2.2 배분 점검 오류", exc
                     )
 
             if completed is not None:

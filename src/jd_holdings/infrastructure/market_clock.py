@@ -49,6 +49,22 @@ class MarketClock:
         close = self.calendar.session_close(next_session)
         return close.to_pydatetime().astimezone(UTC)
 
+    def next_session_date(self, session_date: date) -> date:
+        session = self.calendar.date_to_session(pd.Timestamp(session_date), direction="none")
+        return pd.Timestamp(self.calendar.next_session(session)).date()
+
+    def next_session_has_started(
+        self,
+        signal_date: date,
+        now: datetime | None = None,
+    ) -> bool:
+        """Return whether the exchange-local date reached the signal's next session."""
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        eastern_date = current.astimezone(ZoneInfo("America/New_York")).date()
+        return eastern_date >= self.next_session_date(signal_date)
+
     def is_month_end_session(self, session_date: date) -> bool:
         """Return whether the next exchange session belongs to a new month."""
         session = self.calendar.date_to_session(
@@ -121,3 +137,12 @@ def session_is_allowed(session_name: str, config: StrategyConfig) -> bool:
     if session_name == "pre_market":
         return bool(config.global_.trading_sessions.get("pre_market", False))
     return False
+
+
+def is_toss_order_maintenance_window(now: datetime | None = None) -> bool:
+    """Toss cancels/resets US orders during 08:50-08:59 Asia/Seoul."""
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    seoul = current.astimezone(ZoneInfo("Asia/Seoul"))
+    return seoul.hour == 8 and 50 <= seoul.minute <= 59

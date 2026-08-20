@@ -17,17 +17,17 @@ from jd_holdings.infrastructure.telegram_bot import (
     BacktestCommandError,
     TelegramBotApp,
     _format_idle_cash_event,
+    _guide_cards,
+    _is_network_error,
     _is_toss_order_maintenance_window,
     _profit_loss,
     _regime_label,
+    _telegram_message_chunks,
     _won,
     parse_backtest_request,
     parse_history_request,
 )
-from jd_holdings.infrastructure.telegram_bot_v322 import (
-    V322TelegramBotApp,
-    _v322_guide_cards,
-)
+from jd_holdings.infrastructure.telegram_bot_v322 import V322TelegramBotApp
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
@@ -82,7 +82,7 @@ def test_score_history_format_lists_date_score_grade_and_regime():
     assert "YELLOW" in message
 
 
-def test_backtest_command_defaults_to_soxl_and_300_trading_days():
+def test_backtest_command_defaults_to_full_portfolio_and_300_trading_days():
     request = parse_backtest_request("/bt", SYMBOLS, "2011-01-01", LATEST)
     assert request.symbols == SYMBOLS
     calendar = MarketClock().calendar
@@ -90,36 +90,30 @@ def test_backtest_command_defaults_to_soxl_and_300_trading_days():
     assert request.end == LATEST
 
 
-def test_backtest_command_accepts_symbol_and_date_range():
+def test_backtest_command_accepts_full_portfolio_date_range():
     request = parse_backtest_request(
-        "/backtest tqqq 2021-01-01 2024-12-31",
+        "/backtest 2021-01-01 2024-12-31",
         SYMBOLS,
         "2011-01-01",
         LATEST,
     )
-    assert request.symbols == ("TQQQ",)
+    assert request.symbols == SYMBOLS
     assert request.start == date(2021, 1, 1)
     assert request.end == date(2024, 12, 31)
 
 
-def test_backtest_command_accepts_all_with_start_only():
-    request = parse_backtest_request("/bt ALL 2025-01-01", SYMBOLS, "2011-01-01", LATEST)
+@pytest.mark.parametrize("alias", ["full", "FULL", "all"])
+def test_backtest_command_accepts_full_history_alias(alias):
+    request = parse_backtest_request(f"/bt {alias}", SYMBOLS, "2011-01-01", LATEST)
     assert request.symbols == SYMBOLS
-    assert request.start == date(2025, 1, 1)
+    assert request.start == date(2011, 1, 1)
     assert request.end == LATEST
 
 
 def test_backtest_command_accepts_recent_trading_days():
-    request = parse_backtest_request("/bt TQQQ 100", SYMBOLS, "2011-01-01", LATEST)
-    assert request.symbols == ("TQQQ",)
-    assert request.start == date(2026, 3, 12)
-    assert request.end == LATEST
-
-
-def test_backtest_command_accepts_all_recent_trading_days():
-    request = parse_backtest_request("/bt ALL 250", SYMBOLS, "2011-01-01", LATEST)
+    request = parse_backtest_request("/bt 100", SYMBOLS, "2011-01-01", LATEST)
     assert request.symbols == SYMBOLS
-    assert request.start == date(2025, 8, 6)
+    assert request.start == date(2026, 3, 12)
     assert request.end == LATEST
 
 
@@ -239,7 +233,7 @@ def test_sgov_legacy_command_parser_remains_backward_compatible():
 
 
 def test_telegram_guide_matches_current_contract():
-    cards = _v322_guide_cards()
+    cards = _guide_cards()
     guide = "\n".join(cards)
     for expected in (
         "V3.2.2",
@@ -276,7 +270,7 @@ def test_score_message_explains_indicators_and_final_gates():
         symbol="TQQQ",
         snapshot=make_snapshot(),
         score=make_score(55, reversal=5),
-        decision=SimpleNamespace(action=DecisionType.NO_ACTION),
+        decision=SimpleNamespace(action=DecisionType.NO_ACTION, allowed=False),
     )
 
     message = TelegramBotApp._format_score_message(result)
@@ -291,7 +285,9 @@ def test_score_message_explains_indicators_and_final_gates():
         "총점 55점 이상 : ✅ 충족",
         "반등 5점 이상 : ✅ 충족",
         "RED 국면 아님 : ✅ 충족",
-        "현재 매수 조건 미충족",
+        "가상 신호",
+        "비활성",
+        "독립 매수 신호가 아닙니다",
     ):
         assert expected in message
     assert len(message) < 4096
@@ -319,24 +315,103 @@ def test_backtest_timeline_defaults_to_latest_15_events():
     assert "전체 16건 중 최근 15건" in timeline[0]
 
 
-def test_backtest_command_accepts_arbitrary_ticker():
-    request = parse_backtest_request("/bt NVDA 100", SYMBOLS, "2011-01-01", LATEST)
-    assert request.symbols == ("NVDA",)
+@pytest.mark.parametrize("command", ["/bt NVDA 100", "/bt TQQQ 100", "/bt ALL 100"])
+def test_backtest_command_rejects_ticker_overlay(command):
+    with pytest.raises(BacktestCommandError, match="전체 포트폴리오 전용"):
+        parse_backtest_request(command, SYMBOLS, "2011-01-01", LATEST)
 
 
 @pytest.mark.parametrize(
     ("command", "message"),
     [
-        ("/bt VERYLONGSYMBOLNAME12345", "유효한 종목 티커"),
-        ("/bt ALL 2025/01/01", "날짜"),
-        ("/bt ALL 2010-12-31", "시작일"),
-        ("/bt ALL 2025-01-01 2024-01-01", "늦을 수 없습니다"),
-        ("/bt ALL 2025-01-01 2026-08-05", "최신 완결 거래일"),
-        ("/bt ALL 2025-01-01 2026-08-04 extra", "형식"),
-        ("/bt TQQQ 0", "1~5000"),
-        ("/bt TQQQ 5001", "1~5000"),
+        ("/bt VERYLONGSYMBOLNAME12345", "전체 포트폴리오 전용"),
+        ("/bt 2025/01/01 2026-01-01", "날짜"),
+        ("/bt 2010-12-31 2025-01-01", "시작일"),
+        ("/bt 2025-01-01 2024-01-01", "늦을 수 없습니다"),
+        ("/bt 2025-01-01 2026-08-05", "최신 완결 거래일"),
+        ("/bt 2025-01-01 2026-08-04 extra", "형식"),
+        ("/bt 0", "2~5000"),
+        ("/bt 5001", "2~5000"),
+        ("/bt 2026-08-04 2026-08-04", "2개 이상"),
     ],
 )
 def test_backtest_command_rejects_unsafe_or_invalid_input(command, message):
     with pytest.raises(BacktestCommandError, match=message):
         parse_backtest_request(command, SYMBOLS, "2011-01-01", LATEST)
+
+
+def test_telegram_message_chunks_stay_below_limit_and_keep_markup_lines():
+    text = "\n".join(f"<b>{index:03d}</b> " + "x" * 20 for index in range(30))
+
+    chunks = _telegram_message_chunks(text, limit=100)
+
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 100 for chunk, _ in chunks)
+    assert all(parse_mode == "HTML" for _, parse_mode in chunks)
+
+
+def test_telegram_message_chunks_strip_tags_before_hard_split():
+    chunks = _telegram_message_chunks("<b>" + "x" * 250 + "</b>", limit=100)
+
+    assert [len(chunk) for chunk, _ in chunks] == [100, 100, 50]
+    assert all(parse_mode is None for _, parse_mode in chunks)
+
+
+def test_telegram_authorization_requires_private_chat_and_matching_sender():
+    app = TelegramBotApp.__new__(TelegramBotApp)
+    app.allowed_chat_id = 123
+    allowed = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=123),
+    )
+    group = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="group"),
+        from_user=SimpleNamespace(id=123),
+    )
+    forwarded = SimpleNamespace(
+        chat=SimpleNamespace(id=123, type="private"),
+        from_user=SimpleNamespace(id=456),
+    )
+
+    assert app._authorized_message(allowed)
+    assert not app._authorized_message(group)
+    assert not app._authorized_message(forwarded)
+
+
+def test_wrapped_network_error_is_classified_separately_from_bad_data():
+    try:
+        raise ConnectionError("DNS lookup failed")
+    except ConnectionError as cause:
+        wrapped = ValueError("yfinance 일봉 조회 실패")
+        wrapped.__cause__ = cause
+
+    assert _is_network_error(wrapped)
+    assert not _is_network_error(ValueError("OHLCV 필수 컬럼 누락"))
+
+
+def test_portfolio_backtest_formatter_uses_v322_allocation_fill_key():
+    result = SimpleNamespace(
+        start_date=date(2025, 1, 2),
+        end_date=date(2026, 8, 4),
+        slippage=0.001,
+        metrics={
+            "initial_equity": 50000.0,
+            "final_equity": 61000.0,
+            "total_return_pct": 22.0,
+            "cagr_pct": 13.0,
+            "mdd_pct": -18.0,
+            "sharpe": 1.1,
+            "sortino": 1.4,
+            "average_exposure_pct": 98.0,
+            "component_fills": {"allocation": 17},
+            "hwm_reinvestment_fraction": 0.75,
+            "maximum_sizing_base": 58000.0,
+        },
+        trades=(),
+    )
+
+    message = TelegramBotApp._format_portfolio_backtest_result(result)
+
+    assert "V3.2.2" in message
+    assert "allocation 체결: <code>17회</code>" in message
+    assert "SGOV: <code>OFF</code>" in message

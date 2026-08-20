@@ -1,6 +1,8 @@
 # JDSS 대표 버전과 연구 역사
 
-이 문서는 과거 문서·연구 브랜치 수십 개를 대신하는 짧은 역사 색인입니다. **현재 전략을 결정하는 문서가 아닙니다.** 현재 기준은 [`strategy.yaml`](../strategy.yaml), [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md), 현재 작업 상태는 [`CURRENT_WORK.md`](../CURRENT_WORK.md)입니다.
+이 문서는 과거 문서·연구 브랜치 수십 개를 대신하는 **append-only 역사 색인**입니다. **현재 전략을 결정하는 문서가 아닙니다.** 현재 기준은 [`strategy.yaml`](../strategy.yaml), [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md), 현재 작업 상태는 [`CURRENT_WORK.md`](../CURRENT_WORK.md)입니다.
+
+새 릴리즈마다 새 Markdown을 만들지 않고 아래 표에 한 항목만 추가합니다. 상세 코드·설정·당시 문서는 Git tag, 병합 PR과 Actions artifact에서 복구하며, 기존 항목에 `현행`이라는 변하는 상태표시는 붙이지 않습니다.
 
 ## 대표 버전
 
@@ -10,11 +12,11 @@
 | v2.2.2 | SGOV 현금화 재개와 2단계 승인까지 완성한 v2 대표판 | Git tag `v2.2.2` |
 | v3.0.0 | 월간 쌍발 코어 + 5% 부스터를 처음 도입한 v3 기준선 | Git tag `v3.0.0` |
 | v3.1.1 | $50,000 고정원금·SGOV OFF를 도입한 전환판 | Git history와 병합 PR |
-| v3.2.2 | QQQ 동적노출·RS6M·HWM75·5% virtual overlay 현행판 | Git tag `v3.2.2` |
+| v3.2.2 | QQQ 동적노출·RS6M·HWM75·5% virtual overlay 도입 | Git tag `v3.2.2` |
 
 태그는 해당 시점의 코드·설정·문서를 함께 보존합니다. 따라서 현재 `main`에 옛 문서를 복제해 둘 필요가 없습니다.
 
-## 왜 V3.2.2가 되었나
+## V3.2.2 채택 기록
 
 V3.1.1은 최대낙폭이 비교적 낮았지만 평균노출 약 21%로 자금 활용과 장기 수익이 낮았습니다. 후속 연구는 단순 고정 레버리지 대신 QQQ 추세에 따라 0.5/1.0/1.25/1.5배를 오가고, 반도체 상대강도가 있을 때만 SOXL을 섞는 구조를 비교했습니다.
 
@@ -25,6 +27,19 @@ V3.1.1은 최대낙폭이 비교적 낮았지만 평균노출 약 21%로 자금 
 - SOXL 비중·RS 기간·대체 proxy·월 reset 날짜 변화에서 완만한 결과
 - 월중 고변동 감속과 SOXL→TQQQ one-way exit로 가속보다 후퇴를 쉽게 설계
 - 이익의 25%를 추가 위험에서 제외하는 HWM75
+
+운영 계약은 모든 위험증가 BUY를 사람의 2단계 승인 뒤 실행하는 반자동 방식으로 두고, 위험축소 SELL은 자동화 대상으로 유지했습니다. production 승격과 live 활성화는 분리했으며, 이 릴리즈의 운영은 forced dry-run으로 시작했습니다.
+
+## 대표 운영·문서 결정
+
+| 시점 | 결정 | 이유와 보존 위치 |
+|---|---|---|
+| v3.2.2 | QQQ/TQQQ/SOXL을 하나의 allocation 계약과 HWM75 위험예산으로 관리 | 정확한 현재 계약은 [`JDSS_FINAL_SPEC.md`](JDSS_FINAL_SPEC.md)와 [`strategy.yaml`](../strategy.yaml) |
+| v3.2.2 | BUY 2단계 승인, 위험축소 SELL 자동, UNKNOWN·불일치 시 SAFE_MODE | 보안 불변식은 [`infra/SECURITY.md`](infra/SECURITY.md) |
+| v3.2.2 | forced dry-run 모의원장과 실제 Toss read-only 조회를 분리 | 실제 계좌를 모의 보유수량으로 오인하거나 자동 채택하지 않기 위함 |
+| v3.2.2 전환 | 기존 dry-run SQLite를 `v322-migration` 이름으로 백업하고 새 allocation 원장을 초기화 | 완료된 일회성 전환이며, 다음 릴리즈의 일반 배포 절차로 재사용하지 않음 |
+| v3.2.2 운영 보강 | 공용 백테스트 runner, Telegram V3.2.2 UX, 고정 목표수량·체결 crash 복구·브로커 응답 검증·실계좌 read-only preflight 도입 | 병합 PR [#137](https://github.com/hwanff11/JD_HOLDINGS/pull/137); live hard lock 유지 |
+| 문서 정리 | 현행 문서는 고정 파일을 제자리 갱신하고 역사만 이 파일에 추가 | 버전별 복사 문서의 불일치 방지; 전체 규칙은 [`README.md`](README.md) |
 
 ## 대표적인 미채택 연구
 
@@ -39,4 +54,4 @@ V3.2.2 후보 연구에서도 SOXL 슬리브, RS lookback, 월 reset 날짜, 실
 - 2025년처럼 QQQ에 뒤지는 해가 있습니다.
 - 이 경고 때문에 전략을 더 복잡하게 튜닝하지 않고 V3.2.2를 동결했으며 live는 잠가 두었습니다.
 
-새 연구는 [`research/RESEARCH_PROTOCOL.md`](research/RESEARCH_PROTOCOL.md)를 따르고, 일회성 스크립트와 결과물은 채택되지 않으면 `main`에 누적하지 않습니다.
+새 연구는 [`research/RESEARCH_PROTOCOL.md`](research/RESEARCH_PROTOCOL.md)를 따르고, 일회성 스크립트와 결과물은 채택되지 않으면 `main`에 누적하지 않습니다. 대표 기각 결론만 이 문서에 한 항목으로 남기고 상세 결과는 해당 PR과 Actions artifact에서 확인합니다.

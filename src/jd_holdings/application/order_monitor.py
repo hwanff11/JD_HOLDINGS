@@ -9,12 +9,12 @@ from jd_holdings.core.remainder_exit import remainder_exit_due
 from jd_holdings.infrastructure.market_clock import MarketClock
 
 from .broker import Broker
-from .database import SQLiteRepository
+from .database import TERMINAL_ORDER_STATUSES, SQLiteRepository
 from .order_manager import OrderManager
 from .position_manager import PositionManager, tp1_completed_at_key
 from .tp_manager import TP_PURPOSES, TakeProfitManager
 
-TERMINAL_STATUSES = {"FILLED", "CANCELED", "REJECTED", "REPLACED"}
+TERMINAL_STATUSES = set(TERMINAL_ORDER_STATUSES)
 CORE_PURPOSES = {"CORE_REBALANCE_BUY", "CORE_REBALANCE_SELL"}
 BASE_STATE_BY_PURPOSE = {
     "ENTRY_1": PositionState.EMPTY,
@@ -145,6 +145,24 @@ class OrderMonitor:
             events.append(
                 f"{symbol} {purpose} 신규 {receipt.filled_quantity - prior_filled}주 체결 반영"
             )
+
+        if receipt.status == "UNKNOWN":
+            self._enter_symbol_safe_mode(symbol, "CORE_ORDER_STATUS_UNKNOWN")
+            self.repository.log_event(
+                "SAFE_MODE",
+                "CORE_ORDER_STATUS_UNKNOWN",
+                "코어 주문의 브로커 상태를 확정할 수 없습니다",
+                symbol=symbol,
+                context={
+                    "client_order_id": str(local["client_order_id"]),
+                    "broker_order_id": str(local.get("broker_order_id") or ""),
+                    "purpose": purpose,
+                    "filled_quantity": receipt.filled_quantity,
+                    "quantity": receipt.quantity,
+                },
+            )
+            events.append(f"{symbol} {purpose} 상태 UNKNOWN: SAFE_MODE")
+            return
 
         if purpose == "CORE_REBALANCE_BUY" and receipt.status not in TERMINAL_STATUSES:
             signal_id = int(local.get("signal_id") or 0)
