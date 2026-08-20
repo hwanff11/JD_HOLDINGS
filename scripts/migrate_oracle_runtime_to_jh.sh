@@ -5,7 +5,7 @@ OLD_DIR="${OLD_DIR:-/home/ubuntu/JD_HOLDINGS}"
 NEW_DIR="${NEW_DIR:-/home/ubuntu/JH_HOLDINGS}"
 OLD_SERVICE="${OLD_SERVICE:-jd_holdings_bot}"
 NEW_SERVICE="${NEW_SERVICE:-jh_holdings_bot}"
-REMOTE_PYTHON="${REMOTE_PYTHON:-python3.12}"
+REMOTE_PYTHON="${REMOTE_PYTHON:-}"
 REPO_URL="${REPO_URL:-https://github.com/hwanff11/JH_HOLDINGS.git}"
 MIGRATION_REF="${MIGRATION_REF:-main}"
 SERVICE_TEMPLATE="${SERVICE_TEMPLATE:?SERVICE_TEMPLATE is required}"
@@ -21,10 +21,22 @@ fail_preflight() { echo "Migration preflight failed: $*" >&2; exit 1; }
 [[ -d "$OLD_DIR" ]] || fail_preflight "legacy directory missing: $OLD_DIR"
 [[ -f "$OLD_DIR/shared/.env" ]] || fail_preflight "legacy env missing: $OLD_DIR/shared/.env"
 [[ -f "$OLD_DIR/shared/data/jdss.db" ]] || fail_preflight "legacy DB missing: $OLD_DIR/shared/data/jdss.db"
-command -v "$REMOTE_PYTHON" >/dev/null || fail_preflight "python missing: $REMOTE_PYTHON"
 command -v git >/dev/null || fail_preflight "git missing"
 sudo systemctl is-active --quiet "$OLD_SERVICE" || fail_preflight "legacy service is not active: $OLD_SERVICE"
-echo "Migration preflight OK: old_dir=$OLD_DIR old_service=$OLD_SERVICE new_dir=$NEW_DIR new_service=$NEW_SERVICE"
+
+if [[ -n "$REMOTE_PYTHON" ]]; then
+  command -v "$REMOTE_PYTHON" >/dev/null || fail_preflight "requested python missing: $REMOTE_PYTHON"
+  REMOTE_PYTHON="$(command -v "$REMOTE_PYTHON")"
+elif [[ -x "$OLD_DIR/venv/bin/python" ]]; then
+  REMOTE_PYTHON="$OLD_DIR/venv/bin/python"
+elif command -v python3 >/dev/null; then
+  REMOTE_PYTHON="$(command -v python3)"
+else
+  fail_preflight "no usable Python found (checked legacy venv and python3)"
+fi
+
+"$REMOTE_PYTHON" -c 'import sys; assert sys.version_info >= (3, 11), sys.version' || fail_preflight "Python 3.11+ required: $REMOTE_PYTHON"
+echo "Migration preflight OK: old_dir=$OLD_DIR old_service=$OLD_SERVICE new_dir=$NEW_DIR new_service=$NEW_SERVICE python=$REMOTE_PYTHON ($("$REMOTE_PYTHON" --version 2>&1))"
 
 rollback() {
   rc=$?
