@@ -10,15 +10,16 @@
 - config/package: **3.2.2**
 - Oracle 런타임: **`/home/ubuntu/JH_HOLDINGS`**
 - Oracle systemd: **`jh_holdings_bot` active**
-- 마지막 검증 완료 runtime SHA: **`7a90e983baf85e38f0672dfb1f5f5598dac313d1`**
-- 마지막 forced dry-run 배포: **Actions run [`32479034778`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32479034778) 성공**
-- 배포 DB snapshot: **`/home/ubuntu/JH_HOLDINGS/shared/backups/jdss-20260821T115234Z-e23d5e7c6aa2cfa5a4b8bf1b221d6144adcfbc73.db`**
+- 마지막 검증 완료 runtime SHA: **`8948c5de6f7cc1110340f7ee7b87b2e272742922`**
+- 마지막 forced dry-run 배포: **Actions run [`32480280389`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32480280389) 성공**
+- 배포 DB snapshot: **`/home/ubuntu/JH_HOLDINGS/shared/backups/jdss-20260821T120825Z-7a90e983baf85e38f0672dfb1f5f5598dac313d1.db`**
 - 구 런타임 백업: **`/home/ubuntu/JD_HOLDINGS.migration-backup-20260821T000403Z`** (보존)
 - 구 `jd_holdings_bot`: **disabled / retired**
 - live: **LOCKED OFF**
 - Oracle 환경: **`JDSS_TRADING_MODE=dry_run` / `JDSS_LIVE_CONFIRMATION` empty**
 - 설정 잠금: **`portfolio.live_enabled=false`**
 - 실제 Toss API: read-only smoke 인증·QQQ/TQQQ/SOXL 시세·시장일 조회 성공
+- runtime verifier: **Actions run [`32480499360`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32480499360) 성공 / `pre_market` / `PASS_NO_RESTART`**
 
 문서 전용 커밋은 Oracle 프로그램 동작을 바꾸지 않으므로 runtime SHA와 최신 `main` SHA가 일시적으로 다를 수 있습니다. 코드·설정·workflow가 바뀌면 최신 `main`을 다시 forced dry-run 배포하고 이 상태판을 갱신합니다.
 
@@ -34,6 +35,7 @@
 - PR [#151](https://github.com/hwanff11/JH_HOLDINGS/pull/151), [#153](https://github.com/hwanff11/JH_HOLDINGS/pull/153), [#155](https://github.com/hwanff11/JH_HOLDINGS/pull/155), [#157](https://github.com/hwanff11/JH_HOLDINGS/pull/157) 병합
 - 최종 코드 SHA의 Quality Gate [`32477547949`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547949), Security Gate [`32477547970`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547970), Backtest [`32477547963`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547963) 성공
 - pinned SSH trust, release-local venv, DB snapshot, atomic switch, rollback safeguard, service active, forced dry-run, Toss read-only smoke를 배포 run에서 확인
+- hashed `known_hosts` 호환 runtime verifier에서 배포 SHA·release venv·live 잠금·service active·설정 검증·Toss read-only smoke와 focused SAFE_MODE/reconciliation 테스트 성공
 
 ## 현재 개발 목표
 
@@ -53,7 +55,7 @@
 
 ## 아직 확인할 항목
 
-- runtime verifier의 hashed `known_hosts` 호환을 배포 workflow와 동일하게 맞춘 뒤, 닫힌 시장에서 restart/recovery와 reconciliation/SAFE_MODE를 재검증
+- runtime verifier 실행 시 시장 phase가 `pre_market`이어서 안전규칙에 따라 실제 systemd restart/recovery 단계는 생략됨. 닫힌 시장에서 재실행 필요
 - Telegram 프로세스와 라이브러리는 서비스에 포함되어 있으나 실제 `/ping`, `/help`, `/portfolio`, `/onboarding`, `/account`, `/order`, `/errors` 왕복은 별도 운영 리허설 필요
 - GitHub `main`에서 Quality Gate·Security Gate·Backtest를 강제하는 branch protection/ruleset 최종 확인·활성화
 - 실제 Toss 관리 티커 기존 보유·열린 주문·주문가능금액의 live 전환 계획 확정
@@ -61,7 +63,7 @@
 
 ## 바로 다음 작업
 
-1. runtime verifier의 pinned SSH 검증을 OpenSSH 권위 검증 방식으로 통일하고 실행합니다.
-2. 닫힌 시장에서 systemd restart/recovery, reconciliation/SAFE_MODE와 Telegram 명령 왕복을 확인합니다.
+1. 닫힌 시장에서 runtime verifier를 다시 실행해 systemd restart/recovery를 완료합니다.
+2. Telegram `/ping`, `/help`, `/portfolio`, `/onboarding`, `/account`, `/order`, `/errors` 명령 왕복을 확인합니다.
 3. GitHub `main` 필수 check 보호를 확정하고 forced dry-run soak를 계속합니다.
 4. 모든 운영 리허설과 별도 승인이 끝날 때까지 live 잠금을 유지합니다.
