@@ -14,9 +14,42 @@ permissions:
   pull-requests: read
   security-events: write
 
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  scope:
+    name: Security scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_full: ${{ steps.detect.outputs.run_full }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect documentation-only pull request
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "run_full=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE_SHA"...HEAD > /tmp/changed-files
+          if grep -Ev '\.md$' /tmp/changed-files | grep -q .; then
+            echo "run_full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_full=false" >> "$GITHUB_OUTPUT"
+          fi
+
   python-audit:
     name: Python dependency and code audit
+    needs: scope
+    if: needs.scope.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -36,6 +69,8 @@ jobs:
 
   codeql:
     name: CodeQL
+    needs: scope
+    if: needs.scope.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -60,20 +95,22 @@ jobs:
 
   security-gate:
     name: Security Gate
-    needs: [python-audit, codeql, gitleaks]
+    needs: [scope, python-audit, codeql, gitleaks]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require every security scan
+      - name: Require applicable security scans
         env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
           PYTHON_AUDIT_RESULT: ${{ needs.python-audit.result }}
           CODEQL_RESULT: ${{ needs.codeql.result }}
           GITLEAKS_RESULT: ${{ needs.gitleaks.result }}
         run: |
           set -Eeuo pipefail
-          test "$PYTHON_AUDIT_RESULT" = success
-          test "$CODEQL_RESULT" = success
+          test "$SCOPE_RESULT" = success
           test "$GITLEAKS_RESULT" = success
+          [[ "$PYTHON_AUDIT_RESULT" == success || "$PYTHON_AUDIT_RESULT" == skipped ]]
+          [[ "$CODEQL_RESULT" == success || "$CODEQL_RESULT" == skipped ]]
 
   repository-policy:
     name: Main branch protection
