@@ -58,6 +58,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  security-gate:
+    name: Security Gate
+    needs: [python-audit, codeql, gitleaks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every security scan
+        env:
+          PYTHON_AUDIT_RESULT: ${{ needs.python-audit.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          GITLEAKS_RESULT: ${{ needs.gitleaks.result }}
+        run: |
+          set -Eeuo pipefail
+          test "$PYTHON_AUDIT_RESULT" = success
+          test "$CODEQL_RESULT" = success
+          test "$GITLEAKS_RESULT" = success
+
   repository-policy:
     name: Main branch protection
     if: github.event_name != 'pull_request'
