@@ -41,8 +41,8 @@ _VALID_STATUSES = {
 class InitialOnboardingPortfolioService(PortfolioService):
     """Apply a one-time 50→75→100% exposure cap to the first portfolio entry.
 
-    The underlying V3.2.2 target weights and HWM75 risk budget are unchanged.  Only
-    risk-increasing BUY quantity is capped while onboarding is active.  Risk-reducing
+    The underlying V3.2.2 target weights and HWM75 risk budget are unchanged. Only
+    risk-increasing BUY quantity is capped while onboarding is active. Risk-reducing
     SELLs still execute automatically against the capped target.
     """
 
@@ -69,14 +69,14 @@ class InitialOnboardingPortfolioService(PortfolioService):
             )
 
     def onboarding_status(self) -> str:
-        if not self.onboarding_policy.enabled:
-            return STATUS_DISABLED
         value = self.repository.get_system_value(ONBOARDING_STATUS_KEY)
-        if value is None:
+        if value is not None:
+            if value not in _VALID_STATUSES:
+                raise RuntimeError(f"알 수 없는 initial onboarding 상태: {value}")
+            return value
+        if self.onboarding_policy.enabled:
             return STATUS_NOT_STARTED
-        if value not in _VALID_STATUSES:
-            raise RuntimeError(f"알 수 없는 initial onboarding 상태: {value}")
-        return value
+        return STATUS_DISABLED
 
     def onboarding_stage(self) -> int:
         raw = self.repository.get_system_value(ONBOARDING_STAGE_KEY)
@@ -132,7 +132,9 @@ class InitialOnboardingPortfolioService(PortfolioService):
             remaining = int(snapshot["sessions_remaining"])
             if not bool(snapshot["stage_filled"]):
                 raise RuntimeError("현재 단계 목표수량이 아직 모두 체결되지 않았습니다")
-            raise RuntimeError(f"다음 단계까지 미국 거래일 {remaining}일을 더 기다려야 합니다")
+            raise RuntimeError(
+                f"다음 단계까지 미국 거래일 {remaining}일을 더 기다려야 합니다"
+            )
 
         next_stage = stage + 1
         self._invalidate_active_core_buy_signals("INITIAL_ONBOARDING_STAGE_ADVANCED")
@@ -358,7 +360,11 @@ class InitialOnboardingPortfolioService(PortfolioService):
             for symbol in ALLOCATION_SYMBOLS
             if symbol in cores
         }
-        reason = self._start_block_reason() if status in {STATUS_NOT_STARTED, STATUS_BYPASSED} else None
+        reason = (
+            self._start_block_reason()
+            if status in {STATUS_NOT_STARTED, STATUS_BYPASSED}
+            else None
+        )
         return {
             "enabled": self.onboarding_policy.enabled,
             "status": status,
@@ -370,7 +376,9 @@ class InitialOnboardingPortfolioService(PortfolioService):
                 if status == STATUS_ACTIVE and stage < self.onboarding_policy.total_stages
                 else None
             ),
-            "minimum_sessions_between_stages": self.onboarding_policy.minimum_sessions_between_stages,
+            "minimum_sessions_between_stages": (
+                self.onboarding_policy.minimum_sessions_between_stages
+            ),
             "stage_started_trade_date": self.repository.get_system_value(
                 ONBOARDING_STAGE_STARTED_KEY
             )
