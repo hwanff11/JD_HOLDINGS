@@ -9,6 +9,25 @@ from . import telegram_bot as telegram_bot_module
 from .telegram_bot import TelegramBotApp
 
 
+def _v322_bot_commands() -> list[telebot.types.BotCommand]:
+    return [
+        telebot.types.BotCommand("dashboard", "통합 대시보드"),
+        telebot.types.BotCommand("portfolio", "V3.2.2 배분·HWM75 현황"),
+        telebot.types.BotCommand("onboarding", "최초진입 50→75→100 매수"),
+        telebot.types.BotCommand("account", "토스 계좌 잔고"),
+        telebot.types.BotCommand("status", "종목별 allocation 상세"),
+        telebot.types.BotCommand("score", "JDSS 5% 오버레이 분석"),
+        telebot.types.BotCommand("history", "최근 점수 이력"),
+        telebot.types.BotCommand("signal", "매수 주문 승인 대기"),
+        telebot.types.BotCommand("backtest", "최초진입 포함 백테스트"),
+        telebot.types.BotCommand("guide", "V3.2.2 전략·최초진입 설명"),
+        telebot.types.BotCommand("order", "미체결 주문 현황"),
+        telebot.types.BotCommand("errors", "최근 시스템 기록"),
+        telebot.types.BotCommand("ping", "봇 상태 확인"),
+        telebot.types.BotCommand("help", "메뉴 안내"),
+    ]
+
+
 def _v322_runtime_text(text: str) -> str:
     replacements = (
         ("JDSS V3.0 MONTHLY_H05", "JDSS V3.2.2 RS6M-HWM75"),
@@ -33,23 +52,7 @@ class V322TelegramBotApp(TelegramBotApp):
         super()._send(_v322_runtime_text(text), markup=markup, chat_id=chat_id)
 
     def run(self) -> None:
-        self.bot.set_my_commands(
-            [
-                telebot.types.BotCommand("dashboard", "통합 대시보드"),
-                telebot.types.BotCommand("portfolio", "V3.2.2 배분·HWM75 현황"),
-                telebot.types.BotCommand("account", "토스 계좌 잔고"),
-                telebot.types.BotCommand("status", "종목별 allocation 상세"),
-                telebot.types.BotCommand("score", "JDSS 5% 오버레이 분석"),
-                telebot.types.BotCommand("history", "최근 점수 이력"),
-                telebot.types.BotCommand("signal", "활성 매수 승인 신호"),
-                telebot.types.BotCommand("backtest", "V3.2.2 백테스트 실행"),
-                telebot.types.BotCommand("guide", "V3.2.2 전략 설명서"),
-                telebot.types.BotCommand("order", "미체결 주문 현황"),
-                telebot.types.BotCommand("errors", "최근 시스템 기록"),
-                telebot.types.BotCommand("ping", "봇 상태 확인"),
-                telebot.types.BotCommand("help", "메뉴 안내"),
-            ]
-        )
+        self.bot.set_my_commands(_v322_bot_commands())
         threading.Thread(target=self._scheduler_loop, daemon=True).start()
         telegram_bot_module.LOGGER.info("JDSS V3.2.2 Telegram polling 시작")
         self.bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)

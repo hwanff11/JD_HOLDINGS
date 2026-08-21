@@ -23,6 +23,9 @@ def test_final_runtime_guide_matches_v322_contract():
         "75%",
         "최대 5%",
         "2단계 승인",
+        "/onboarding",
+        "50% → 75% → 100%",
+        "매수 주문 검토하기",
         "forced dry-run",
         "SAFE_MODE",
     ):
@@ -30,7 +33,7 @@ def test_final_runtime_guide_matches_v322_contract():
     for rejected in ("V3.1.1", "독립 매수전략입니다", "SGOV 자동", "live 주문"):
         assert rejected not in guide
     assert telegram_bot_module._guide_cards is _guide_cards
-    assert len(cards) == 5
+    assert len(cards) == 6
     assert all(len(card) < 4096 for card in cards)
 
 

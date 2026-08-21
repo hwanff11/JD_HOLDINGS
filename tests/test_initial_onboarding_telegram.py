@@ -43,16 +43,23 @@ def test_onboarding_markup_binds_expected_stage_to_callback():
     start_markup = InitialOnboardingTelegramBotApp._onboarding_markup(start)
     assert start_markup is not None
     assert start_markup.keyboard[0][0].callback_data == "onboard|start|0"
+    assert start_markup.keyboard[0][0].text == "🪜 1차 매수 한도 열기 · 50% (주문 전)"
 
     stage1_markup = InitialOnboardingTelegramBotApp._onboarding_markup(_snapshot(stage=1))
     assert stage1_markup is not None
     assert stage1_markup.keyboard[0][0].callback_data == "onboard|advance|1"
+    assert stage1_markup.keyboard[0][0].text == (
+        "🪜 2차 매수 한도 열기 · 누적 75% (주문 전)"
+    )
 
     stage2_markup = InitialOnboardingTelegramBotApp._onboarding_markup(
         _snapshot(stage=2, fraction="0.75", next_fraction="1.0")
     )
     assert stage2_markup is not None
     assert stage2_markup.keyboard[0][0].callback_data == "onboard|advance|2"
+    assert stage2_markup.keyboard[0][0].text == (
+        "🪜 3차 매수 한도 열기 · 누적 100% (주문 전)"
+    )
 
 
 def test_stale_onboarding_callback_is_rejected():

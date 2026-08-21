@@ -114,6 +114,9 @@ jobs:
           assert metrics["hwm_reinvestment_fraction"] == 0.75
           assert metrics["profit_reinvestment"] == "HWM75_CONTROLLED"
           assert metrics["idle_cash_enabled"] is False
+          assert metrics["initial_onboarding_enabled"] is True
+          assert metrics["initial_onboarding_fractions_pct"] == [50.0, 75.0, 100.0]
+          assert metrics["initial_onboarding_minimum_sessions"] == 3
           assert metrics["component_fills"]["allocation"] > 0
           assert 70 <= metrics["average_exposure_pct"] <= 90
           print("V3.2.2 canonical backtest contract OK", metrics)

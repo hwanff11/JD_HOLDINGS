@@ -438,7 +438,24 @@ def _guide_cards() -> tuple[str, ...]:
             "• QQQ·TQQQ·SOXL 개인물량을 같은 Toss 계좌에 섞지 않습니다.\n"
             "• 주문결과 불명확·수량불일치·레거시 direct 상태는 SAFE_MODE로 신규 BUY를 막습니다."
         ),
+        (
+            "🪜 <b>[최초진입 50% → 75% → 100%]</b>\n\n"
+            "• <code>/onboarding</code>에서 최초진입 상태와 다음 단계 가능일을 확인합니다.\n"
+            "• 1차는 최종 목표의 50%, 최소 3 미국 거래일 뒤 75%, 다시 최소 3 거래일 뒤 100%입니다.\n"
+            "• 단계 버튼은 매수 한도만 열며 주문을 바로 제출하지 않습니다.\n"
+            "• 실제 BUY는 <b>매수 주문 검토하기 → 최종 매수 실행</b> 버튼을 모두 눌러야 합니다.\n"
+            "• 백테스트도 요청 시작일을 새 계좌의 최초진입일로 보고 같은 분할진입을 적용합니다."
+        ),
     )
+
+
+def _review_buy_button_text(symbol: str) -> str:
+    return f"🛒 {symbol} 매수 주문 검토하기"
+
+
+def _execute_buy_button_text(symbol: str, quantity: object, trading_mode: str) -> str:
+    action = "모의매수 실행" if trading_mode == "dry_run" else "실매수 실행"
+    return f"✅ {symbol} {_quantity(quantity)}주 {action}"
 
 
 def _is_us_holding(item: dict) -> bool:
@@ -1057,7 +1074,9 @@ class TelegramBotApp:
                 f"• <b>시작일</b> : <code>{request.start}</code>\n"
                 f"• <b>종료일</b> : <code>{request.end}</code>\n"
                 "• <b>계산</b> : 2011년부터 가상 오버레이 상태를 연결한 뒤 "
-                "요청 기간만 평가\n\n"
+                "요청 기간만 평가\n"
+                "• <b>최초진입</b> : 시작일 50% → 3거래일 뒤 75% → "
+                "3거래일 뒤 100%\n\n"
                 "ℹ️ 수 분 걸릴 수 있으며, 완료되면 결과를 보냅니다."
             )
             try:
@@ -1223,7 +1242,7 @@ class TelegramBotApp:
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton(
-                "1차 · 최신 시세·수량 검토",
+                _review_buy_button_text(signal["symbol"]),
                 callback_data=f"rv|{approval_id}|{token}",
             )
         )
@@ -1253,7 +1272,8 @@ class TelegramBotApp:
             f"<code>├ 투자 금액 : {_money(signal['planned_budget']):>11}</code>\n"
             f"<code>├ 신호 가격 : {_money(signal['signal_close']):>11}</code>\n"
             f"<code>└ 추격 상한 : {_money(signal['max_chase_price']):>11}</code>\n\n"
-            "💡 <b>1차 검토 버튼은 주문이 아닙니다.</b> 최신 시세·허용가·수량·자금을 "
+            "💡 <b>‘매수 주문 검토하기’ 버튼은 아직 주문을 제출하지 않습니다.</b> "
+            "최신 시세·허용가·수량·자금을 "
             "다시 검증한 뒤, 60초 유효한 2차 최종 승인을 보냅니다.",
             markup=markup,
         )
@@ -1262,9 +1282,11 @@ class TelegramBotApp:
         markup = InlineKeyboardMarkup()
         markup.add(
             InlineKeyboardButton(
-                "2차 · 최종 모의매수 실행"
-                if self.settings.trading_mode == "dry_run"
-                else "2차 · 최종 실매수 실행",
+                _execute_buy_button_text(
+                    quote.symbol,
+                    quote.quantity,
+                    self.settings.trading_mode,
+                ),
                 callback_data=f"ex|{quote.execution_approval_id}|{quote.execution_token}",
             )
         )
@@ -1502,6 +1524,8 @@ class TelegramBotApp:
             f"<code>└ 평균노출 : {metrics['average_exposure_pct']:>10.2f}%</code>",
             "━━━━━━━━━━━━━━━━━━",
             "📦 <b>운영 계약</b>",
+            "• 최초진입: <code>50% → 75% → 100%</code> "
+            f"(각 <code>{metrics['initial_onboarding_minimum_sessions']}거래일</code>)",
             f"• allocation 체결: <code>{metrics['component_fills']['allocation']}회</code>",
             f"• HWM 이익 재투입: <code>{metrics['hwm_reinvestment_fraction'] * 100:.0f}%</code>",
             f"• 최대 sizing base: <code>{_money(metrics['maximum_sizing_base'])}</code>",
@@ -1521,7 +1545,8 @@ class TelegramBotApp:
             lines.append("해당 기간 체결이 없습니다.")
         lines.append(
             "\nℹ️ <i>완료봉 신호·다음 거래일 체결·매수/매도 수수료·슬리피지와 "
-            "2011년부터 이어진 가상 오버레이 상태를 반영했습니다. 과거 성과는 미래 수익을 보장하지 않습니다.</i>"
+            "2011년부터 이어진 가상 오버레이 상태와 요청 시작일의 최초 분할진입을 "
+            "반영했습니다. 과거 성과는 미래 수익을 보장하지 않습니다.</i>"
         )
         return "\n".join(lines)
 
