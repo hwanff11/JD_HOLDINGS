@@ -31,7 +31,7 @@ jobs:
         run: ruff check .
 
       - name: Unit tests - Pytest
-        run: pytest --cov=jd_holdings --cov-report=term-missing
+        run: pytest --cov=jd_holdings --cov-report=term-missing --cov-fail-under=75
 
       - name: Config validation - JDSS
         run: jdss validate-config
