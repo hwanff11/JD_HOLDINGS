@@ -65,6 +65,7 @@ jobs:
           grep -q 'rs_lookback: 126' strategy.yaml
           grep -q 'rs_sleeve_fraction: 0.50' strategy.yaml
           grep -q 'jdss_overlay_weight: 0.05' strategy.yaml
+          grep -q 'daily_analysis_time_kst: "07:00"' strategy.yaml
           grep -A3 '^idle_cash:' strategy.yaml | grep -q 'enabled: false'
           grep -q 'live_enabled: false' strategy.yaml
 

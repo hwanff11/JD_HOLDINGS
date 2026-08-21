@@ -41,7 +41,7 @@
 
 ## 현재 개발 목표
 
-최초진입 계약의 사용자 화면·백테스트 일치 변경을 Oracle forced dry-run runtime에 배포했습니다. Telegram 명령 메뉴와 `/guide`에 `/onboarding`을 노출하고, 매수 검토·최종 실행 버튼을 구분하며, 요청 시작일 기준 50% → 75% → 100% 백테스트를 검증했습니다. 배포 SHA·release venv·서비스 active·Toss read-only·Telegram outbound smoke를 확인했으며 live 잠금은 해제하지 않았습니다.
+장 마감 직후 발생하던 일일 배분·분석·신호 Telegram 알림을 서머타임과 무관한 한국시간 오전 7시로 고정합니다. 주문 감시·정합성 점검·안전 경고의 1분 주기는 유지합니다. 변경 검증과 Oracle forced dry-run 배포를 진행하며 live 잠금은 해제하지 않습니다.
 
 ## 현재 안전장치
 
@@ -71,6 +71,6 @@
 
 ## 바로 다음 작업
 
-1. Telegram에서 명령 메뉴·`/guide`·`/onboarding`과 매수 버튼 문구를 운영자 화면으로 확인합니다.
-2. `/backtest`의 시작일 50% → 75% → 100% 안내와 실행 결과를 확인합니다.
+1. 오전 7시 일일 알림 고정 변경을 PR 필수 검증으로 확인합니다.
+2. 병합 뒤 최신 `main`을 Oracle forced dry-run으로 배포하고 runtime을 검증합니다.
 3. 실제 계좌 전환 계획과 별도 live 승인 전까지 live 잠금을 해제하지 않습니다.

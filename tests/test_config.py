@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import time
 from decimal import Decimal
 
 import pytest
@@ -56,6 +57,7 @@ def test_default_config_is_valid_and_complete(config):
         "SOXL": "SOXX",
     }
     assert config.global_.capital_per_symbol == Decimal("20000")
+    assert config.scheduler.daily_analysis_time_kst == time(7, 0)
     assert tuple(config.additional_entry.stages) == (2, 3)
 
     policy = V322Policy.from_config(config)

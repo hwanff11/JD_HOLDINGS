@@ -47,6 +47,7 @@ jobs:
           grep -q 'rs_lookback: 126' strategy.yaml
           grep -q 'rs_sleeve_fraction: 0.50' strategy.yaml
           grep -q 'jdss_overlay_weight: 0.05' strategy.yaml
+          grep -q 'daily_analysis_time_kst: "07:00"' strategy.yaml
           grep -A3 '^idle_cash:' strategy.yaml | grep -q 'enabled: false'
           grep -q 'live_enabled: false' strategy.yaml
 
@@ -116,6 +117,7 @@ jobs:
           grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' "$current/strategy.yaml"
           grep -q 'hwm_reinvestment_fraction: 0.75' "$current/strategy.yaml"
           grep -q 'rs_lookback: 126' "$current/strategy.yaml"
+          grep -q 'daily_analysis_time_kst: "07:00"' "$current/strategy.yaml"
           grep -q 'live_enabled: false' "$current/strategy.yaml"
           grep -q '^JDSS_TRADING_MODE=dry_run$' "$env_file"
           grep -q '^JDSS_LIVE_CONFIRMATION=$' "$env_file"

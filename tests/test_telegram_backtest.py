@@ -16,6 +16,7 @@ from jd_holdings.infrastructure.telegram_bot import (
     IDLE_CASH_COMMANDS,
     BacktestCommandError,
     TelegramBotApp,
+    _daily_analysis_is_due,
     _execute_buy_button_text,
     _format_idle_cash_event,
     _guide_cards,
@@ -50,6 +51,19 @@ SEOUL_TZ = ZoneInfo("Asia/Seoul")
 )
 def test_toss_order_maintenance_window(now, expected):
     assert _is_toss_order_maintenance_window(now) is expected
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (datetime(2026, 8, 22, 6, 59, tzinfo=SEOUL_TZ), False),
+        (datetime(2026, 8, 22, 7, 0, tzinfo=SEOUL_TZ), True),
+        (datetime(2026, 8, 21, 22, 0, tzinfo=ZoneInfo("UTC")), True),
+    ],
+)
+def test_daily_analysis_is_fixed_at_0700_kst(now, expected):
+    scheduled = datetime.strptime("07:00", "%H:%M").time()
+    assert _daily_analysis_is_due(now, scheduled) is expected
 
 
 def test_history_command_defaults_to_all_symbols_and_seven_days():

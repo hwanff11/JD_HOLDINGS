@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import time as clock_time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,7 @@ class RiskReviewConfig:
 @dataclass(frozen=True)
 class SchedulerConfig:
     signal_delay_minutes: int
+    daily_analysis_time_kst: clock_time
     poll_interval_seconds: int
     order_monitor_interval_seconds: int
 
@@ -192,6 +194,16 @@ def _stage_numbers(add_raw: dict[str, Any]) -> tuple[int, ...]:
         if key.startswith("stage") and key.removeprefix("stage").isdigit()
     )
     return tuple(stages)
+
+
+def _clock_time_hhmm(value: Any) -> clock_time:
+    raw = str(value).strip()
+    if len(raw) != 5 or raw[2] != ":":
+        raise ConfigError("daily_analysis_time_kst는 HH:MM 형식이어야 합니다")
+    try:
+        return clock_time.fromisoformat(raw)
+    except ValueError as exc:
+        raise ConfigError("daily_analysis_time_kst가 올바른 시간이 아닙니다") from exc
 
 
 def load_config(path: str | Path | None = None) -> StrategyConfig:
@@ -332,6 +344,9 @@ def load_config(path: str | Path | None = None) -> StrategyConfig:
         ),
         scheduler=SchedulerConfig(
             signal_delay_minutes=int(scheduler_raw["signal_delay_minutes"]),
+            daily_analysis_time_kst=_clock_time_hhmm(
+                scheduler_raw.get("daily_analysis_time_kst", "07:00")
+            ),
             poll_interval_seconds=int(scheduler_raw["poll_interval_seconds"]),
             order_monitor_interval_seconds=int(scheduler_raw["order_monitor_interval_seconds"]),
         ),
