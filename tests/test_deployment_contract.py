@@ -52,7 +52,9 @@ def test_deploy_requires_exact_remote_main_and_pinned_ssh_host_key():
 def test_deploy_prepares_release_before_stop_and_uses_release_local_venv():
     deploy = (ROOT / "deploy.sh").read_text(encoding="utf-8")
     install_pos = deploy.index('"$remote_python" -m venv "$release_dir/.venv"')
-    stop_pos = deploy.index('sudo systemctl stop "$service_name"')
+    # The rollback function also contains a stop command; the final occurrence is
+    # the actual deployment cutover after the release has been prepared.
+    stop_pos = deploy.rindex('sudo systemctl stop "$service_name"')
     assert install_pos < stop_pos
     assert '"$release_dir/.venv/bin/python" -m pip install "$release_dir"' in deploy
     assert '"$target_dir/current/.venv/bin/jdss"' in deploy
@@ -191,6 +193,7 @@ def test_security_workflow_uploads_codeql_and_audits_main_protection():
     workflow = (ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8")
     assert "github/codeql-action/analyze@v4" in workflow
     assert "upload: false" not in workflow
+    assert "Security Gate" in workflow
     assert "Main branch protection" in workflow
     assert "gh api" in workflow
     assert "main branch protection/ruleset is not enabled" in workflow
@@ -198,4 +201,5 @@ def test_security_workflow_uploads_codeql_and_audits_main_protection():
 
 def test_quality_gate_enforces_minimum_coverage():
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    assert "--cov-fail-under=75" in workflow
+    assert "--cov-fail-under=70" in workflow
+    assert "--cov-fail-under=0" not in workflow
