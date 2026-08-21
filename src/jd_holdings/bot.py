@@ -14,17 +14,21 @@ from jd_holdings.application.analysis_service import AnalysisService
 from jd_holdings.application.broker import MarketDataDryRunBroker
 from jd_holdings.application.database import SQLiteRepository
 from jd_holdings.application.idle_cash_manager import IdleCashManager
+from jd_holdings.application.initial_onboarding_portfolio import (
+    InitialOnboardingPortfolioService,
+)
 from jd_holdings.application.managed_account import managed_cash_balance
 from jd_holdings.application.order_manager import OrderManager
 from jd_holdings.application.order_monitor import OrderMonitor
-from jd_holdings.application.portfolio_service import PortfolioService
 from jd_holdings.application.position_manager import PositionManager
 from jd_holdings.application.reconciliation import ReconciliationService
 from jd_holdings.application.tp_manager import TakeProfitManager
 from jd_holdings.config import load_config
+from jd_holdings.infrastructure.initial_onboarding_telegram import (
+    InitialOnboardingTelegramBotApp,
+)
 from jd_holdings.infrastructure.market_clock import MarketClock
 from jd_holdings.infrastructure.market_data import YFinanceDataSource
-from jd_holdings.infrastructure.telegram_bot_runtime import RuntimeTelegramBotApp
 from jd_holdings.infrastructure.toss_client import TossClient
 from jd_holdings.settings import load_runtime_settings
 
@@ -240,7 +244,7 @@ def main() -> None:
     )
     # Constructing the service first ensures the QQQ allocation ledger row exists
     # before startup reconciliation runs.
-    portfolio_service = PortfolioService(
+    portfolio_service = InitialOnboardingPortfolioService(
         config,
         repository,
         broker,
@@ -256,7 +260,7 @@ def main() -> None:
     if mismatches:
         logging.getLogger(__name__).error("시작 정합성 검사 실패: %s", mismatches)
     analysis_service = AnalysisService(config, repository, data_source, market_clock)
-    app = RuntimeTelegramBotApp(
+    app = InitialOnboardingTelegramBotApp(
         config,
         settings,
         repository,

@@ -91,6 +91,10 @@ market_regime:
     rs_sleeve_fraction: 0.50
     jdss_overlay_weight: 0.05
     monthly_reset: first_session_close
+    initial_onboarding:
+      enabled: true
+      cumulative_fractions: [0.50, 0.75, 1.00]
+      minimum_sessions_between_stages: 3
 
 scoring:
   calibration:
