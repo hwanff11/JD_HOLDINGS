@@ -77,26 +77,10 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           printf '%s\n' "$ORACLE_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/oracle_jdss ~/.ssh/known_hosts
-          # Extract each public-key payload from the known_hosts records,
-          # including hashed hostnames and optional @ markers, then validate it.
-          # The original file remains authoritative for strict host matching.
-          awk '
-            /^[[:space:]]*(#|$)/ { next }
-            $1 ~ /^@/ {
-              if (NF < 4) exit 1
-              print $3, $4
-              found = 1
-              next
-            }
-            {
-              if (NF < 3) exit 1
-              print $2, $3
-              found = 1
-            }
-            END { if (!found) exit 1 }
-          ' ~/.ssh/known_hosts > ~/.ssh/pinned_host_keys
-          ssh-keygen -l -f ~/.ssh/pinned_host_keys >/dev/null
-          rm ~/.ssh/pinned_host_keys
+          # Check that at least one known_hosts record contains an SSH key
+          # payload. OpenSSH performs the authoritative parse and pinned
+          # hostname/key match during the strict scp/ssh connection below.
+          grep -Eq '(^|[[:space:]])(ssh-|ecdsa-)[^[:space:]]+[[:space:]]+[A-Za-z0-9+/]+={0,3}([[:space:]]|$)' ~/.ssh/known_hosts
 
       - name: Deploy and smoke-test JDSS V3.2.2 in forced dry-run mode
         env:
