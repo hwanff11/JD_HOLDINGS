@@ -29,8 +29,17 @@ HORIZONS = (21, 63, 126)
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="JDSS initial-entry scenario research")
-    parser.add_argument("--end", default="", help="YYYY-MM-DD; default latest completed XNYS session")
-    parser.add_argument("--stride", type=int, default=5, help="historical launch-date stride in sessions")
+    parser.add_argument(
+        "--end",
+        default="",
+        help="YYYY-MM-DD; default latest completed XNYS session",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=5,
+        help="historical launch-date stride in sessions",
+    )
     parser.add_argument("--output-json", default="reports/initial-entry-research.json")
     parser.add_argument("--output-md", default="reports/initial-entry-research.md")
     return parser.parse_args()
@@ -91,6 +100,15 @@ def _fmt(value: float, digits: int = 2) -> str:
 
 
 def _render_markdown(payload: dict) -> str:
+    scenario_header = (
+        "| 시나리오 | 63일 중앙수익 | 63일 P10 | 63일 중앙 MDD | "
+        "63일 일시매수 승률 | 하락장 우위 | 상승장 기회비용 | "
+        "126일 중앙수익 | 126일 중앙 MDD |"
+    )
+    leverage_header = (
+        "| 시작 레버리지 | 표본 | 63일 일시매수 대비 중앙 차이 | "
+        "일시매수 승률 | 일시매수 손실구간 평균 방어 |"
+    )
     lines = [
         "# JDSS 최초진입 분할매수 시나리오 연구",
         "",
@@ -105,12 +123,16 @@ def _render_markdown(payload: dict) -> str:
         "",
         "## 1. 시나리오 비교",
         "",
-        "| 시나리오 | 63일 중앙수익 | 63일 P10 | 63일 중앙 MDD | 63일 일시매수 승률 | 하락장 우위 | 상승장 기회비용 | 126일 중앙수익 | 126일 중앙 MDD |",
+        scenario_header,
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    row_template = (
+        "| {scenario} | {r63} | {p63} | {m63} | {win63:.1f}% | "
+        "{down} | {cost} | {r126} | {m126} |"
+    )
     for row in payload["summary"]:
         lines.append(
-            "| {scenario} | {r63} | {p63} | {m63} | {win63:.1f}% | {down} | {cost} | {r126} | {m126} |".format(
+            row_template.format(
                 scenario=row["scenario"],
                 r63=_fmt(row["median_return_63_pct"]),
                 p63=_fmt(row["p10_return_63_pct"]),
@@ -135,7 +157,7 @@ def _render_markdown(payload: dict) -> str:
             "",
             "## 2. 현재안(50 → 75 → 100%, 3거래일)의 시작 레버리지별 비교",
             "",
-            "| 시작 레버리지 | 표본 | 63일 일시매수 대비 중앙 차이 | 일시매수 승률 | 일시매수 손실구간 평균 방어 |",
+            leverage_header,
             "|---:|---:|---:|---:|---:|",
         ]
     )
@@ -151,8 +173,10 @@ def _render_markdown(payload: dict) -> str:
             "",
             "## 3. 연구 원칙",
             "",
-            "이 결과는 최초 6개월의 진입 리스크만 비교합니다. 장기 전략 자체의 우열을 다시 최적화하지 않으며, "
-            "이번 1차 연구에서 상위 후보가 비슷하면 후보 2~3개만 거래일 매일 시작점으로 다시 세밀하게 검증하는 방식이 과최적화를 줄입니다.",
+            "이 결과는 최초 6개월의 진입 리스크만 비교합니다. "
+            "장기 전략 자체의 우열을 다시 최적화하지 않습니다.",
+            "이번 1차 연구에서 상위 후보가 비슷하면 후보 2~3개만 "
+            "거래일 매일 시작점으로 다시 세밀하게 검증해 과최적화를 줄입니다.",
             "",
         ]
     )
@@ -167,7 +191,10 @@ def main() -> None:
     end = pd.Timestamp(args.end).date() if args.end else clock.latest_completed_session()
     config, policy, strategy_start, frames, targets = _prepare_history(end)
 
-    start_position = max(1, int(targets.index.searchsorted(pd.Timestamp(strategy_start))))
+    start_position = max(
+        1,
+        int(targets.index.searchsorted(pd.Timestamp(strategy_start))),
+    )
     last_start = len(targets.index) - max(HORIZONS)
     positions = list(range(start_position, last_start + 1, args.stride))
     if not positions:
@@ -221,7 +248,10 @@ def main() -> None:
     md_path = Path(args.output_md)
     json_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.parent.mkdir(parents=True, exist_ok=True)
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     md_path.write_text(_render_markdown(payload), encoding="utf-8")
     print(md_path.read_text(encoding="utf-8"))
 
