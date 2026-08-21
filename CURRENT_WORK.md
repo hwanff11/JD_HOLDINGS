@@ -52,18 +52,23 @@
 - 실제 Toss read-only preflight와 forced dry-run 모의원장을 자동 혼합하지 않음
 - 최초진입 50% → 75% → 100%, 단계별 전량 체결 후 최소 3 미국 거래일, 단계 개방은 운영자 확인 필요
 - 배포 workflow는 정확한 최신 `main`만 받아 pinned SSH·강제 dry-run·rollback-safe smoke를 검증
+- GitHub `main` classic branch protection 활성: PR 필수, Quality Gate·Security Gate·Backtest 필수, 대화 해결·linear history 필수, 관리자 우회·force push·삭제 금지
 
-## 아직 확인할 항목
+## 자동 운영 검증
 
-- runtime verifier 실행 시 시장 phase가 `pre_market`이어서 안전규칙에 따라 실제 systemd restart/recovery 단계는 생략됨. 닫힌 시장에서 재실행 필요
-- Telegram 프로세스와 라이브러리는 서비스에 포함되어 있으나 실제 `/ping`, `/help`, `/portfolio`, `/onboarding`, `/account`, `/order`, `/errors` 왕복은 별도 운영 리허설 필요
-- GitHub `main`에서 Quality Gate·Security Gate·Backtest를 강제하는 branch protection/ruleset 최종 확인·활성화
+- runtime verifier는 pinned SSH·배포 SHA·release venv·forced dry-run·service active·Toss read-only smoke를 확인합니다.
+- 수동 ChatOps 검증에서는 Telegram `getMe`와 관리자 채팅의 무음 테스트 메시지 전송·삭제까지 확인합니다. 명령별 handler·권한·문구는 focused runtime 테스트가 담당합니다.
+- 매주 미국 금요일 after-hours 종료 뒤 자동 verifier가 실행되며, 시장 phase가 `closed`일 때만 systemd restart/recovery를 수행합니다. 장중·pre-market·after-hours에는 재시작하지 않습니다.
+- Quality Gate·Security Gate·Backtest는 병합 필수 이름을 유지하면서 문서-only·비전략 변경 fast path를 사용하고, 새 commit이 올라오면 오래된 실행을 취소합니다.
+
+## live 전환 전에만 남아 있는 항목
+
 - 실제 Toss 관리 티커 기존 보유·열린 주문·주문가능금액의 live 전환 계획 확정
 - 실제 주문 어댑터·회계·migration 리허설과 별도 명시적 live 승인
+- 충분한 forced dry-run soak와 운영자 최종 확인
 
 ## 바로 다음 작업
 
-1. 닫힌 시장에서 runtime verifier를 다시 실행해 systemd restart/recovery를 완료합니다.
-2. Telegram `/ping`, `/help`, `/portfolio`, `/onboarding`, `/account`, `/order`, `/errors` 명령 왕복을 확인합니다.
-3. GitHub `main` 필수 check 보호를 확정하고 forced dry-run soak를 계속합니다.
-4. 모든 운영 리허설과 별도 승인이 끝날 때까지 live 잠금을 유지합니다.
+1. 자동 closed-market restart 결과와 forced dry-run 상태를 관찰합니다.
+2. 실제 계좌 전환 계획과 별도 live 승인 전까지 현재 안전장치를 유지합니다.
+3. live 잠금을 해제하지 않습니다.

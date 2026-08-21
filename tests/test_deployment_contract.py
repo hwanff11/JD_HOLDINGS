@@ -92,3 +92,31 @@ def test_runtime_verifier_supports_hashed_pinned_known_hosts():
     assert "ssh-keygen -F" not in workflow
     assert "accept-new" not in workflow
     assert "ssh-keyscan" not in workflow
+
+def test_required_gates_keep_fast_paths_for_unrelated_changes():
+    quality = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    security = (ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8")
+    backtest = (ROOT / ".github/workflows/jdss-backtest.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "PASS_DOCS_ONLY" in quality
+    assert "cancel-in-progress: true" in quality
+    assert "Security scope" in security
+    assert "PASS_NOT_STRATEGY_SENSITIVE" in backtest
+    assert "cancel-in-progress: true" in security
+    assert "cancel-in-progress: true" in backtest
+
+
+def test_runtime_verifier_automates_safe_closed_market_and_telegram_smoke():
+    workflow = (ROOT / ".github/workflows/verify-oracle-v322-runtime.yml").read_text(
+        encoding="utf-8"
+    )
+    assert 'cron: "30 1 * * 6"' in workflow
+    assert "github.event_name == 'schedule'" in workflow
+    assert "Restart only during closed market" in workflow
+    assert "Verify Telegram outbound runtime" in workflow
+    assert 'call("getMe", {})' in workflow
+    assert '"sendMessage"' in workflow
+    assert '"deleteMessage"' in workflow
+    assert "disable_notification" in workflow
+

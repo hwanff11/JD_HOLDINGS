@@ -45,13 +45,18 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Run V3.2.2 quality gate
+      - name: Run focused deployment gate
         run: |
           set -Eeuo pipefail
-          python -m pip install --upgrade pip
           pip install -e '.[dev]'
           python -m ruff check .
-          python -m pytest
+          deployment_tests=(
+            tests/test_deployment_contract.py
+            tests/test_v322_dry_run.py
+            tests/test_managed_account_safety.py
+            tests/test_operational_faults.py
+          )
+          python -m pytest "${deployment_tests[@]}"
           jdss validate-config
           grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' strategy.yaml
           grep -q 'config_version: "3.2.2"' strategy.yaml

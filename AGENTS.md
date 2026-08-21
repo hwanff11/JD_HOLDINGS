@@ -55,6 +55,9 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 �
 - 외부 입력은 Telegram 명령, 콜백, API 응답, 설정, 주문 경계에서 검증한다.
 - 실거래 잠금, 사용자 2단계 승인, 주문 멱등성, SAFE_MODE를 약화하는 변경은 대표의 명시적 승인 없이 수행하지 않는다.
 - 의존성·Actions 업데이트 PR은 기능 변경과 분리하고 CI·Dry Run 통과 후 반영한다.
+- 완료 상태 문서와 구현은 가능한 한 **한 PR에서 함께 마감**한다. Actions run ID만 기록하려고 후속 문서 PR을 만들지 않으며, 정확한 실행 링크는 PR·Actions·최종 보고에서 확인한다.
+- 문서-only PR은 안정적인 필수 check 이름을 유지한 fast path를 사용하고, 전략·코드·의존성에 영향이 없으면 전체 pytest·CodeQL·canonical backtest를 반복하지 않는다.
+- 새 commit이 이전 실행을 대체하면 concurrency로 오래된 PR 검증을 취소한다. 같은 SHA의 배포를 반복하거나 runtime 영향이 없는 문서-only commit을 Oracle에 재배포하지 않는다.
 - 공개 저장소에는 API 키·토큰·계좌번호·서버 비밀값을 두지 않으며, 공개가 필요 없는 전략/운영 정보는 별도 승인 없이 새로 노출하지 않는다.
 
 ## 사용자 단축 명령
@@ -76,7 +79,7 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 �
 3. 테스트 결과를 숨기지 않는다.
 4. 변경사항을 명확한 커밋 메시지로 commit한다.
 5. 현재 활성 개발 브랜치에 push한다.
-6. `CURRENT_WORK.md`의 마지막 완료 작업, 다음 작업, 마지막 커밋 정보를 최신 상태로 갱신하고 필요하면 함께 commit/push한다.
+6. `CURRENT_WORK.md`의 현재 상태와 다음 작업을 구현 PR 안에서 함께 갱신한다. Actions run ID만 추가하기 위한 후속 문서 PR은 만들지 않는다.
 7. 실제 배포 반영이 승인된 경우 환경에 맞는 표준 경로를 사용한다. 로컬/IDE는 신뢰된 `SSH_KNOWN_HOSTS_PATH`를 지정해 `env -u GITHUB_TOKEN ./deploy.sh`를 실행하고, ChatGPT는 GitHub의 owner-only **Deploy Oracle Dry Run** ChatOps를 시작해 최신 `main`을 배포한다. GitHub Actions 화면의 수동 버튼 클릭은 필수 조건이 아니다.
 8. 마지막 커밋 SHA, 변경 요약, 테스트 결과, 남은 작업을 보고한다.
 
