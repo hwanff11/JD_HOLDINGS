@@ -77,12 +77,26 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           printf '%s\n' "$ORACLE_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/oracle_jdss ~/.ssh/known_hosts
-          # Validate that the pinned secret contains a syntactically valid SSH
-          # public host key. Do not require `ssh-keygen -F` here: hashed
-          # known_hosts entries intentionally hide the hostname. The actual
-          # scp/ssh connection below uses StrictHostKeyChecking=yes and this
-          # exact UserKnownHostsFile, so a host mismatch still fails closed.
-          ssh-keygen -l -f ~/.ssh/known_hosts >/dev/null
+          # Extract each public-key payload from the known_hosts records,
+          # including hashed hostnames and optional @ markers, then validate it.
+          # The original file remains authoritative for strict host matching.
+          awk '
+            /^[[:space:]]*(#|$)/ { next }
+            $1 ~ /^@/ {
+              if (NF < 4) exit 1
+              print $3, $4
+              found = 1
+              next
+            }
+            {
+              if (NF < 3) exit 1
+              print $2, $3
+              found = 1
+            }
+            END { if (!found) exit 1 }
+          ' ~/.ssh/known_hosts > ~/.ssh/pinned_host_keys
+          ssh-keygen -l -f ~/.ssh/pinned_host_keys >/dev/null
+          rm ~/.ssh/pinned_host_keys
 
       - name: Deploy and smoke-test JDSS V3.2.2 in forced dry-run mode
         env:
