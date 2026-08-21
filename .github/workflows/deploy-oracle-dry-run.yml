@@ -77,10 +77,8 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           printf '%s\n' "$ORACLE_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/oracle_jdss ~/.ssh/known_hosts
-          # Check that at least one known_hosts record contains an SSH key
-          # payload. OpenSSH performs the authoritative parse and pinned
-          # hostname/key match during the strict scp/ssh connection below.
-          grep -Eq '(^|[[:space:]])(ssh-|ecdsa-)[^[:space:]]+[[:space:]]+[A-Za-z0-9+/]+={0,3}([[:space:]]|$)' ~/.ssh/known_hosts
+          # The strict scp/ssh connection below is the authoritative parser
+          # and pinned hostname/key matcher for this exact known_hosts file.
 
       - name: Deploy and smoke-test JDSS V3.2.2 in forced dry-run mode
         env:
