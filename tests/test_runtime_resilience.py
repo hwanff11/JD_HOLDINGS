@@ -239,6 +239,10 @@ def test_portfolio_scheduler_failure_does_not_starve_monitoring(
         "jd_holdings.infrastructure.telegram_bot_runtime._is_toss_order_maintenance_window",
         lambda _now: False,
     )
+    monkeypatch.setattr(
+        "jd_holdings.infrastructure.telegram_bot_runtime._daily_analysis_is_due",
+        lambda *_args: True,
+    )
     app = object.__new__(RuntimeTelegramBotApp)
     app.config = config
     app.repository = repository
@@ -260,5 +264,45 @@ def test_portfolio_scheduler_failure_does_not_starve_monitoring(
 
     assert "PORTFOLIO_SCHEDULER_ERROR" in errors
     assert analysis.calls == 1
+    assert monitor.calls == 1
+    assert reconciliation.calls == 1
+
+
+def test_daily_jobs_wait_until_0700_but_monitoring_continues(
+    tmp_path, config, monkeypatch
+):
+    repository = SQLiteRepository(tmp_path / "runtime.db", config)
+    analysis = _Analysis()
+    monitor = _Monitor()
+    reconciliation = _Reconciliation()
+
+    monkeypatch.setattr(
+        "jd_holdings.infrastructure.telegram_bot_runtime._daily_analysis_is_due",
+        lambda *_args: False,
+    )
+    monkeypatch.setattr(
+        "jd_holdings.infrastructure.telegram_bot_runtime._is_toss_order_maintenance_window",
+        lambda _now: False,
+    )
+    app = object.__new__(RuntimeTelegramBotApp)
+    app.config = config
+    app.repository = repository
+    app.market_clock = _Clock()
+    app.portfolio_service = _FailingPortfolio()
+    app.analysis_service = analysis
+    app.order_monitor = monitor
+    app.reconciliation_service = reconciliation
+    app.idle_cash_manager = None
+    app._stop = _OneCycleStop()
+    app._last_monitor = -1_000_000_000.0
+    app._last_idle_cash_sweep = -1_000_000_000.0
+    app._reconciliation_notice_at = {}
+    app._send = lambda *args, **kwargs: None
+    app.notify_new_signals = lambda results: None
+    app._notify_runtime_error = lambda *args, **kwargs: None
+
+    app._scheduler_loop()
+
+    assert analysis.calls == 0
     assert monitor.calls == 1
     assert reconciliation.calls == 1

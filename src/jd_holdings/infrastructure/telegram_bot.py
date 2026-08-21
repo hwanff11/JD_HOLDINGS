@@ -150,6 +150,14 @@ def _is_toss_order_maintenance_window(now_kst: datetime) -> bool:
     return now_kst.hour == 8 and 50 <= now_kst.minute <= 59
 
 
+def _daily_analysis_is_due(now: datetime, scheduled_time) -> bool:
+    current = now.replace(tzinfo=SEOUL_TZ) if now.tzinfo is None else now.astimezone(SEOUL_TZ)
+    return (current.hour, current.minute) >= (
+        scheduled_time.hour,
+        scheduled_time.minute,
+    )
+
+
 def _money(value: object) -> str:
     return f"${Decimal(str(value)):,.2f}"
 
@@ -1557,19 +1565,27 @@ class TelegramBotApp:
 
     def _scheduler_loop(self) -> None:
         while not self._stop.wait(self.config.scheduler.poll_interval_seconds):
+            daily_due = _daily_analysis_is_due(
+                datetime.now(SEOUL_TZ),
+                self.config.scheduler.daily_analysis_time_kst,
+            )
             try:
-                completed = self.market_clock.latest_completed_session(
-                    delay_minutes=self.config.scheduler.signal_delay_minutes
+                completed = (
+                    self.market_clock.latest_completed_session(
+                        delay_minutes=self.config.scheduler.signal_delay_minutes
+                    )
+                    if daily_due
+                    else None
                 )
                 last_analysis = self.repository.get_system_value("last_analysis_trade_date")
-                if self.portfolio_service is not None:
+                if self.portfolio_service is not None and completed is not None:
                     portfolio_run = self.portfolio_service.run_month_end()
                     if portfolio_run is not None:
                         for event in portfolio_run.events:
                             self._send(f"📊 {html.escape(event)}")
                         for signal_id in portfolio_run.signals:
                             self._send_signal(self.repository.get_signal(signal_id))
-                if last_analysis != completed.isoformat():
+                if completed is not None and last_analysis != completed.isoformat():
                     results = self.analysis_service.analyze_all()
                     self.notify_new_signals(results)
                 monitor_due = (

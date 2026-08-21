@@ -7,6 +7,7 @@ from datetime import datetime
 
 from .telegram_bot import (
     SEOUL_TZ,
+    _daily_analysis_is_due,
     _format_idle_cash_event,
     _is_toss_order_maintenance_window,
 )
@@ -168,12 +169,17 @@ class RuntimeTelegramBotApp(V322TelegramBotApp):
         """Run independent safety jobs so one failure cannot starve the others."""
         while not self._stop.wait(self.config.scheduler.poll_interval_seconds):
             completed = None
-            try:
-                completed = self.market_clock.latest_completed_session(
-                    delay_minutes=self.config.scheduler.signal_delay_minutes
-                )
-            except Exception as exc:
-                self._notify_runtime_error("MARKET_CLOCK_ERROR", "거래일 계산 오류", exc)
+            daily_due = _daily_analysis_is_due(
+                datetime.now(SEOUL_TZ),
+                self.config.scheduler.daily_analysis_time_kst,
+            )
+            if daily_due:
+                try:
+                    completed = self.market_clock.latest_completed_session(
+                        delay_minutes=self.config.scheduler.signal_delay_minutes
+                    )
+                except Exception as exc:
+                    self._notify_runtime_error("MARKET_CLOCK_ERROR", "거래일 계산 오류", exc)
 
             if self.portfolio_service is not None and completed is not None:
                 try:
