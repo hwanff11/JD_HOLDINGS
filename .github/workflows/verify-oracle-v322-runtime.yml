@@ -2,6 +2,9 @@ name: Verify Oracle V3.2.2 Runtime
 
 on:
   workflow_dispatch:
+  schedule:
+    # Friday 20:30 EST / 21:30 EDT: regular and after-hours sessions are closed.
+    - cron: "30 1 * * 6"
   issues:
     types: [opened]
 
@@ -17,6 +20,7 @@ jobs:
   verify:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       (github.event_name == 'issues' &&
       github.actor == github.repository_owner &&
       startsWith(github.event.issue.title, '[verify-oracle-v322]'))
@@ -55,7 +59,6 @@ jobs:
       - name: Run focused V3.2.2 runtime safety tests
         run: |
           set -Eeuo pipefail
-          python -m pip install --upgrade pip
           pip install -e '.[dev]'
           python -m pytest \
             tests/test_v322_allocation.py \
@@ -92,7 +95,7 @@ jobs:
           SERVER_HOST: ${{ secrets.ORACLE_HOST }}
           SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
           SERVER_TARGET_DIR: /home/ubuntu/JH_HOLDINGS
-          EXPECTED_SHA: ${{ steps.ref.outputs.ref }}
+          EXPECTED_SHA: ${{ github.event_name == 'schedule' && '' || steps.ref.outputs.ref }}
         run: |
           set -Eeuo pipefail
           ssh -i "$SSH_KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=yes \
@@ -104,8 +107,10 @@ jobs:
           test -d "$current"
           test -f "$env_file"
           deployed_sha="$(basename "$current")"
-          test "$deployed_sha" = "$EXPECTED_SHA"
-          test "$current" = "$TARGET_DIR/releases/$EXPECTED_SHA"
+          if [[ -n "$EXPECTED_SHA" ]]; then
+            test "$deployed_sha" = "$EXPECTED_SHA"
+          fi
+          test "$current" = "$TARGET_DIR/releases/$deployed_sha"
           test -x "$current/.venv/bin/jdss"
           test -x "$current/.venv/bin/jdss-bot"
           grep -q 'JDSS-3.2.2-RS6M-ONEWAY-HWM75' "$current/strategy.yaml"
@@ -121,6 +126,77 @@ jobs:
           set +a
           "$current/.venv/bin/jdss" --config "$current/strategy.yaml" validate-config
           "$current/.venv/bin/jdss" --config "$current/strategy.yaml" toss-smoke
+          REMOTE
+
+      - name: Verify Telegram outbound runtime
+        if: github.event_name != 'schedule'
+        env:
+          SSH_KEY_PATH: /home/runner/.ssh/oracle_jdss
+          SSH_KNOWN_HOSTS_PATH: /home/runner/.ssh/known_hosts
+          SERVER_HOST: ${{ secrets.ORACLE_HOST }}
+          SERVER_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+          SERVER_TARGET_DIR: /home/ubuntu/JH_HOLDINGS
+        run: |
+          set -Eeuo pipefail
+          ssh -i "$SSH_KEY_PATH" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$SSH_KNOWN_HOSTS_PATH" "$SERVER_USER@$SERVER_HOST" \
+            "TARGET_DIR='$SERVER_TARGET_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          current="$(readlink -f "$TARGET_DIR/current")"
+          env_file="$TARGET_DIR/shared/.env"
+          set -a
+          source "$env_file"
+          set +a
+          "$current/.venv/bin/python" - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+          chat_ids = [
+              item.strip()
+              for item in os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",")
+              if item.strip()
+          ]
+          if not token or len(chat_ids) != 1:
+              raise SystemExit("Telegram runtime requires one configured administrator")
+          api = f"https://api.telegram.org/bot{token}"
+
+          def call(method: str, data: dict[str, str]) -> object:
+              request = urllib.request.Request(
+                  f"{api}/{method}",
+                  data=urllib.parse.urlencode(data).encode(),
+                  method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  payload = json.load(response)
+              if not payload.get("ok"):
+                  raise RuntimeError(f"Telegram {method} failed")
+              return payload["result"]
+
+          identity = call("getMe", {})
+          if not isinstance(identity, dict) or not identity.get("is_bot"):
+              raise RuntimeError("Telegram bot identity check failed")
+          message = call(
+              "sendMessage",
+              {
+                  "chat_id": chat_ids[0],
+                  "text": "✅ JH_HOLDINGS forced dry-run Telegram runtime smoke",
+                  "disable_notification": "true",
+              },
+          )
+          if not isinstance(message, dict) or "message_id" not in message:
+              raise RuntimeError("Telegram send confirmation missing")
+          call(
+              "deleteMessage",
+              {
+                  "chat_id": chat_ids[0],
+                  "message_id": str(message["message_id"]),
+              },
+          )
+          print("TELEGRAM_RUNTIME_SMOKE=PASS")
+          PY
           REMOTE
 
       - name: Check whether restart verification is safe now
