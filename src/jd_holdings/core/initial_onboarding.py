@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
 from decimal import Decimal
 from typing import Any
-
 
 STATUS_NOT_STARTED = "NOT_STARTED"
 STATUS_ACTIVE = "ACTIVE"
@@ -12,7 +11,7 @@ STATUS_BYPASSED = "BYPASSED_EXISTING_POSITION"
 STATUS_DISABLED = "DISABLED"
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class InitialOnboardingPolicy:
     """One-time staged deployment policy for the first real portfolio entry."""
 
