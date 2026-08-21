@@ -27,6 +27,8 @@
 
 - 최초진입 Telegram 버튼을 기대 DB 단계와 결합해 오래된 버튼 재사용 차단
 - `/help`, Telegram 가이드와 공식 사양의 onboarding 계약 동기화
+- 최초진입 `/onboarding` 메뉴·가이드 노출, 명확한 매수 검토/실행 버튼, 시작일 50→75→100 백테스트를 PR [#168](https://github.com/hwanff11/JH_HOLDINGS/pull/168)로 병합
+- PR #168 최종 Quality Gate [`32493643477`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32493643477), Security Gate [`32493643526`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32493643526), Backtest [`32493643478`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32493643478) 성공
 - release별 `.venv`, SQLite snapshot, atomic `current` switch와 자동 rollback 배포 적용
 - `accept-new`·runner 즉석 신뢰를 제거하고 `ORACLE_SSH_KNOWN_HOSTS` 고정 + `StrictHostKeyChecking=yes` 적용
 - 완료된 Oracle 이름변경 migration workflow/script 제거
@@ -39,7 +41,7 @@
 
 ## 현재 개발 목표
 
-전략 수익 로직은 동결하고 최초진입 계약의 사용자 화면·백테스트 일치를 마감합니다. Telegram 명령 메뉴와 `/guide`에 `/onboarding`을 노출하고, 매수 검토·최종 실행 버튼을 구분하며, 요청 시작일 기준 50% → 75% → 100% 백테스트를 검증합니다. 배포 성공과 live 활성화는 별도 결정이며, 현재 작업은 live 잠금을 해제하지 않습니다.
+최초진입 계약의 사용자 화면·백테스트 일치 변경을 `main`에 병합했습니다. Telegram 명령 메뉴와 `/guide`에 `/onboarding`을 노출하고, 매수 검토·최종 실행 버튼을 구분하며, 요청 시작일 기준 50% → 75% → 100% 백테스트를 검증했습니다. Oracle runtime 반영은 별도 forced dry-run 배포 전이므로 마지막 검증 완료 runtime SHA는 위 값을 유지합니다. live 잠금은 해제하지 않았습니다.
 
 ## 현재 안전장치
 
@@ -69,6 +71,6 @@
 
 ## 바로 다음 작업
 
-1. 최초진입 메뉴·가이드·버튼과 시작일 분할진입 백테스트 변경을 PR 필수 검증으로 확인합니다.
-2. 병합 뒤 최신 `main`을 별도 승인된 forced dry-run 배포 절차로 반영합니다.
+1. 최신 `main`을 별도 승인된 forced dry-run 배포 절차로 Oracle에 반영합니다.
+2. 배포 뒤 Telegram 명령 메뉴·`/guide`·`/onboarding`·매수 버튼 문구와 `/backtest`를 확인합니다.
 3. 실제 계좌 전환 계획과 별도 live 승인 전까지 live 잠금을 해제하지 않습니다.
