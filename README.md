@@ -2,7 +2,7 @@
 
 JH_HOLDINGS는 시장 상태에 맞춰 QQQ·TQQQ·SOXL의 목표비중을 조절하고, 사람의 승인과 원장 검증을 거쳐 운용하는 JDSS 전략 시스템입니다.
 
-현재 릴리즈, Oracle 배포 SHA와 운용 모드는 [`CURRENT_WORK.md`](CURRENT_WORK.md)에서 확인합니다. 실거래 활성화 여부도 이 상태판과 공식 계약을 확인하기 전에는 추정하지 않습니다.
+현재 릴리즈, Oracle 배포 동기화 여부와 운용 모드는 [`CURRENT_WORK.md`](CURRENT_WORK.md)에서 확인합니다. 실거래 활성화 여부도 이 상태판과 공식 계약을 확인하기 전에는 추정하지 않습니다.
 
 ## 먼저 읽기
 

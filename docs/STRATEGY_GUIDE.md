@@ -236,4 +236,4 @@ V3.2.2가 직접 관리하는 티커는 **QQQ, TQQQ, SOXL**입니다. 같은 Tos
 - forced dry-run 상태: `/account` 실제 Toss 조회와 모의원장을 같은 것으로 해석하지 않음
 - 이상 발생: 추가 BUY보다 SAFE_MODE와 원인 확인이 먼저
 
-Telegram 명령과 버튼은 [TELEGRAM_BOT_GUIDE.md](TELEGRAM_BOT_GUIDE.md), 현재 서버·브랜치 상태는 [`CURRENT_WORK.md`](../CURRENT_WORK.md)를 따릅니다.
+Telegram 명령과 버튼은 [TELEGRAM_BOT_GUIDE.md](TELEGRAM_BOT_GUIDE.md), 현재 배포·개발 상태는 [`CURRENT_WORK.md`](../CURRENT_WORK.md)를 따릅니다.

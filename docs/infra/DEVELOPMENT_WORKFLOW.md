@@ -118,7 +118,7 @@ CURRENT_WORK 롤링 갱신
 - 현재 브랜치와 마지막 커밋 SHA
 - 완료한 작업과 의도한 동작 변화
 - 테스트·Actions·백테스트 상태와 결과
-- 배포 여부와 runtime SHA
+- 배포 여부와 source/runtime revision 일치 여부
 - 남은 오류·불일치·다음 우선순위
 - 전략/설정/live 계약 변경 여부
 

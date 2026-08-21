@@ -43,6 +43,6 @@
 
 ## 변동 상태 기록 원칙
 
-활성 개발 브랜치, 최신 `main`·Oracle SHA, 테스트 개수, Actions run, 서버 상태와 미완료 작업은 [`CURRENT_WORK.md`](../CURRENT_WORK.md)에만 기록합니다. README·전략·배포 문서에는 이런 값을 복제하지 않습니다.
+활성 개발 상태, 최신 `main`과 Oracle 배포의 동기화 여부, 검증 결과, 서버 상태와 미완료 작업은 [`CURRENT_WORK.md`](../CURRENT_WORK.md)에만 기록합니다. 공개 문서에는 서버 절대경로·서비스 실명·backup/snapshot 파일명·host 식별자·일회성 Actions run ID를 기록하지 않습니다.
 
 과거 재현은 별도의 문서 archive 디렉터리를 만들지 않고 Git tag, Git history, 병합 PR과 Actions artifact를 사용합니다. 회귀 테스트에 필요한 과거 설정만 [`configs/strategy_v1.1.2.yaml`](../configs/strategy_v1.1.2.yaml)처럼 **ARCHIVE ONLY**로 명확히 표시해 예외적으로 보존합니다.

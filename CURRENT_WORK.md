@@ -8,40 +8,37 @@
 - 공식 릴리즈: **`v3.2.2`**
 - 전략 ID: **`JDSS-3.2.2-RS6M-ONEWAY-HWM75`**
 - config/package: **3.2.2**
-- Oracle 런타임: **`/home/ubuntu/JH_HOLDINGS`**
-- Oracle systemd: **`jh_holdings_bot` active**
-- 마지막 검증 완료 runtime SHA: **`3934c30351508921bf8f8c7f9ac2207e586cbf62`**
-- 마지막 forced dry-run 배포: **Actions run [`32494248302`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32494248302) 성공**
-- 배포 DB snapshot: **`/home/ubuntu/JH_HOLDINGS/shared/backups/jdss-20260821T145153Z-b598999916c006e0d50bdb64a9c83e63927d5fb7.db`**
-- 구 런타임 백업: **`/home/ubuntu/JD_HOLDINGS.migration-backup-20260821T000403Z`** (보존)
-- 구 `jd_holdings_bot`: **disabled / retired**
+- Oracle runtime: **최신 기능 변경 배포 완료 / 서비스 active**
+- 기능 source/runtime revision: **일치 확인 완료** (문서-only revision 제외)
+- 최근 forced dry-run 배포: **성공**
+- 배포 전 DB snapshot: **생성 완료 / 식별자는 비공개 운영 기록에서 관리**
+- 구 runtime: **비활성화·백업 보존 / 식별자는 비공개 운영 기록에서 관리**
 - live: **LOCKED OFF**
 - Oracle 환경: **`JDSS_TRADING_MODE=dry_run` / `JDSS_LIVE_CONFIRMATION` empty**
 - 설정 잠금: **`portfolio.live_enabled=false`**
 - 실제 Toss API: read-only smoke 인증·QQQ/TQQQ/SOXL 시세·시장일 조회 성공
-- runtime verifier: **Actions run [`32494604393`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32494604393) 성공 / `regular` / `PASS_NO_RESTART`**
+- runtime verifier: **배포 revision·forced dry-run·서비스·Toss read-only·Telegram outbound 검증 성공**
 
-문서 전용 커밋은 Oracle 프로그램 동작을 바꾸지 않으므로 runtime SHA와 최신 `main` SHA가 일시적으로 다를 수 있습니다. 코드·설정·workflow가 바뀌면 최신 `main`을 다시 forced dry-run 배포하고 이 상태판을 갱신합니다.
+문서 전용 커밋은 Oracle 프로그램 동작을 바꾸지 않으므로 source/runtime revision이 일시적으로 다를 수 있습니다. 코드·설정·workflow가 바뀌면 최신 `main`을 다시 forced dry-run 배포하고 이 상태판의 동기화 여부를 갱신합니다. 정확한 revision·경로·백업 파일명·실행 ID는 공개 문서에 기록하지 않습니다.
 
 ## 완료된 pre-live hardening
 
 - 최초진입 Telegram 버튼을 기대 DB 단계와 결합해 오래된 버튼 재사용 차단
 - `/help`, Telegram 가이드와 공식 사양의 onboarding 계약 동기화
-- 최초진입 `/onboarding` 메뉴·가이드 노출, 명확한 매수 검토/실행 버튼, 시작일 50→75→100 백테스트를 PR [#168](https://github.com/hwanff11/JH_HOLDINGS/pull/168)로 병합
-- PR #168 최종 Quality Gate [`32493643477`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32493643477), Security Gate [`32493643526`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32493643526), Backtest [`32493643478`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32493643478) 성공
+- 최초진입 `/onboarding` 메뉴·가이드 노출, 명확한 매수 검토/실행 버튼, 시작일 50→75→100 백테스트를 병합·배포
+- 최초진입 변경의 Quality Gate·Security Gate·Backtest 성공
 - release별 `.venv`, SQLite snapshot, atomic `current` switch와 자동 rollback 배포 적용
-- `accept-new`·runner 즉석 신뢰를 제거하고 `ORACLE_SSH_KNOWN_HOSTS` 고정 + `StrictHostKeyChecking=yes` 적용
+- runner 즉석 신뢰를 제거하고 보호된 고정 SSH host key + `StrictHostKeyChecking=yes` 적용
 - 완료된 Oracle 이름변경 migration workflow/script 제거
 - CI coverage 하한, CodeQL 업로드, 안정적인 Quality Gate·Security Gate·Backtest check 적용
 - 공개 저장소의 비밀정보·배포정보 노출 경계 점검
-- PR [#151](https://github.com/hwanff11/JH_HOLDINGS/pull/151), [#153](https://github.com/hwanff11/JH_HOLDINGS/pull/153), [#155](https://github.com/hwanff11/JH_HOLDINGS/pull/155), [#157](https://github.com/hwanff11/JH_HOLDINGS/pull/157) 병합
-- 최종 코드 SHA의 Quality Gate [`32477547949`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547949), Security Gate [`32477547970`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547970), Backtest [`32477547963`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547963) 성공
+- pre-live hardening 변경 병합 및 required checks 성공
 - pinned SSH trust, release-local venv, DB snapshot, atomic switch, rollback safeguard, service active, forced dry-run, Toss read-only smoke를 배포 run에서 확인
 - hashed `known_hosts` 호환 runtime verifier에서 배포 SHA·release venv·live 잠금·service active·설정 검증·Toss read-only smoke와 focused SAFE_MODE/reconciliation 테스트 성공
 
 ## 현재 개발 목표
 
-장 마감 직후 발생하던 일일 배분·분석·신호 Telegram 알림을 서머타임과 무관한 한국시간 오전 7시로 고정합니다. 주문 감시·정합성 점검·안전 경고의 1분 주기는 유지합니다. 변경 검증과 Oracle forced dry-run 배포를 진행하며 live 잠금은 해제하지 않습니다.
+장 마감 뒤 일일 배분·분석·신호 Telegram 알림을 서머타임과 무관한 한국시간 오전 7시로 고정해 forced dry-run에 배포했습니다. 주문 감시·정합성 점검·안전 경고의 1분 주기는 유지하며 live 잠금은 해제하지 않습니다.
 
 ## 현재 안전장치
 
@@ -71,6 +68,6 @@
 
 ## 바로 다음 작업
 
-1. 오전 7시 일일 알림 고정 변경을 PR 필수 검증으로 확인합니다.
-2. 병합 뒤 최신 `main`을 Oracle forced dry-run으로 배포하고 runtime을 검증합니다.
+1. 다음 미국 시장일에 일일 알림이 한국시간 오전 7시 이후 도착하는지 확인합니다.
+2. 운영 로그에서 주문 감시·정합성 점검의 1분 주기가 계속 유지되는지 확인합니다.
 3. 실제 계좌 전환 계획과 별도 live 승인 전까지 live 잠금을 해제하지 않습니다.
