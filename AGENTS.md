@@ -77,7 +77,7 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 �
 4. 변경사항을 명확한 커밋 메시지로 commit한다.
 5. 현재 활성 개발 브랜치에 push한다.
 6. `CURRENT_WORK.md`의 마지막 완료 작업, 다음 작업, 마지막 커밋 정보를 최신 상태로 갱신하고 필요하면 함께 commit/push한다.
-7. 필요한 경우(실제 배포 반영 시) `env -u GITHUB_TOKEN ./deploy.sh`를 통해 자동 배포를 수행한다.
+7. 실제 배포 반영이 승인된 경우 환경에 맞는 표준 경로를 사용한다. 로컬/IDE는 신뢰된 `SSH_KNOWN_HOSTS_PATH`를 지정해 `env -u GITHUB_TOKEN ./deploy.sh`를 실행하고, ChatGPT는 GitHub의 owner-only **Deploy Oracle Dry Run** ChatOps를 시작해 최신 `main`을 배포한다. GitHub Actions 화면의 수동 버튼 클릭은 필수 조건이 아니다.
 8. 마지막 커밋 SHA, 변경 요약, 테스트 결과, 남은 작업을 보고한다.
 
 ## Git 안전 규칙
@@ -92,9 +92,11 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 �
 
 ## 실행 환경 역할 분리
 
-- GitHub Actions는 `pytest`, Ruff, 설정 검증, 전략 후보 비교, 장기 백테스트 등 **일회성·반복 가능한 연구/검증 작업의 우선 실행 환경**으로 사용한다.
-- Oracle Cloud는 Telegram Bot, 정규장 종료 후 분석, 승인/주문/포지션 감시 등 **JDSS 24시간 운영 서비스 전용 환경**으로 사용한다.
-- 연구용 대규모 백테스트를 Oracle Cloud 운영 프로세스와 혼합하지 않는다.
+- **Codex·Antigravity(로컬/IDE)**: 구현, 디버깅, 로컬 통합 테스트와 작업트리 관리가 주 역할이다. 사용자의 미커밋 변경을 보존하고, 원격 비밀값이나 로그인 세션이 있다고 가정하지 않는다.
+- **ChatGPT·GitHub 연결 환경**: 원격 저장소 확인, 브랜치·PR 작성, Actions 상태 점검과 승인된 owner-only ChatOps 실행이 주 역할이다. 연결된 GitHub 권한과 Environment secret을 사용해 배포 workflow를 시작할 수 있지만 비밀값 자체를 조회·복제하지 않는다.
+- **GitHub Actions**: `pytest`, Ruff, 설정 검증, Security Gate, Backtest와 Oracle forced dry-run 배포를 수행하는 반복 가능한 표준 실행 환경이다. 배포는 검증된 최신 `main`과 `oracle-dry-run` Environment secret만 사용한다.
+- **Oracle Cloud**: Telegram Bot, 정규장 종료 후 분석, 승인/주문/포지션 감시 등 **JDSS 24시간 운영 서비스 전용 환경**이다. 연구용 대규모 백테스트와 후보 탐색을 운영 프로세스에 섞지 않는다.
+- 어떤 에이전트도 배포 권한을 live 활성화 권한으로 해석하지 않는다. `portfolio.live_enabled=false`, forced dry-run과 빈 live confirmation은 별도 명시적 승인 전까지 유지한다.
 - 전략 변경은 별도 연구/개발 브랜치에서 GitHub Actions 검증을 거치고, 채택된 변경만 PR을 통해 `main`에 반영한 뒤 필요 시 Oracle Cloud에 배포한다.
 
 ## JDSS 전략 프로젝트 규칙

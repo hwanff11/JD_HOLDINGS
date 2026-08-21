@@ -81,3 +81,14 @@ def test_github_deploy_validates_current_v322_contract():
     assert "rs_sleeve_fraction: 0.50" in workflow
     assert "jdss_overlay_weight: 0.05" in workflow
     assert "live_enabled: false" in workflow
+
+def test_runtime_verifier_supports_hashed_pinned_known_hosts():
+    workflow = (ROOT / ".github/workflows/verify-oracle-v322-runtime.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "ORACLE_SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}" in workflow
+    assert "StrictHostKeyChecking=yes" in workflow
+    assert "authoritative parser" in workflow
+    assert "ssh-keygen -F" not in workflow
+    assert "accept-new" not in workflow
+    assert "ssh-keyscan" not in workflow

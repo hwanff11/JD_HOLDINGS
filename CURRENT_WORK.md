@@ -10,25 +10,34 @@
 - config/package: **3.2.2**
 - Oracle 런타임: **`/home/ubuntu/JH_HOLDINGS`**
 - Oracle systemd: **`jh_holdings_bot` active**
-- Oracle 런타임 마이그레이션 완료·검증 SHA: **`7eb74b12d9797c1882f7952265141ef81040a09e`**
-- 마이그레이션 백업: **`/home/ubuntu/JD_HOLDINGS.migration-backup-20260821T000403Z`** (보존)
+- 마지막 검증 완료 runtime SHA: **`7a90e983baf85e38f0672dfb1f5f5598dac313d1`**
+- 마지막 forced dry-run 배포: **Actions run [`32479034778`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32479034778) 성공**
+- 배포 DB snapshot: **`/home/ubuntu/JH_HOLDINGS/shared/backups/jdss-20260821T115234Z-e23d5e7c6aa2cfa5a4b8bf1b221d6144adcfbc73.db`**
+- 구 런타임 백업: **`/home/ubuntu/JD_HOLDINGS.migration-backup-20260821T000403Z`** (보존)
 - 구 `jd_holdings_bot`: **disabled / retired**
 - live: **LOCKED OFF**
 - Oracle 환경: **`JDSS_TRADING_MODE=dry_run` / `JDSS_LIVE_CONFIRMATION` empty**
+- 설정 잠금: **`portfolio.live_enabled=false`**
 - 실제 Toss API: read-only smoke 인증·QQQ/TQQQ/SOXL 시세·시장일 조회 성공
+
+문서 전용 커밋은 Oracle 프로그램 동작을 바꾸지 않으므로 runtime SHA와 최신 `main` SHA가 일시적으로 다를 수 있습니다. 코드·설정·workflow가 바뀌면 최신 `main`을 다시 forced dry-run 배포하고 이 상태판을 갱신합니다.
+
+## 완료된 pre-live hardening
+
+- 최초진입 Telegram 버튼을 기대 DB 단계와 결합해 오래된 버튼 재사용 차단
+- `/help`, Telegram 가이드와 공식 사양의 onboarding 계약 동기화
+- release별 `.venv`, SQLite snapshot, atomic `current` switch와 자동 rollback 배포 적용
+- `accept-new`·runner 즉석 신뢰를 제거하고 `ORACLE_SSH_KNOWN_HOSTS` 고정 + `StrictHostKeyChecking=yes` 적용
+- 완료된 Oracle 이름변경 migration workflow/script 제거
+- CI coverage 하한, CodeQL 업로드, 안정적인 Quality Gate·Security Gate·Backtest check 적용
+- 공개 저장소의 비밀정보·배포정보 노출 경계 점검
+- PR [#151](https://github.com/hwanff11/JH_HOLDINGS/pull/151), [#153](https://github.com/hwanff11/JH_HOLDINGS/pull/153), [#155](https://github.com/hwanff11/JH_HOLDINGS/pull/155), [#157](https://github.com/hwanff11/JH_HOLDINGS/pull/157) 병합
+- 최종 코드 SHA의 Quality Gate [`32477547949`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547949), Security Gate [`32477547970`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547970), Backtest [`32477547963`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32477547963) 성공
+- pinned SSH trust, release-local venv, DB snapshot, atomic switch, rollback safeguard, service active, forced dry-run, Toss read-only smoke를 배포 run에서 확인
 
 ## 현재 개발 목표
 
-`hardening/pre-live-operations`에서 실거래 전 운영·보안 마감 작업을 진행합니다. 전략 수익 로직은 바꾸지 않고 다음 안전 경계를 강화합니다.
-
-1. 최초진입 Telegram의 오래된 단계 버튼을 현재 DB 단계와 묶어 재사용 차단
-2. `/help`, Telegram 가이드, 공식 사양의 최초진입 계약 동기화
-3. Oracle 배포를 release별 가상환경 + DB 백업 + atomic switch + 자동 rollback 구조로 강화
-4. SSH `accept-new` 제거 및 검증된 `known_hosts` 고정
-5. 완료된 Oracle 이름변경 migration workflow/script 제거
-6. Security workflow의 CodeQL 업로드와 CI coverage 하한 추가
-7. GitHub `main` branch protection/ruleset을 필수 운영조건으로 명시
-8. public 저장소의 비밀정보·배포정보 노출 경계를 다시 점검
+전략 수익 로직은 동결하고 forced dry-run 운영 리허설과 live 차단 조건 마감을 진행합니다. 배포 성공과 live 활성화는 별도 결정이며, 현재 작업은 live 잠금을 해제하지 않습니다.
 
 ## 현재 안전장치
 
@@ -40,23 +49,19 @@
 - 시작·주기 reconciliation 불일치 시 sticky SAFE_MODE
 - 실제 Toss read-only preflight와 forced dry-run 모의원장을 자동 혼합하지 않음
 - 최초진입 50% → 75% → 100%, 단계별 전량 체결 후 최소 3 미국 거래일, 단계 개방은 운영자 확인 필요
-- 배포 전 정확한 최신 `main`, 설정, 테스트, dry-run 잠금 검증
+- 배포 workflow는 정확한 최신 `main`만 받아 pinned SSH·강제 dry-run·rollback-safe smoke를 검증
 
-## live 차단 조건
+## 아직 확인할 항목
 
-현재도 live 전환은 승인하지 않습니다. 다음 항목을 모두 끝내기 전까지 잠금을 유지합니다.
-
-- pre-live hardening PR 전체 CI/Security 성공
-- GitHub `main` branch protection/ruleset 활성화
-- Oracle SSH host key를 신뢰 경로로 확인해 Actions `ORACLE_SSH_KNOWN_HOSTS`에 등록
-- 강화된 배포 스크립트로 forced dry-run 재배포 및 rollback-safe smoke 확인
-- `/help` → `/onboarding` → 단계 버튼 → BUY 2단계 승인 → 주문감시 → 재시작 → reconciliation 리허설
+- runtime verifier의 hashed `known_hosts` 호환을 배포 workflow와 동일하게 맞춘 뒤, 닫힌 시장에서 restart/recovery와 reconciliation/SAFE_MODE를 재검증
+- Telegram 프로세스와 라이브러리는 서비스에 포함되어 있으나 실제 `/ping`, `/help`, `/portfolio`, `/onboarding`, `/account`, `/order`, `/errors` 왕복은 별도 운영 리허설 필요
+- GitHub `main`에서 Quality Gate·Security Gate·Backtest를 강제하는 branch protection/ruleset 최종 확인·활성화
 - 실제 Toss 관리 티커 기존 보유·열린 주문·주문가능금액의 live 전환 계획 확정
-- 실제 주문 어댑터/회계/migration 리허설 검증과 별도 명시적 live 승인
+- 실제 주문 어댑터·회계·migration 리허설과 별도 명시적 live 승인
 
 ## 바로 다음 작업
 
-1. pre-live hardening 변경을 PR로 묶고 Quality Gate·Security를 통과시킵니다.
-2. GitHub `main` 보호와 Oracle SSH known_hosts 값을 운영 설정에 반영합니다.
-3. merge 후 Oracle에 forced dry-run으로 재배포하고 runtime verifier를 실행합니다.
-4. 모든 운영 리허설이 끝날 때까지 live 잠금을 유지합니다.
+1. runtime verifier의 pinned SSH 검증을 OpenSSH 권위 검증 방식으로 통일하고 실행합니다.
+2. 닫힌 시장에서 systemd restart/recovery, reconciliation/SAFE_MODE와 Telegram 명령 왕복을 확인합니다.
+3. GitHub `main` 필수 check 보호를 확정하고 forced dry-run soak를 계속합니다.
+4. 모든 운영 리허설과 별도 승인이 끝날 때까지 live 잠금을 유지합니다.

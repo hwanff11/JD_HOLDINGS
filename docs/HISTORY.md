@@ -40,6 +40,7 @@ V3.1.1은 최대낙폭이 비교적 낮았지만 평균노출 약 21%로 자금 
 | v3.2.2 전환 | 기존 dry-run SQLite를 `v322-migration` 이름으로 백업하고 새 allocation 원장을 초기화 | 완료된 일회성 전환이며, 다음 릴리즈의 일반 배포 절차로 재사용하지 않음 |
 | v3.2.2 운영 보강 | 공용 백테스트 runner, Telegram V3.2.2 UX, 고정 목표수량·체결 crash 복구·브로커 응답 검증·실계좌 read-only preflight 도입 | 병합 PR [#137](https://github.com/hwanff11/JH_HOLDINGS/pull/137); live hard lock 유지 |
 | JH 런타임 이름변경 | Oracle 운영 경로를 `/home/ubuntu/JH_HOLDINGS`, 서비스명을 `jh_holdings_bot`으로 rollback-safe 이전하고 구 서비스를 비활성화 | PR #139~#143 및 Actions run `32431189587`; DB·`.env`·dry-run 잠금·Toss read-only smoke 검증 후 일회성 workflow/script는 제거 |
+| v3.2.2 pre-live hardening | Telegram stale onboarding 차단, release-local venv·DB snapshot·atomic switch·자동 rollback, pinned SSH trust, CI/Security/Backtest 게이트를 적용하고 forced dry-run으로 재배포 | PR #151·#153·#155·#157, 최종 배포 Actions run [`32479034778`](https://github.com/hwanff11/JH_HOLDINGS/actions/runs/32479034778); runtime SHA `7a90e983baf85e38f0672dfb1f5f5598dac313d1`, live 잠금 유지 |
 | 문서 정리 | 현행 문서는 고정 파일을 제자리 갱신하고 역사만 이 파일에 추가 | 버전별 복사 문서의 불일치 방지; 전체 규칙은 [`README.md`](README.md) |
 
 ## 대표적인 미채택 연구

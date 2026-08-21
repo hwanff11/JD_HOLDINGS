@@ -56,7 +56,11 @@ JDSS_LIVE_CONFIRMATION=
 env -u GITHUB_TOKEN ./deploy.sh
 ```
 
-GitHub Actions의 **Deploy Oracle Dry Run**도 같은 `deploy.sh`를 호출합니다. 표준 순서는 다음과 같습니다.
+GitHub Actions의 **Deploy Oracle Dry Run**도 같은 `deploy.sh`를 호출합니다. 저장소 소유자는 Actions 화면의 버튼을 누르지 않아도 제목이 `[deploy-oracle-dry-run]`으로 시작하는 issue를 만들어 owner-only ChatOps로 실행할 수 있습니다. ChatGPT는 사용자가 배포를 승인했고 GitHub 연결 권한이 있을 때 이 issue를 생성하고 run 결과를 끝까지 확인할 수 있습니다.
+
+이 자동화는 임의 브랜치나 SHA를 입력받지 않고 실행 시점의 정확한 최신 `main`만 배포합니다. `ORACLE_SSH_KNOWN_HOSTS`를 포함한 Environment secret은 사전에 구성되어 있어야 하며, ChatGPT·Codex가 비밀값 자체를 알아내거나 복사할 필요는 없습니다. 배포 성공은 forced dry-run 운영 갱신일 뿐 live 활성화가 아닙니다.
+
+표준 순서는 다음과 같습니다.
 
 1. 정확한 최신 `main` 재확인
 2. 새 release directory를 만들고 **release 내부 `.venv`에 의존성 설치**

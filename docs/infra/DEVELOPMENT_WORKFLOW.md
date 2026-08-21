@@ -31,9 +31,12 @@ Codex, ChatGPT와 Antigravity가 GitHub를 공용 Source of Truth로 사용해 �
 ### ChatGPT·GitHub
 
 - 최신 `main`, `CURRENT_WORK.md`와 관련 기준 문서를 다시 읽고 작업 범위 확정
-- 별도 `codex/` 또는 research 브랜치와 Draft PR에서 변경 추적
+- 별도 작업 브랜치와 PR에서 변경 추적
 - Quality Gate, Security, Backtest/Research와 필요한 workflow 실행
+- 사용자가 배포를 승인한 요청에서는 owner-only ChatOps issue로 **Deploy Oracle Dry Run**을 시작하고, 정확한 최신 `main`·pinned SSH·forced dry-run 결과를 확인
+- 사용자가 Actions 화면의 버튼을 직접 누를 필요는 없지만, 연결된 GitHub 권한과 사전에 구성된 `oracle-dry-run` Environment secret은 필요
 - 실패 시 Job/Step 로그에서 원인을 확인하고 같은 조건으로 재검증
+- 비밀값은 읽거나 문서·로그·채팅에 복제하지 않고, workflow의 존재·성공 여부만 검증
 - 연구 결과의 핵심 지표는 Job Summary, 상세 원본은 artifact에 보존
 - 미채택 후보와 일회성 workflow·스크립트·결과물을 `main`에 누적하지 않음
 
@@ -76,6 +79,8 @@ CURRENT_WORK 롤링 갱신
 ~~~
 
 비동기 Actions가 끝나지 않았으면 결과를 추정하지 않고 실행 중 상태를 정확히 보고합니다. 확인 가능한 실패 분석·수정·재검증은 한 요청 범위 안에서 계속 진행합니다.
+
+배포 ChatOps는 저장소 소유자가 제목을 `[deploy-oracle-dry-run]`으로 시작하는 issue를 열면 동작합니다. runtime verifier는 `[verify-oracle-v322]` 접두사를 사용합니다. 두 workflow 모두 임의 ref 입력을 받지 않고 실행 시점의 최신 `main`만 checkout하며, 배포·검증 성공이 live 잠금 해제를 뜻하지 않습니다.
 
 ## 전략 연구 흐름
 
