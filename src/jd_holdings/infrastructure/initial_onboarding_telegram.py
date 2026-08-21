@@ -110,12 +110,13 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
             STATUS_BYPASSED: "⚠️ 기존 포지션 감지",
             STATUS_DISABLED: "⏸ 비활성",
         }
+        minimum_sessions = snapshot["minimum_sessions_between_stages"]
         lines = [
             "🪜 <b>[JDSS 최초 실전 진입 · 3단계]</b>",
             "",
             f"• <b>상태</b> : {labels.get(status, html.escape(status))}",
             "• <b>방식</b> : <code>50% → 75% → 100%</code>",
-            f"• <b>단계 간격</b> : 최소 <code>{snapshot['minimum_sessions_between_stages']} 미국 거래일</code>",
+            f"• <b>단계 간격</b> : 최소 <code>{minimum_sessions} 미국 거래일</code>",
         ]
         if status == STATUS_ACTIVE:
             lines.extend(
@@ -129,11 +130,14 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
                 next_fraction = Decimal(str(snapshot["next_fraction"]))
                 if snapshot["next_stage_ready"]:
                     lines.append(
-                        f"• <b>다음 단계</b> : ✅ 누적 <code>{next_fraction * 100:.0f}%</code> 진입 가능"
+                        f"• <b>다음 단계</b> : ✅ 누적 "
+                        f"<code>{next_fraction * 100:.0f}%</code> 진입 가능"
                     )
                 elif snapshot["stage_filled"]:
+                    remaining = snapshot["sessions_remaining"]
                     lines.append(
-                        f"• <b>다음 단계</b> : 미국 거래일 <code>{snapshot['sessions_remaining']}일</code> 후 가능"
+                        "• <b>다음 단계</b> : 미국 거래일 "
+                        f"<code>{remaining}일</code> 후 가능"
                     )
                 else:
                     lines.append("• <b>다음 단계</b> : 현재 단계 목표수량 체결 후 대기 시작")
