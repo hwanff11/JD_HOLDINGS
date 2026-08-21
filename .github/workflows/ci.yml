@@ -70,3 +70,66 @@ jobs:
       - name: Record documentation-only fast path
         if: steps.scope.outputs.run_full != 'true'
         run: echo 'QUALITY_GATE=PASS_DOCS_ONLY' >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup-retired-workflow-runs:
+    name: Cleanup retired workflow runs
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'maintenance/cleanup-retired-workflow-runs'
+    permissions:
+      actions: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete runs belonging only to retired workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          retired_paths=(
+            ".github/workflows/v322-config-contract-fix.yml"
+            ".github/workflows/jdss-hybrid-research.yml"
+            ".github/workflows/research-atr-redundancy.yml"
+            ".github/workflows/research-stage-score-extended.yml"
+            ".github/workflows/research-monthly-returns.yml"
+            ".github/workflows/jdss-oversold-ablation.yml"
+            ".github/workflows/research-oversold-internals.yml"
+            ".github/workflows/research-oversold-quick.yml"
+            ".github/workflows/research-score-ablation-frequency.yml"
+            ".github/workflows/research-score-ablation-threshold.yml"
+            ".github/workflows/research-score-weights-fast.yml"
+            ".github/workflows/research-score-weights.yml"
+            ".github/workflows/research-stage-candidate-validation.yml"
+            ".github/workflows/research-stage-score-probe.yml"
+            ".github/workflows/research-stage-score-thresholds.yml"
+            ".github/workflows/jdss-profit-lock-parity.yml"
+            ".github/workflows/jdss-v31-v32-compare.yml"
+            ".github/workflows/research-backtest.yml"
+            ".github/workflows/research-v322-calendar-phase.yml"
+            ".github/workflows/v322-format-final.yml"
+            ".github/workflows/research-v322-lookback.yml"
+            ".github/workflows/v322-promotion-batch-fix.yml"
+            ".github/workflows/research-v322-promotion-debug.yml"
+            ".github/workflows/research-v322-signal-proxy.yml"
+            ".github/workflows/research-v322-sleeve.yml"
+          )
+
+          deleted=0
+          for path in "${retired_paths[@]}"; do
+            workflow_id="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows?per_page=100" \
+              --jq ".workflows[] | select(.path == \"$path\") | .id" | head -n1)"
+            if [[ -z "$workflow_id" ]]; then
+              echo "Already absent: $path"
+              continue
+            fi
+            mapfile -t run_ids < <(
+              gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_id/runs?per_page=100" \
+                --jq '.workflow_runs[].id'
+            )
+            for run_id in "${run_ids[@]}"; do
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id"
+              deleted=$((deleted + 1))
+            done
+            echo "Deleted ${#run_ids[@]} runs: $path"
+          done
+          echo "RETIRED_WORKFLOW_RUNS_DELETED=$deleted" >> "$GITHUB_STEP_SUMMARY"
