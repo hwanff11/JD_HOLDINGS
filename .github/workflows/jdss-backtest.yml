@@ -177,7 +177,7 @@ jobs:
           set -Eeuo pipefail
           mkdir -p reports
           python scripts/research_initial_entry_scenarios.py \
-            --stride 5 \
+            --stride 1 \
             --output-json reports/initial-entry-research.json \
             --output-md reports/initial-entry-research.md
       - name: Publish summary
