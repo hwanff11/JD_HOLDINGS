@@ -82,7 +82,9 @@ def test_document_lifecycle_uses_fixed_current_files_and_git_history():
 def test_mutable_runtime_status_has_single_source():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     docs_readme = (ROOT / "docs/README.md").read_text(encoding="utf-8")
-    workflow = (ROOT / "docs/infra/DEVELOPMENT_WORKFLOW.md").read_text(encoding="utf-8")
+    workflow = (ROOT / "docs/infra/DEVELOPMENT_WORKFLOW.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "현재 브랜치·Oracle 배포·검증 상태" in readme
     assert "변동 상태 기록 원칙" in docs_readme
@@ -123,3 +125,29 @@ def test_one_page_report_and_guide_cover_required_plain_language_topics():
         "clientOrderId",
     ):
         assert required in guide
+
+
+def test_onboarding_contract_lives_in_existing_current_documents():
+    spec = (ROOT / "docs/JDSS_FINAL_SPEC.md").read_text(encoding="utf-8")
+    telegram = (ROOT / "docs/TELEGRAM_BOT_GUIDE.md").read_text(encoding="utf-8")
+    docs_readme = (ROOT / "docs/README.md").read_text(encoding="utf-8")
+
+    assert "최초 실전 진입 3단계 계약" in spec
+    assert "50%" in spec and "75%" in spec and "100%" in spec
+    assert "오래된 버튼" in spec
+    assert "/onboarding" in telegram
+    assert "callback" in telegram
+    assert not (ROOT / "docs/INITIAL_ONBOARDING.md").exists()
+    assert "INITIAL_ONBOARDING.md" not in docs_readme
+
+
+def test_runtime_identifiers_match_completed_jh_migration():
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    current = (ROOT / "CURRENT_WORK.md").read_text(encoding="utf-8")
+    deployment = (ROOT / "docs/infra/DEPLOYMENT.md").read_text(encoding="utf-8")
+
+    for text in (agents, current, deployment):
+        assert "/home/ubuntu/JH_HOLDINGS" in text
+        assert "jh_holdings_bot" in text
+    assert "과거 `/home/ubuntu/JD_HOLDINGS`" in agents
+    assert "구 `jd_holdings_bot`" in current
