@@ -6,7 +6,7 @@
 
 ## 1. 서버 구조
 
-기본 운영 경로는 `/home/ubuntu/JH_HOLDINGS`입니다.
+기본 운영 경로와 서비스 식별자는 보호된 배포 설정에서 관리합니다. 공개 문서에는 실제 서버의 절대 경로·OS 사용자명·서비스 실명·백업 파일명을 기록하지 않습니다.
 
 - 현재 코드: `current` 심볼릭 링크
 - commit별 release: `releases/<commit-sha>`
@@ -16,9 +16,9 @@
 - 로그: `shared/logs/jdss.log`
 - 시세 캐시: `shared/data/cache`
 - 비밀정보: `shared/.env`
-- systemd: `jh_holdings_bot`
+- systemd: 보호된 배포 설정에 지정된 서비스
 
-과거 `/home/ubuntu/JD_HOLDINGS`와 `jd_holdings_bot`은 완료된 이름변경 마이그레이션의 이전 식별자입니다. 새 배포나 문서에서 재사용하지 않습니다.
+이전 운영 대상의 식별자는 비공개 운영 기록에만 보존하며 새 배포에서 재사용하지 않습니다.
 
 `.env`는 `0600`, systemd는 `UMask=0077`을 유지합니다. forced dry-run 계약에서는 다음 값을 배포 전후 모두 확인합니다.
 
@@ -69,7 +69,7 @@ GitHub Actions의 **Deploy Oracle Dry Run**도 같은 `deploy.sh`를 호출합�
 5. 서비스를 정지한 직후 SQLite `backup()` API로 `shared/backups/`에 일관된 DB snapshot 생성
 6. 새 systemd unit 설치 및 `current`를 새 release로 atomic switch
 7. 새 release의 `jdss init-db`·config validation 실행
-8. `jh_holdings_bot` 시작 후 forced dry-run·service active·Toss read-only smoke 확인
+8. 설정된 서비스 시작 후 forced dry-run·service active·Toss read-only smoke 확인
 9. 모든 검증이 성공한 뒤 배포 완료
 
 서비스 정지 이후 어떤 단계라도 실패하면 자동 rollback이 동작합니다.

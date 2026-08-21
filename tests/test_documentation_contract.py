@@ -141,13 +141,17 @@ def test_onboarding_contract_lives_in_existing_current_documents():
     assert "INITIAL_ONBOARDING.md" not in docs_readme
 
 
-def test_runtime_identifiers_match_completed_jh_migration():
-    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    current = (ROOT / "CURRENT_WORK.md").read_text(encoding="utf-8")
-    deployment = (ROOT / "docs/infra/DEPLOYMENT.md").read_text(encoding="utf-8")
+def test_public_markdown_omits_operational_identifiers():
+    documents = [*ROOT.glob("*.md"), *(ROOT / "docs").rglob("*.md")]
+    text = "\n".join(document.read_text(encoding="utf-8") for document in documents)
 
-    for text in (agents, current, deployment):
-        assert "/home/ubuntu/JH_HOLDINGS" in text
-        assert "jh_holdings_bot" in text
-    assert "과거 `/home/ubuntu/JD_HOLDINGS`" in agents
-    assert "구 `jd_holdings_bot`" in current
+    for forbidden in (
+        "/home/ubuntu/",
+        "jh_holdings_bot",
+        "jd_holdings_bot",
+        "migration-backup",
+    ):
+        assert forbidden not in text
+
+    assert re.search(r"github\.com/[^\s)]+/actions/runs/\d+", text) is None
+    assert re.search(r"jdss-\d{8}T\d{6}Z-[0-9a-f]+\.db", text) is None

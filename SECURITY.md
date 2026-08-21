@@ -3,6 +3,7 @@
 비밀정보·Telegram 승인·Toss 주문·SQLite·GitHub Actions·Oracle에 적용하는 전체 기준은 [`docs/infra/SECURITY.md`](docs/infra/SECURITY.md)를 따릅니다.
 
 - API 키, Telegram 토큰, SSH 개인키, 전체 계좌번호와 인증 헤더를 커밋하거나 공개 Issue에 쓰지 않습니다.
+- 공개 Markdown에는 서버 절대경로·OS 사용자명·서비스 실명·backup/snapshot 파일명·host 식별자와 일회성 실행 ID를 쓰지 않습니다.
 - 저장소는 public이므로 커밋된 전략·운영 구조는 공개 정보로 간주합니다. 비밀이어야 하는 값은 코드가 아니라 Environment Secret과 Oracle `shared/.env`에만 둡니다.
 - `main`은 branch protection/ruleset, PR, Quality Gate와 Security 검사를 통과한 변경만 허용합니다.
 - Oracle SSH는 검증된 host key를 `known_hosts`에 고정하고 `accept-new`를 사용하지 않습니다.

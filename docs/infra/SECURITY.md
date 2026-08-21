@@ -20,6 +20,7 @@ Dry-run broker와 Toss OpenAPI는 서로 다른 경계입니다. 한쪽의 성�
 저장소가 public이어도 코드 자체가 자격증명이 되지 않도록 설계합니다.
 
 - `.env`, Telegram Bot Token, Toss 앱 키·시크릿, SSH 개인키, 전체 계좌번호, 인증 헤더, GitHub Environment secret을 Git·로그·문서·Issue에 저장하지 않습니다.
+- 공개 Markdown에는 서버 절대경로·OS 사용자명·서비스 실명·backup/snapshot 파일명·host 식별자·일회성 실행 ID를 남기지 않습니다. 정확한 운영 식별자는 보호된 배포 설정과 비공개 운영 기록에서만 관리합니다.
 - `.env.example`에는 키 이름과 안전한 비밀 아닌 기본값만 둡니다.
 - Actions 비밀값은 승인된 Environment Secret으로 관리합니다.
 - 예외·API 원문·주문 응답에 인증정보나 승인 토큰이 노출되지 않게 합니다.

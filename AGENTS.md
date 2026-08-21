@@ -2,7 +2,7 @@
 
 이 파일은 Codex, ChatGPT, 그리고 Antigravity(안티그라비티)가 이 저장소에서 작업할 때 공통으로 따라야 할 작업 규칙을 정의한다.
 
-GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 패키지명 `jd_holdings`와 CLI `jdss` / `jdss-bot`은 유지한다. Oracle 운영 기준은 **`/home/ubuntu/JH_HOLDINGS` + `jh_holdings_bot`**이며, 과거 `/home/ubuntu/JD_HOLDINGS` + `jd_holdings_bot`은 완료된 마이그레이션의 이전 식별자이므로 새 배포·문서·자동화에서 다시 사용하지 않는다.
+GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 패키지명 `jd_holdings`와 CLI `jdss` / `jdss-bot`은 유지한다. Oracle의 정확한 대상 디렉터리·서비스명·백업 식별자는 보호된 배포 설정과 비공개 운영 기록에서 관리하며 공개 Markdown에 적지 않는다. 완료된 구 runtime 식별자는 새 배포·문서·자동화에서 다시 사용하지 않는다.
 
 세부 절차는 `docs/infra/DEVELOPMENT_WORKFLOW.md`를 따른다.
 현재 작업 상태와 인수인계 정보는 `CURRENT_WORK.md`를 Source of Truth로 사용한다.
@@ -59,6 +59,7 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 �
 - 문서-only PR은 안정적인 필수 check 이름을 유지한 fast path를 사용하고, 전략·코드·의존성에 영향이 없으면 전체 pytest·CodeQL·canonical backtest를 반복하지 않는다.
 - 새 commit이 이전 실행을 대체하면 concurrency로 오래된 PR 검증을 취소한다. 같은 SHA의 배포를 반복하거나 runtime 영향이 없는 문서-only commit을 Oracle에 재배포하지 않는다.
 - 공개 저장소에는 API 키·토큰·계좌번호·서버 비밀값을 두지 않으며, 공개가 필요 없는 전략/운영 정보는 별도 승인 없이 새로 노출하지 않는다.
+- 공개 Markdown에는 서버 절대경로, OS 사용자명, 서비스 실명, backup/snapshot 파일명, host 식별자와 일회성 실행 ID를 기록하지 않는다. 상태판에는 성공 여부와 검증 범위만 남기고 정확한 값은 보호된 설정·비공개 운영 기록에서 확인한다.
 
 ## 사용자 단축 명령
 
