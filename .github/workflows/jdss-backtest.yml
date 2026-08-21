@@ -151,3 +151,44 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: gh issue comment "$ISSUE_NUMBER" --body-file reports/backtest.md
+
+  research_initial_entry:
+    if: >-
+      github.event_name == 'issues' &&
+      github.actor == github.repository_owner &&
+      startsWith(github.event.issue.title, '[research-initial-entry]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Run initial-entry scenario sweep
+        run: |
+          set -Eeuo pipefail
+          mkdir -p reports
+          python scripts/research_initial_entry_scenarios.py \
+            --stride 5 \
+            --output-json reports/initial-entry-research.json \
+            --output-md reports/initial-entry-research.md
+      - name: Publish summary
+        run: cat reports/initial-entry-research.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload research report
+        uses: actions/upload-artifact@v7
+        with:
+          name: initial-entry-research-${{ github.run_id }}
+          path: reports/initial-entry-research.*
+      - name: Comment result on Issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --body-file reports/initial-entry-research.md
