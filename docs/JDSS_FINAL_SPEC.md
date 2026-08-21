@@ -139,6 +139,9 @@ V3.2.2가 직접 관리하는 티커는 **QQQ, TQQQ, SOXL**입니다. 브로커�
 - sell fee: 0.1%
 - 기본 slippage: 0.1%
 - next-session execution
+- 보고 시작일을 빈 계좌의 최초진입일로 보고 50% → 75% → 100% 한도를 적용
+- 1~3번째 미국 거래세션은 50%, 4~6번째는 75%, 7번째부터 100%
+- 백테스트에서는 각 단계 체결 완료를 가정해 최소 거래세션 경과 뒤 자동으로 다음 단계로 진행하며, 이는 production의 운영자 승인 절차를 대체하지 않음
 - HWM75 적용
 - SGOV OFF
 - 동일 allocation/JDSS virtual-state 함수를 production/backtest에서 공유

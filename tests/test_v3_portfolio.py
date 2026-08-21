@@ -282,3 +282,21 @@ def test_v322_portfolio_backtest_uses_hwm75_and_no_sgov_frame(config):
     assert result.metrics["maximum_sizing_base"] >= 50000.0
     assert result.metrics["idle_cash_enabled"] is False
     assert result.metrics["idle_cash_income"] == 0.0
+    assert result.metrics["initial_onboarding_enabled"] is True
+    assert result.metrics["initial_onboarding_fractions_pct"] == [50.0, 75.0, 100.0]
+    assert result.metrics["initial_onboarding_minimum_sessions"] == 3
+
+
+def test_portfolio_backtest_stages_initial_entry_by_requested_session(config):
+    engine = PortfolioBacktestEngine(config)
+    full_target = {"QQQ": 0.75, "TQQQ": 0.125, "SOXL": 0.125}
+
+    expected_fractions = (0.50, 0.50, 0.50, 0.75, 0.75, 0.75, 1.00)
+    for execution_index, fraction in enumerate(expected_fractions):
+        staged = engine._apply_initial_onboarding(
+            full_target,
+            execution_index=execution_index,
+        )
+        assert staged == pytest.approx(
+            {symbol: weight * fraction for symbol, weight in full_target.items()}
+        )

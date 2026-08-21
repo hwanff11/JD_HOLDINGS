@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from jd_holdings.config import StrategyConfig
+from jd_holdings.core.initial_onboarding import InitialOnboardingPolicy
 from jd_holdings.core.v322_allocation import (
     ALLOCATION_SYMBOLS,
     V322Policy,
@@ -56,6 +57,7 @@ class PortfolioBacktestEngine:
             raise ValueError("포트폴리오 백테스트는 portfolio.enabled가 필요합니다")
         self.config = config
         self.policy = V322Policy.from_config(config)
+        self.onboarding_policy = InitialOnboardingPolicy.from_config(config)
 
     def run(
         self,
@@ -118,14 +120,17 @@ class PortfolioBacktestEngine:
         cash = initial_capital
         high_water = initial_capital
         quantities = {symbol: 0 for symbol in ALLOCATION_SYMBOLS}
-        pending = self._weights_from_target(targets.loc[prior_ts])
+        pending = self._apply_initial_onboarding(
+            self._weights_from_target(targets.loc[prior_ts]),
+            execution_index=0,
+        )
         current: dict[str, float] | None = None
         trades: list[dict[str, Any]] = []
         equity_values: list[float] = []
         exposures: list[float] = []
         sizing_history: list[float] = []
 
-        for timestamp in sessions:
+        for execution_index, timestamp in enumerate(sessions):
             opens = {
                 symbol: float(frames[symbol].loc[timestamp, "open"])
                 for symbol in ALLOCATION_SYMBOLS
@@ -167,7 +172,10 @@ class PortfolioBacktestEngine:
             exposures.append(liquidation / equity if equity > 0 else 0.0)
             sizing_history.append(sizing_equity)
             high_water = max(high_water, equity)
-            pending = self._weights_from_target(targets.loc[timestamp])
+            pending = self._apply_initial_onboarding(
+                self._weights_from_target(targets.loc[timestamp]),
+                execution_index=execution_index + 1,
+            )
 
         equity_curve = pd.Series(equity_values, index=sessions)
         metrics = self._metrics(
@@ -195,6 +203,30 @@ class PortfolioBacktestEngine:
             for symbol in ALLOCATION_SYMBOLS
             if float(row[symbol]) > 1e-12
         }
+
+    def _apply_initial_onboarding(
+        self,
+        target: dict[str, float],
+        *,
+        execution_index: int,
+    ) -> dict[str, float]:
+        """Cap risk-increasing targets at 50/75/100% from the report start.
+
+        The production account requires an operator to open each stage after
+        the prior stage is filled.  A deterministic backtest assumes fills are
+        accepted and opens the next stage after the configured minimum number
+        of US sessions.  Target reductions still flow through immediately.
+        """
+        policy = self.onboarding_policy
+        if not policy.enabled:
+            return target
+        interval = policy.minimum_sessions_between_stages
+        if interval == 0:
+            stage = policy.total_stages
+        else:
+            stage = min(execution_index // interval + 1, policy.total_stages)
+        fraction = float(policy.fraction_for_stage(stage))
+        return {symbol: weight * fraction for symbol, weight in target.items()}
 
     @staticmethod
     def _rebalance(
@@ -327,6 +359,14 @@ class PortfolioBacktestEngine:
             "profit_reinvestment": "HWM75_CONTROLLED",
             "idle_cash_enabled": False,
             "idle_cash_income": 0.0,
+            "initial_onboarding_enabled": self.onboarding_policy.enabled,
+            "initial_onboarding_fractions_pct": [
+                float(fraction * 100)
+                for fraction in self.onboarding_policy.cumulative_fractions
+            ],
+            "initial_onboarding_minimum_sessions": (
+                self.onboarding_policy.minimum_sessions_between_stages
+            ),
             "average_target_leverage": round(float(targets["leverage"].mean()), 4),
             "semiconductor_active_days_pct": round(
                 float(targets["semiconductor_active"].mean()) * 100, 2

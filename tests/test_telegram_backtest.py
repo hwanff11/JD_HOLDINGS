@@ -16,18 +16,23 @@ from jd_holdings.infrastructure.telegram_bot import (
     IDLE_CASH_COMMANDS,
     BacktestCommandError,
     TelegramBotApp,
+    _execute_buy_button_text,
     _format_idle_cash_event,
     _guide_cards,
     _is_network_error,
     _is_toss_order_maintenance_window,
     _profit_loss,
     _regime_label,
+    _review_buy_button_text,
     _telegram_message_chunks,
     _won,
     parse_backtest_request,
     parse_history_request,
 )
-from jd_holdings.infrastructure.telegram_bot_v322 import V322TelegramBotApp
+from jd_holdings.infrastructure.telegram_bot_v322 import (
+    V322TelegramBotApp,
+    _v322_bot_commands,
+)
 
 SYMBOLS = ("TQQQ", "SOXL")
 LATEST = date(2026, 8, 4)
@@ -246,11 +251,15 @@ def test_telegram_guide_matches_current_contract():
         "75%",
         "최대 5%",
         "2단계 승인",
+        "/onboarding",
+        "50% → 75% → 100%",
+        "3 미국 거래일",
+        "매수 주문 검토하기",
         "forced dry-run",
         "SAFE_MODE",
     ):
         assert expected in guide
-    assert len(cards) == 5
+    assert len(cards) == 6
     assert all(len(card) < 4096 for card in cards)
     for rejected in (
         "10개월 이동평균",
@@ -263,6 +272,25 @@ def test_telegram_guide_matches_current_contract():
         "/sgov",
     ):
         assert rejected not in guide
+
+
+def test_v322_command_menu_exposes_onboarding_and_clear_buy_language():
+    commands = {command.command: command.description for command in _v322_bot_commands()}
+
+    assert commands["onboarding"] == "최초진입 50→75→100 매수"
+    assert commands["signal"] == "매수 주문 승인 대기"
+    assert commands["backtest"] == "최초진입 포함 백테스트"
+    assert "최초진입" in commands["guide"]
+
+
+def test_buy_buttons_distinguish_review_from_order_submission():
+    assert _review_buy_button_text("QQQ") == "🛒 QQQ 매수 주문 검토하기"
+    assert _execute_buy_button_text("QQQ", 12, "dry_run") == (
+        "✅ QQQ 12주 모의매수 실행"
+    )
+    assert _execute_buy_button_text("TQQQ", 3, "live") == (
+        "✅ TQQQ 3주 실매수 실행"
+    )
 
 
 def test_score_message_explains_indicators_and_final_gates():
@@ -403,6 +431,7 @@ def test_portfolio_backtest_formatter_uses_v322_allocation_fill_key():
             "sharpe": 1.1,
             "sortino": 1.4,
             "average_exposure_pct": 98.0,
+            "initial_onboarding_minimum_sessions": 3,
             "component_fills": {"allocation": 17},
             "hwm_reinvestment_fraction": 0.75,
             "maximum_sizing_base": 58000.0,
@@ -414,4 +443,5 @@ def test_portfolio_backtest_formatter_uses_v322_allocation_fill_key():
 
     assert "V3.2.2" in message
     assert "allocation 체결: <code>17회</code>" in message
+    assert "50% → 75% → 100%" in message
     assert "SGOV: <code>OFF</code>" in message

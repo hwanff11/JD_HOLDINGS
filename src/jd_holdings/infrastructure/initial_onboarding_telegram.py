@@ -30,7 +30,7 @@ def _augment_help_message(text: str) -> str:
     marker = "<b>승인·검증</b>"
     addition = (
         "<b>최초진입</b>\n"
-        "• <code>/onboarding</code> — 50% → 75% → 100% 단계·대기일 확인\n\n"
+        "• <code>/onboarding</code> — 50% → 75% → 100% 매수 한도·대기일 확인\n\n"
     )
     if marker in text:
         return text.replace(marker, addition + marker, 1)
@@ -240,7 +240,7 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
         if status in {STATUS_NOT_STARTED, STATUS_BYPASSED} and snapshot["can_start"]:
             markup.add(
                 InlineKeyboardButton(
-                    "🚀 1차 진입 시작 · 50%",
+                    "🪜 1차 매수 한도 열기 · 50% (주문 전)",
                     callback_data="onboard|start|0",
                 )
             )
@@ -250,7 +250,8 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
             next_fraction = Decimal(str(snapshot["next_fraction"]))
             markup.add(
                 InlineKeyboardButton(
-                    f"➡️ 다음 단계 열기 · 누적 {next_fraction * 100:.0f}%",
+                    f"🪜 {stage + 1}차 매수 한도 열기 · 누적 "
+                    f"{next_fraction * 100:.0f}% (주문 전)",
                     callback_data=f"onboard|advance|{stage}",
                 )
             )
