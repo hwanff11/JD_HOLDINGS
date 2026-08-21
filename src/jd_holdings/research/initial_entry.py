@@ -22,7 +22,8 @@ class EntryScenario:
             raise ValueError("fractions must not be empty")
         if any(not 0 < value <= 1 for value in self.fractions):
             raise ValueError("fractions must be within (0, 1]")
-        if any(right <= left for left, right in zip(self.fractions, self.fractions[1:])):
+        pairs = zip(self.fractions, self.fractions[1:], strict=False)
+        if any(right <= left for left, right in pairs):
             raise ValueError("fractions must strictly increase")
         if abs(self.fractions[-1] - 1.0) > 1e-12:
             raise ValueError("final fraction must be 1.0")
