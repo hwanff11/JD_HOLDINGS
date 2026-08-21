@@ -30,11 +30,6 @@ on:
         default: ""
         type: string
   pull_request:
-    paths:
-      - "strategy.yaml"
-      - "src/jd_holdings/**"
-      - "tests/**"
-      - ".github/workflows/jdss-backtest.yml"
   issues:
     types: [opened]
 
@@ -44,6 +39,7 @@ permissions:
 
 jobs:
   backtest:
+    name: Backtest
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'pull_request' ||

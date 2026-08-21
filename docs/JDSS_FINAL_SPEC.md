@@ -66,7 +66,24 @@ SOXX 대신 SMH로 proxy를 바꾼 강건성 테스트에서도 핵심 결과가
 
 기존 직접 H40 포지션, TP plan, direct booster 주문은 V3.2.2 정상상태가 아니며 reconciliation 오류입니다.
 
-## 6. 주문·승인
+## 6. 최초 실전 진입 3단계 계약
+
+최초 실전 적용 시 전략이 계산한 최종 목표비중과 HWM75 위험예산은 바꾸지 않고, **위험증가 BUY의 최대 목표수량만 1회성으로 단계 확대**합니다.
+
+- 1차: 최종 전략 목표수량의 누적 **50%**
+- 2차: 누적 **75%**
+- 3차: 누적 **100%**
+- 각 다음 단계는 현재 단계 목표수량이 모두 체결된 뒤 **최소 3 미국 거래일**이 지나야 열 수 있음
+- 다음 단계는 자동으로 열지 않고 `/onboarding`에서 운영자가 직접 승인
+- 각 단계에서 생성된 개별 BUY는 다시 기존의 **1차 최신 시세·수량 검토 → 2차 최종 실행** 승인을 모두 통과해야 함
+- 시장 악화 등으로 전략 목표가 낮아지면 단계 한도보다 위험축소 SELL을 우선 자동 실행
+- 기존 관리 포지션·미체결 allocation 주문·SAFE_MODE 등 시작 안전조건이 충족되지 않으면 최초진입 시작을 차단
+- 최종 단계가 모두 체결되면 `COMPLETED`로 영구 종료하고 일반 V3.2.2 운용으로 전환
+- Telegram 단계 버튼은 생성 당시 단계번호를 포함하며, DB의 현재 단계와 다르면 **오래된 버튼으로 거부**
+
+정확한 비율과 거래일 간격은 `strategy.yaml`의 `market_regime.v322_allocation.initial_onboarding`을 실행 기준으로 합니다. 이 최초진입 기능은 live 잠금을 해제하지 않습니다.
+
+## 7. 주문·승인
 
 - 목표비중 증가는 Telegram 검토 승인과 최종 실행 승인을 모두 통과한 뒤 BUY한다. 즉 BUY는 반자동이다.
 - 위험축소 SELL은 승인을 기다리지 않고 자동 실행 대상으로 처리한다.
@@ -88,7 +105,7 @@ SOXX 대신 SMH로 proxy를 바꾼 강건성 테스트에서도 핵심 결과가
 - 주문 UNKNOWN, 불완전 위험축소, 브로커/DB 수량 불일치 시 SAFE_MODE
 - QQQ 문제는 portfolio SAFE_MODE, TQQQ/SOXL 문제는 종목 SAFE_MODE와 portfolio reconciliation에 반영
 
-## 7. forced dry-run과 실제 Toss 계좌 경계
+## 8. forced dry-run과 실제 Toss 계좌 경계
 
 - 현재 forced dry-run의 주문·보유수량·열린 주문은 `MarketDataDryRunBroker`와 SQLite JDSS 원장에서 관리한다.
 - dry-run reconciliation은 SQLite와 이 모의 브로커 상태를 대조한다. 이것을 실제 Toss 보유수량과의 reconciliation으로 표현하지 않는다.
@@ -96,7 +113,7 @@ SOXX 대신 SMH로 proxy를 바꾼 강건성 테스트에서도 핵심 결과가
 - Toss 조회 결과는 dry-run 원장에 자동 채택하지 않고, dry-run 주문을 Toss 주문으로 변환하지 않는다.
 - 실제 계좌 조회 실패나 값 불명확을 임의의 0 또는 성공으로 해석하지 않는다.
 
-## 8. 최초 계좌 적용 preflight 계약
+## 9. 최초 계좌 적용 preflight 계약
 
 전략 선택·production 승격과 실제 계좌 적용은 서로 다른 변경이다. live 잠금을 검토하기 전 최소한 다음을 증명해야 한다.
 
@@ -104,17 +121,17 @@ SOXX 대신 SMH로 proxy를 바꾼 강건성 테스트에서도 핵심 결과가
 2. 설정 검증·단위/통합 테스트·no-lookahead 기준 백테스트 통과
 3. 기존 DB의 전략 세대·스키마 호환성, 열린 주문, 부분체결, UNKNOWN, legacy position/TP 상태와 복구 가능한 백업
 4. 실제 Toss의 관리 티커 보유수량, 열린 주문, 주문가능금액 및 개인 동일 티커 혼합 여부
-5. forced dry-run의 목표 산출, 자동 위험축소 SELL, 반자동 BUY, 주문 감시, 재시작과 reconciliation 한 사이클
-6. SAFE_MODE 사유가 없고 가격·수량·세션 변경 시 기존 승인이 폐기되는지 확인
+5. forced dry-run의 목표 산출, 자동 위험축소 SELL, 반자동 BUY, 최초진입 50→75→100, 주문 감시, 재시작과 reconciliation 한 사이클
+6. SAFE_MODE 사유가 없고 가격·수량·세션·최초진입 단계 변경 시 기존 승인이 폐기되는지 확인
 7. 실제 주문 경계와 preflight 구현에 대한 해당 릴리즈의 검증 증거 및 대표의 명시적 승인
 
 현재 자동화 범위는 구현과 [`CURRENT_WORK.md`](../CURRENT_WORK.md)의 검증 상태를 기준으로 판단한다. 이 체크리스트의 존재만으로 live 준비가 완료됐다고 간주하지 않는다.
 
-## 9. 동일 Toss 계좌
+## 10. 동일 Toss 계좌
 
 V3.2.2가 직접 관리하는 티커는 **QQQ, TQQQ, SOXL**입니다. 브로커가 동일 티커를 합산하므로 개인물량을 같은 계좌에 섞으면 JDSS 원장과 분리할 수 없습니다. 따라서 개인 QQQ/TQQQ/SOXL 혼합보유를 금지합니다. QQQM 등 별도 티커는 별도 수량으로 구분 가능합니다.
 
-## 10. 백테스트 계약
+## 11. 백테스트 계약
 
 - 시작: 2011-01-01
 - 초기자금: $50,000
@@ -128,10 +145,10 @@ V3.2.2가 직접 관리하는 티커는 **QQQ, TQQQ, SOXL**입니다. 브로커�
 
 승인된 기준 결과와 QQQ 비교는 [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md), 최신 실행 ID와 검증 상태는 [`CURRENT_WORK.md`](../CURRENT_WORK.md)에서 관리한다. 이 규범 문서에 실행할 때마다 바뀌는 결과값을 복제하지 않는다.
 
-## 11. 연구 한계
+## 12. 연구 한계
 
 전략 승격은 미래 QQQ 초과성과를 보장하지 않습니다. 현재 연구의 OOS 오염·과최적화 경고와 기간별 한계는 [`STRATEGY_GUIDE.md`](STRATEGY_GUIDE.md), 당시 채택 근거는 [`HISTORY.md`](HISTORY.md)가 소유합니다. 이 사양은 그런 한계를 숨기거나 실거래 안전장치를 완화하는 근거로 사용할 수 없습니다.
 
-## 12. 실거래 잠금
+## 13. 실거래 잠금
 
-현재 계약은 **live 주문 활성화를 포함하지 않습니다**. `portfolio.live_enabled=false`, 애플리케이션 hard lock, Oracle forced dry-run을 동시에 유지합니다. 미래 릴리즈가 이를 바꾸려면 제8절 preflight와 별도의 명시적 승인을 충족하고 설정·코드·문서·테스트를 같은 변경에서 갱신해야 합니다.
+현재 계약은 **live 주문 활성화를 포함하지 않습니다**. `portfolio.live_enabled=false`, 애플리케이션 hard lock, Oracle forced dry-run을 동시에 유지합니다. 미래 릴리즈가 이를 바꾸려면 제9절 preflight와 별도의 명시적 승인을 충족하고 설정·코드·문서·테스트를 같은 변경에서 갱신해야 합니다.

@@ -31,7 +31,9 @@ jobs:
         run: ruff check .
 
       - name: Unit tests - Pytest
-        run: pytest --cov=jd_holdings --cov-report=term-missing
+        # Current suite is ~70.4%; this is a ratchet floor, not a target.
+        # Raise it as coverage improves and do not lower it without explicit review.
+        run: pytest --cov=jd_holdings --cov-report=term-missing --cov-fail-under=70
 
       - name: Config validation - JDSS
         run: jdss validate-config

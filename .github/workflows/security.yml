@@ -43,10 +43,8 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: python
-      - name: Analyze
+      - name: Analyze and upload
         uses: github/codeql-action/analyze@v4
-        with:
-          upload: false
 
   gitleaks:
     name: Secret scan
@@ -55,7 +53,40 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Scan repository
+      - name: Scan repository and history
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  security-gate:
+    name: Security Gate
+    needs: [python-audit, codeql, gitleaks]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every security scan
+        env:
+          PYTHON_AUDIT_RESULT: ${{ needs.python-audit.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          GITLEAKS_RESULT: ${{ needs.gitleaks.result }}
+        run: |
+          set -Eeuo pipefail
+          test "$PYTHON_AUDIT_RESULT" = success
+          test "$CODEQL_RESULT" = success
+          test "$GITLEAKS_RESULT" = success
+
+  repository-policy:
+    name: Main branch protection
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require protected main
+        run: |
+          set -Eeuo pipefail
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.protected')"
+          if [[ "$protected" != "true" ]]; then
+            echo "::error::main branch protection/ruleset is not enabled"
+            exit 1
+          fi

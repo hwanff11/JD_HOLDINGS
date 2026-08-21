@@ -2,7 +2,7 @@
 
 이 파일은 Codex, ChatGPT, 그리고 Antigravity(안티그라비티)가 이 저장소에서 작업할 때 공통으로 따라야 할 작업 규칙을 정의한다.
 
-GitHub 저장소명은 `JH_HOLDINGS`이다. 호환성을 위해 Python 패키지 `jd_holdings`, systemd 서비스 `jd_holdings_bot`, Oracle 런타임 경로 `/home/ubuntu/JD_HOLDINGS`는 기존 식별자를 유지하며, 별도 migration 계획과 검증 없이 이름을 바꾸지 않는다.
+GitHub 저장소명은 `JH_HOLDINGS`이다. Python 호환성을 위해 내부 패키지명 `jd_holdings`와 CLI `jdss` / `jdss-bot`은 유지한다. Oracle 운영 기준은 **`/home/ubuntu/JH_HOLDINGS` + `jh_holdings_bot`**이며, 과거 `/home/ubuntu/JD_HOLDINGS` + `jd_holdings_bot`은 완료된 마이그레이션의 이전 식별자이므로 새 배포·문서·자동화에서 다시 사용하지 않는다.
 
 세부 절차는 `docs/infra/DEVELOPMENT_WORKFLOW.md`를 따른다.
 현재 작업 상태와 인수인계 정보는 `CURRENT_WORK.md`를 Source of Truth로 사용한다.
@@ -27,10 +27,10 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. 호환성을 위해 Python 패키지
 |---|---|---|
 | 전략 조건·점수·비중·익절 | `strategy.yaml`, `JDSS_FINAL_SPEC.md`, `ONE_PAGE_REPORT.md`, `STRATEGY_GUIDE.md`, 관련 테스트 | 설정 검증, 단위 테스트, 노룩어헤드 백테스트 |
 | 주문·승인·포지션·SGOV | 공식 사양, `TELEGRAM_BOT_GUIDE.md`, `docs/infra/SECURITY.md`, 관련 테스트 | Dry Run, 멱등성·재시작·Reconciliation 테스트 |
-| Telegram 명령·버튼·문구 | `TELEGRAM_BOT_GUIDE.md`, 도움말·포맷 테스트 | 권한 검사, 4,096자 제한, 콜백 만료·1회성 |
+| Telegram 명령·버튼·문구 | `TELEGRAM_BOT_GUIDE.md`, 도움말·포맷 테스트 | 권한 검사, 4,096자 제한, 콜백 만료·1회성·stale state |
 | Toss API·인증·네트워크 | `docs/infra/SECURITY.md`, 배포 문서, 어댑터 테스트 | 오류 응답·타임아웃·입력 경계 테스트 |
 | DB 스키마·상태 전이 | 공식 사양, `docs/infra/SECURITY.md`, 배포·마이그레이션 절차, 관련 테스트 | 기존 DB 호환성, WAL, 트랜잭션, 재시작 검증 |
-| 배포·systemd·Actions | `DEPLOYMENT.md`, `SECURITY.md`, 배포 계약 테스트 | 셸 문법, 최소권한, 강제 dry-run, smoke test |
+| 배포·systemd·Actions | `DEPLOYMENT.md`, `SECURITY.md`, 배포 계약 테스트 | 셸 문법, 최소권한, host key 고정, 강제 dry-run, 백업·rollback, smoke test |
 | 현재 브랜치·배포·다음 작업 | `CURRENT_WORK.md`만 갱신 | 원격 SHA와 실제 상태 대조 |
 | 과거 자료·연구 기록 | `HISTORY.md`에 요약하고 상세 결과는 Git tag·PR·Actions artifact로 보존 | 현행 수치로 오인될 표현 점검 |
 
@@ -51,9 +51,11 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. 호환성을 위해 Python 패키지
 - 광범위한 `except Exception`은 프로세스 경계나 스케줄러 격리처럼 필요한 곳에만 두고, 내부 계층에서는 구체적 예외를 우선한다.
 - 비밀값, 승인 토큰, 전체 계좌번호, 인증 헤더, SSH 키를 소스·테스트·로그·문서·이슈·채팅에 기록하지 않는다.
 - 로컬 `.env`와 SSH 키를 GitHub로 이동하지 않는다. Actions 배포가 필요하면 승인된 GitHub Environment secret을 별도로 등록한다.
+- SSH는 검증된 Oracle host public key를 `known_hosts`로 고정하고 `StrictHostKeyChecking=yes`를 사용한다. Actions 실행 중 `ssh-keyscan` 결과를 즉석 신뢰하거나 `accept-new`로 우회하지 않는다.
 - 외부 입력은 Telegram 명령, 콜백, API 응답, 설정, 주문 경계에서 검증한다.
 - 실거래 잠금, 사용자 2단계 승인, 주문 멱등성, SAFE_MODE를 약화하는 변경은 대표의 명시적 승인 없이 수행하지 않는다.
 - 의존성·Actions 업데이트 PR은 기능 변경과 분리하고 CI·Dry Run 통과 후 반영한다.
+- 공개 저장소에는 API 키·토큰·계좌번호·서버 비밀값을 두지 않으며, 공개가 필요 없는 전략/운영 정보는 별도 승인 없이 새로 노출하지 않는다.
 
 ## 사용자 단축 명령
 
@@ -82,6 +84,7 @@ GitHub 저장소명은 `JH_HOLDINGS`이다. 호환성을 위해 Python 패키지
 
 - GitHub 원격 저장소를 Source of Truth로 사용한다.
 - `main`에서 직접 기능 개발하지 않는다. 별도 작업 브랜치를 사용한다.
+- `main`은 GitHub branch protection/ruleset으로 직접 push·force push·삭제를 막고, PR과 필수 CI를 통과한 변경만 병합한다.
 - Codex, ChatGPT, Antigravity 간 동일 브랜치를 동시에 수정하여 충돌을 일으키지 않는다.
 - 환경 전환 전에는 먼저 commit + push 하고, 다음 환경에서 최신 상태를 동기화한다.
 - 사용자의 명시적 승인 없이 `git push --force`, `git reset --hard`, 위험한 rebase, 대량 삭제를 수행하지 않는다.

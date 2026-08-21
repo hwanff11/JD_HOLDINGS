@@ -23,8 +23,59 @@ from .telegram_bot_runtime import RuntimeTelegramBotApp
 LOGGER = logging.getLogger(__name__)
 
 
+def _augment_help_message(text: str) -> str:
+    """Keep the base runtime help in sync without duplicating the whole handler."""
+    if "[JDSS V3.2.2 운영 메뉴]" not in text or "<code>/onboarding</code>" in text:
+        return text
+    marker = "<b>승인·검증</b>"
+    addition = (
+        "<b>최초진입</b>\n"
+        "• <code>/onboarding</code> — 50% → 75% → 100% 단계·대기일 확인\n\n"
+    )
+    if marker in text:
+        return text.replace(marker, addition + marker, 1)
+    return text + "\n\n" + addition.rstrip()
+
+
+def _parse_onboarding_callback(data: str) -> tuple[str, int]:
+    parts = data.split("|")
+    if len(parts) != 3 or parts[0] != "onboard":
+        raise ValueError("지원하지 않는 최초진입 작업입니다")
+    action = parts[1]
+    if action not in {"start", "advance"}:
+        raise ValueError("지원하지 않는 최초진입 작업입니다")
+    try:
+        expected_stage = int(parts[2])
+    except ValueError as exc:
+        raise ValueError("최초진입 버튼 단계 정보가 올바르지 않습니다") from exc
+    if expected_stage < 0:
+        raise ValueError("최초진입 버튼 단계 정보가 올바르지 않습니다")
+    return action, expected_stage
+
+
+def _validate_onboarding_callback(action: str, expected_stage: int, snapshot: dict) -> None:
+    """Reject stale Telegram buttons after onboarding state has moved on."""
+    status = str(snapshot["status"])
+    stage = int(snapshot["stage"])
+    if action == "start":
+        if expected_stage != 0:
+            raise RuntimeError("오래된 최초진입 시작 버튼입니다. /onboarding을 다시 확인하세요.")
+        if status not in {STATUS_NOT_STARTED, STATUS_BYPASSED} or not bool(
+            snapshot.get("can_start")
+        ):
+            raise RuntimeError("현재 상태와 맞지 않는 시작 버튼입니다. /onboarding을 다시 확인하세요.")
+        return
+    if action == "advance":
+        if status != STATUS_ACTIVE or stage != expected_stage:
+            raise RuntimeError("오래된 단계 버튼입니다. /onboarding에서 최신 단계를 다시 확인하세요.")
+        if not bool(snapshot.get("next_stage_ready")):
+            raise RuntimeError("아직 다음 단계 진입 조건을 충족하지 않았습니다.")
+        return
+    raise ValueError("지원하지 않는 최초진입 작업입니다")
+
+
 class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
-    """Telegram operator controls for the one-time 3-step first entry."""
+    """Telegram operator controls for the one-time staged first entry."""
 
     @property
     def onboarding_service(self) -> InitialOnboardingPortfolioService | None:
@@ -32,6 +83,13 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
         if isinstance(service, InitialOnboardingPortfolioService):
             return service
         return None
+
+    def _send(self, text: str, *, markup=None, chat_id: int | None = None) -> None:
+        super()._send(
+            _augment_help_message(text),
+            markup=markup,
+            chat_id=chat_id,
+        )
 
     def _register_handlers(self) -> None:
         super()._register_handlers()
@@ -62,15 +120,15 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
                 )
                 return
             try:
-                _, action = call.data.split("|", 1)
+                action, expected_stage = _parse_onboarding_callback(call.data)
+                before = service.onboarding_snapshot()
+                _validate_onboarding_callback(action, expected_stage, before)
                 if action == "start":
                     snapshot = service.start_onboarding()
                     answer = "1차 최초진입을 열었습니다."
-                elif action == "advance":
+                else:
                     snapshot = service.advance_onboarding()
                     answer = f"{snapshot['stage']}차 최초진입을 열었습니다."
-                else:
-                    raise ValueError("지원하지 않는 최초진입 작업입니다")
                 self._clear_callback_markup(call)
                 bot.answer_callback_query(call.id, answer)
                 self._send(self._format_onboarding_message(snapshot))
@@ -112,7 +170,7 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
         }
         minimum_sessions = snapshot["minimum_sessions_between_stages"]
         lines = [
-            "🪜 <b>[JDSS 최초 실전 진입 · 3단계]</b>",
+            f"🪜 <b>[JDSS 최초 실전 진입 · {total}단계]</b>",
             "",
             f"• <b>상태</b> : {labels.get(status, html.escape(status))}",
             "• <b>방식</b> : <code>50% → 75% → 100%</code>",
@@ -169,7 +227,8 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
                 "🛡️ <b>안전 원칙</b>",
                 "• 각 단계의 BUY는 기존과 동일하게 2단계 Telegram 승인이 필요합니다.",
                 "• 시장이 악화되어 목표가 줄면 위험축소 SELL은 자동으로 먼저 실행합니다.",
-                "• 3차 완료 뒤에는 이 최초진입 로직이 다시 시작되지 않습니다.",
+                "• 이전 메시지의 단계 버튼은 상태가 바뀌면 무효 처리합니다.",
+                f"• {total}차 완료 뒤에는 이 최초진입 로직이 다시 시작되지 않습니다.",
             ]
         )
         return "\n".join(lines)
@@ -182,16 +241,17 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
             markup.add(
                 InlineKeyboardButton(
                     "🚀 1차 진입 시작 · 50%",
-                    callback_data="onboard|start",
+                    callback_data="onboard|start|0",
                 )
             )
             return markup
         if status == STATUS_ACTIVE and snapshot["next_stage_ready"]:
+            stage = int(snapshot["stage"])
             next_fraction = Decimal(str(snapshot["next_fraction"]))
             markup.add(
                 InlineKeyboardButton(
                     f"➡️ 다음 단계 열기 · 누적 {next_fraction * 100:.0f}%",
-                    callback_data="onboard|advance",
+                    callback_data=f"onboard|advance|{stage}",
                 )
             )
             return markup
@@ -227,7 +287,7 @@ class InitialOnboardingTelegramBotApp(RuntimeTelegramBotApp):
         elif status == STATUS_NOT_STARTED:
             suffix = "\n\n🪜 <b>최초진입</b> : 시작 전 · <code>/onboarding</code>"
         elif status == STATUS_COMPLETED:
-            suffix = "\n\n✅ <b>최초진입</b> : 3단계 완료 · 일반 운용"
+            suffix = "\n\n✅ <b>최초진입</b> : 단계 완료 · 일반 운용"
         else:
             suffix = "\n\n🪜 <b>최초진입</b> : <code>/onboarding</code>에서 상태 확인"
         return base + suffix
