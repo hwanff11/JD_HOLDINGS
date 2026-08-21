@@ -131,7 +131,8 @@ rollback() {
       echo "자동 rollback 실패: 수동 복구가 필요합니다." >&2
     fi
   fi
-  rm -f "$unit_backup" "$remote_archive" "$remote_service"
+  sudo rm -f "$unit_backup"
+  rm -f "$remote_archive" "$remote_service"
   exit "$rc"
 }
 
@@ -263,7 +264,8 @@ sudo systemctl is-active --quiet "$service_name"
 
 rollback_armed=0
 trap - ERR
-rm -f "$unit_backup" "$remote_archive" "$remote_service"
+sudo rm -f "$unit_backup"
+rm -f "$remote_archive" "$remote_service"
 echo "Oracle deploy verified: commit=$commit_sha backup=${backup_path:-none} service=$service_name"
 REMOTE
 
