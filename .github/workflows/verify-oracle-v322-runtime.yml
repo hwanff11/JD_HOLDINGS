@@ -82,7 +82,8 @@ jobs:
           printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle_jdss
           printf '%s\n' "$ORACLE_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/oracle_jdss ~/.ssh/known_hosts
-          ssh-keygen -F "$ORACLE_HOST" -f ~/.ssh/known_hosts >/dev/null
+          # The strict SSH connection below is the authoritative parser and
+          # pinned hostname/key matcher, including hashed known_hosts entries.
 
       - name: Verify deployed SHA and forced dry-run
         env:
