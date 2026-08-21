@@ -21,37 +21,43 @@ Codex, ChatGPT와 Antigravity가 GitHub를 공용 Source of Truth로 사용해 �
 
 ## 환경별 역할
 
-### 로컬 Codex·IDE
+환경은 기능이 아니라 **책임과 권한 경계**로 구분합니다. 한 환경에서 확인할 수 없는 상태를 추정하거나 다른 환경의 역할을 임의로 대신하지 않습니다.
 
-- 기능 개발, 디버깅과 재현 가능한 통합 테스트
-- 작업 전 원격 동기화와 미커밋 변경 확인
-- 로컬 환경이 필요한 Dry Run·재시작·복구 검증
-- 종료 전 의도한 파일만 commit·push하고 인수인계 상태 갱신
+| 환경·주체 | 주 책임 | 수행 범위 | 금지·인계 기준 |
+|---|---|---|---|
+| 사용자(운영 책임자) | 우선순위·전략 채택·배포·실거래 승인 | 요구사항 확정, 연구 후보 선택, 배포 승인, Telegram 최종 BUY 승인 | 배포 승인은 live 활성화 승인이 아님. 실거래와 위험 한도 변경은 별도 명시 승인 |
+| 로컬 Codex·IDE | 구현과 재현 가능한 로컬 검증 | 기능 개발, 디버깅, 테스트, 설정 검증, 작업트리 관리, 필요한 로컬 Dry Run | 미커밋 사용자 변경을 덮어쓰지 않음. 원격 로그인·Secret·운영 상태를 가정하지 않고 commit·push 가능한 상태로 인계 |
+| ChatGPT Work·GitHub 연결 | 원격 저장소 변경과 작업 종결 관리 | 최신 원격 상태 확인, 브랜치·Draft PR 작성, 리뷰 반영, Actions 추적, 승인된 ChatOps 실행, 병합 결과 확인 | 비밀값을 조회·복제하지 않음. Cloud Browser 로그인·2FA는 사용자 직접 수행. 로컬 미커밋 파일이나 Oracle 내부 상태를 보았다고 가정하지 않음 |
+| GitHub Actions | 반복 가능한 표준 검증과 승인된 배포 실행 | Ruff, pytest, 설정 검증, Security Gate, 기준 백테스트, artifact 생성, 최신 `main` forced dry-run 배포 | 임의 브랜치·미검증 코드를 운영에 배포하지 않음. Environment Secret은 사용만 하고 출력하지 않음 |
+| Oracle Cloud | 검증된 JDSS 운영 runtime | Telegram Bot, 일일 분석, 승인·주문·포지션 감시, reconciliation, 운영 로그·DB 보존 | 연구·후보 탐색과 소스 편집을 수행하지 않음. `main` 병합만으로 자동 변경되지 않으며 승인된 배포 뒤에만 갱신 |
 
-### ChatGPT·GitHub
+### 환경별 세부 원칙
 
-- 최신 `main`, `CURRENT_WORK.md`와 관련 기준 문서를 다시 읽고 작업 범위 확정
-- 별도 작업 브랜치와 PR에서 변경 추적
-- Quality Gate, Security, Backtest/Research와 필요한 workflow 실행
-- 사용자가 배포를 승인한 요청에서는 owner-only ChatOps issue로 **Deploy Oracle Dry Run**을 시작하고, 정확한 최신 `main`·pinned SSH·forced dry-run 결과를 확인
-- 사용자가 Actions 화면의 버튼을 직접 누를 필요는 없지만, 연결된 GitHub 권한과 사전에 구성된 `oracle-dry-run` Environment secret은 필요
-- 실패 시 Job/Step 로그에서 원인을 확인하고 같은 조건으로 재검증
-- 비밀값은 읽거나 문서·로그·채팅에 복제하지 않고, workflow의 존재·성공 여부만 검증
-- 연구 결과의 핵심 지표는 Job Summary, 상세 원본은 artifact에 보존
-- 미채택 후보와 일회성 workflow·스크립트·결과물을 `main`에 누적하지 않음
+- **로컬 Codex·IDE**는 가장 넓은 구현·테스트 환경입니다. 작업 전 원격 동기화와 미커밋 변경을 확인하고, 종료 시 의도한 파일만 commit·push합니다.
+- **ChatGPT Work**는 연결된 GitHub 권한으로 원격 작업을 마감하는 환경입니다. 최신 `main`과 기준 문서를 다시 읽고 별도 브랜치·PR에서 변경하며, 필수 검사가 끝날 때까지 성공을 추정하지 않습니다.
+- **Cloud Browser**는 GitHub 로그인·2FA 또는 사용자가 화면을 직접 확인해야 할 때만 보조적으로 사용합니다. 소스 변경의 기준은 브라우저 화면이 아니라 GitHub branch·PR·commit입니다.
+- **GitHub Actions**는 사람이나 에이전트의 로컬 성공 주장을 대체하는 공통 검증 환경입니다. 핵심 결과는 Job Summary, 상세 원본은 artifact에 두고 현행 Markdown에 실행별 원본을 누적하지 않습니다.
+- **Oracle Cloud**는 운영 전용입니다. 배포 뒤에는 forced dry-run, 서비스 상태, 설정 잠금, read-only smoke와 필요한 runtime 검증을 확인하며 연구용 대규모 백테스트는 분리합니다.
 
-### GitHub Actions
+## 환경 전환과 인수인계
 
-- Ruff, pytest, 설정 검증과 배포 계약 검사
-- 동일 조건의 기준 백테스트와 후보 연구
-- PR 병합 전 반복 가능한 품질·보안 검증
-- 상세 JSON/Markdown은 artifact로 보관하고 저장소 현행 문서로 복제하지 않음
+동일 브랜치를 여러 환경이 동시에 수정하지 않습니다. 작업 주체가 바뀔 때는 다음 순서를 지킵니다.
 
-### Oracle Cloud
+1. 작업 중인 환경이 변경 범위와 미완료 항목을 정리하고 로컬 검증 결과를 기록합니다.
+2. 변경이 있으면 별도 브랜치에 commit·push하여 원격에서 재현 가능한 경계를 만듭니다. 미커밋 파일만 남긴 채 다른 환경에 작업을 넘기지 않습니다.
+3. 다음 환경은 전달받은 설명보다 GitHub의 branch·commit·PR과 `CURRENT_WORK.md`를 우선 확인합니다.
+4. 원격 상태가 예상과 다르거나 같은 브랜치에 새 변경이 있으면 작업을 중단하고 충돌 가능성을 보고합니다.
+5. PR 작성 후에는 GitHub Actions를 공통 판정 기준으로 사용하고, 실패 원인과 수정은 같은 PR에서 추적합니다.
+6. 병합 후 runtime 변경이 있는 경우에만 사용자 승인 범위 안에서 배포합니다. 문서-only 변경은 Oracle에 재배포하지 않습니다.
+7. 배포 작업은 배포 결과와 runtime 검증까지 확인해야 완료입니다. ChatOps용 issue는 자동화 입력이며 장기 작업 목록으로 남기지 않습니다.
 
-- Telegram Bot, 정규장 종료 후 분석, 승인·주문·포지션 감시 등 상시 운영
-- 연구용 대규모 백테스트와 후보 탐색은 운영 프로세스와 분리
-- 검증 완료된 최신 `main`만 배포하고 현재 잠금·안전 계약 유지
+### 대표 작업의 담당 환경
+
+- **기능·버그 수정**: 로컬 Codex·IDE에서 구현·테스트 → ChatGPT 또는 로컬 GitHub 흐름에서 PR·Actions 확인 → 필요 시 배포
+- **문서-only 정리**: 로컬 또는 ChatGPT에서 현행 문서 수정 → 문서 계약 검사·PR → 병합 후 배포 생략
+- **전략 연구**: 로컬/Actions에서 기준선과 후보 검증 → 사용자가 채택 결정 → 별도 구현 PR → 승인 시 배포
+- **운영 장애 진단**: Oracle 로그·runtime verifier로 사실 확인 → 로컬에서 재현·수정 → PR·Actions → 승인된 복구 배포
+- **실거래 전환**: 일반 배포와 분리하여 사용자 명시 승인, 계좌 preflight, 주문·회계·복구 리허설을 모두 충족한 별도 변경으로 처리
 
 ## 표준 변경 흐름
 
