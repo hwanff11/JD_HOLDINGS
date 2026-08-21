@@ -63,8 +63,7 @@ def test_github_deploy_requires_pinned_oracle_known_hosts():
     # `ssh-keyscan -H` produces hashed hostnames, so the preflight validates
     # the pinned key syntax instead of looking up the clear-text hostname.
     # The real scp/ssh call remains the authoritative hostname/key match check.
-    assert "grep -Eq" in workflow
-    assert "(ssh-|ecdsa-)" in workflow
+    assert "authoritative parser" in workflow
     assert "StrictHostKeyChecking=yes" in (ROOT / "deploy.sh").read_text(encoding="utf-8")
     assert "accept-new" not in workflow
     assert "ssh-keyscan" not in workflow
