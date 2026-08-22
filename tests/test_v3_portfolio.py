@@ -285,6 +285,11 @@ def test_v322_portfolio_backtest_uses_hwm75_and_no_sgov_frame(config):
     assert result.metrics["initial_onboarding_enabled"] is True
     assert result.metrics["initial_onboarding_fractions_pct"] == [50.0, 75.0, 100.0]
     assert result.metrics["initial_onboarding_minimum_sessions"] == 3
+    assert result.metrics["final_cash"] + result.metrics["final_holdings_value"] == pytest.approx(
+        result.metrics["final_equity"], abs=0.02
+    )
+    assert set(result.metrics["final_holdings"]) == {"QQQ", "TQQQ", "SOXL"}
+    assert result.metrics["total_fees"] > 0
 
 
 def test_portfolio_backtest_stages_initial_entry_by_requested_session(config):
