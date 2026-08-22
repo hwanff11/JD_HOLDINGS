@@ -542,6 +542,7 @@ class PortfolioService:
 
     def snapshot(self) -> dict[str, object]:
         marked = marked_managed_equity(self.config, self.repository, self.broker)
+        cash = raw_managed_cash_balance(self.config, self.repository)
         high_water, risk_budget = current_v322_capital_state(self.config, self.repository)
         rows = []
         for core in self.repository.core_positions():
@@ -550,6 +551,7 @@ class PortfolioService:
                 continue
             price = self.broker.get_price(symbol)
             market_value = price * int(core["qty"])
+            cost_basis = Decimal(str(core["cost_basis"]))
             rows.append(
                 {
                     "symbol": symbol,
@@ -558,6 +560,9 @@ class PortfolioService:
                     "target_weight": Decimal(str(core["target_weight"])),
                     "core_quantity": int(core["qty"]),
                     "core_market_value": market_value,
+                    "price": price,
+                    "cost_basis": cost_basis,
+                    "unrealized_profit": market_value - cost_basis,
                     "core_weight": market_value / marked if marked else Decimal("0"),
                     "booster_quantity": 0,
                     "booster_cost_basis": Decimal("0"),
@@ -566,6 +571,11 @@ class PortfolioService:
             )
         return {
             "equity": marked,
+            "cash": cash,
+            "invested_market_value": sum(
+                Decimal(str(row["core_market_value"])) for row in rows
+            ),
+            "net_profit": marked - self.policy.initial_capital,
             "risk_budget": risk_budget,
             "high_water": high_water,
             "rows": rows,

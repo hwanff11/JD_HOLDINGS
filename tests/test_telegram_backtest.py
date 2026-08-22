@@ -445,6 +445,15 @@ def test_portfolio_backtest_formatter_uses_v322_allocation_fill_key():
             "sharpe": 1.1,
             "sortino": 1.4,
             "average_exposure_pct": 98.0,
+            "final_cash": 9000.0,
+            "final_holdings_value": 52000.0,
+            "total_fees": 123.45,
+            "net_profit": 11000.0,
+            "final_holdings": {
+                "QQQ": {"quantity": 50, "market_value": 35000.0},
+                "TQQQ": {"quantity": 100, "market_value": 10000.0},
+                "SOXL": {"quantity": 40, "market_value": 7000.0},
+            },
             "initial_onboarding_minimum_sessions": 3,
             "component_fills": {"allocation": 17},
             "hwm_reinvestment_fraction": 0.75,
@@ -459,3 +468,7 @@ def test_portfolio_backtest_formatter_uses_v322_allocation_fill_key():
     assert "allocation 체결: <code>17회</code>" in message
     assert "50% → 75% → 100%" in message
     assert "SGOV: <code>OFF</code>" in message
+    assert "남은 현금 : <code>$9,000.00</code>" in message
+    assert "보유 평가액 : <code>$52,000.00</code>" in message
+    assert "누적 수수료 : <code>$123.45</code>" in message
+    assert "QQQ 50주 · <code>$35,000.00</code>" in message

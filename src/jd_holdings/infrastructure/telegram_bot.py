@@ -162,6 +162,11 @@ def _money(value: object) -> str:
     return f"${Decimal(str(value)):,.2f}"
 
 
+def _signed_money(value: object) -> str:
+    amount = Decimal(str(value))
+    return f"{amount:+,.2f} USD"
+
+
 def _won(value: object) -> str:
     return f"₩{Decimal(str(value)):,.0f}"
 
@@ -684,29 +689,87 @@ class TelegramBotApp:
             return "📊 <b>[V3 포트폴리오]</b>\n\n포트폴리오 서비스가 비활성화되어 있습니다."
         snapshot = self.portfolio_service.snapshot()
         mode = "🧪 모의운용" if self.settings.trading_mode == "dry_run" else "🔥 실거래"
+        equity = Decimal(str(snapshot["equity"]))
+        cash = Decimal(str(snapshot.get("cash", 0)))
+        invested = Decimal(str(snapshot.get("invested_market_value", equity - cash)))
+        profit = Decimal(str(snapshot.get("net_profit", 0)))
+        cash_weight = cash / equity * 100 if equity else Decimal("0")
+        invested_weight = invested / equity * 100 if equity else Decimal("0")
         lines = [
-            "📊 <b>[JDSS V3.2.2 배분·HWM75]</b>",
+            "📊 <b>[JDSS 포트폴리오 현황]</b>",
             "",
-            f"• <b>전략 평가액</b> : <code>{_money(snapshot['equity'])}</code>",
-            f"• <b>고수위</b> : <code>{_money(snapshot['high_water'])}</code>",
-            f"• <b>HWM75 위험예산</b> : <code>{_money(snapshot['risk_budget'])}</code>",
-            f"• <b>운영 모드</b> : {mode} · 실거래 🔒 잠금",
+            "💰 <b>자산 구성</b>",
+            f"• 총 평가자산  <code>{_money(equity)}</code>",
+            f"• 보유 평가액  <code>{_money(invested)}</code> · {invested_weight:.1f}%",
+            f"• 남은 현금    <code>{_money(cash)}</code> · {cash_weight:.1f}%",
+            f"• 원금 대비    <code>{_signed_money(profit)}</code>",
             "",
+            "🛡️ <b>자금관리</b>",
+            f"• 최고 평가액  <code>{_money(snapshot['high_water'])}</code>",
+            f"• 투자 위험한도 <code>{_money(snapshot['risk_budget'])}</code>",
+            f"• 운영 상태    {mode} · 실거래 🔒",
+            "",
+            "📦 <b>종목별 보유·목표</b>",
         ]
         rows = {row["symbol"]: row for row in snapshot["rows"]}
         for symbol in ALLOCATION_SYMBOLS:
             row = rows[symbol]
-            lines.extend(
-                [
-                    f"✨ <b>{symbol}</b>",
-                    f"• 목표 / 현재 : <code>{Decimal(str(row['target_weight'])) * 100:.2f}%</code> / "
-                    f"<code>{Decimal(str(row['core_weight'])) * 100:.2f}%</code>",
-                    f"• allocation 원장 : <code>{row['core_quantity']}주</code>",
-                    f"• 목표 기준일 : <code>{row['signal_trade_date'] or '-'}</code>",
-                    "",
-                ]
+            market_value = Decimal(str(row.get("core_market_value", 0)))
+            unrealized = Decimal(str(row.get("unrealized_profit", 0)))
+            lines.extend([
+                f"<b>{symbol}</b> · {_quantity(row['core_quantity'])}주 · <code>{_money(market_value)}</code>",
+                f"└ 현재 {Decimal(str(row['core_weight'])) * 100:.1f}% / "
+                f"목표 {Decimal(str(row['target_weight'])) * 100:.1f}% · "
+                f"평가손익 <code>{_signed_money(unrealized)}</code>",
+            ])
+        lines.extend([
+            "",
+            f"🗓️ 목표 기준일 <code>{rows['QQQ']['signal_trade_date'] or '-'}</code>",
+            "ℹ️ 모의 원장 기준입니다. 실제 잔고는 /account에서 확인하세요.",
+        ])
+        return "\n".join(lines)
+
+    def _format_daily_portfolio_report(self, trade_date: str) -> str:
+        """One operator-friendly message replacing fragmented allocation events."""
+        if self.portfolio_service is None:
+            return f"☀️ <b>[{trade_date} 일일 운용보고]</b>\n\n포트폴리오 서비스가 비활성화되어 있습니다."
+        snapshot = self.portfolio_service.snapshot()
+        rows = {row["symbol"]: row for row in snapshot["rows"]}
+        state = (self.repository.get_system_value("last_v322_allocation_state") or "").split("|")
+        leverage = state[0] if len(state) >= 1 and state[0] else "-"
+        rs6m = "ON" if len(state) >= 2 and state[1] == "1" else "OFF"
+        equity = Decimal(str(snapshot["equity"]))
+        cash = Decimal(str(snapshot.get("cash", 0)))
+        invested = Decimal(str(snapshot.get("invested_market_value", equity - cash)))
+        lines = [
+            f"☀️ <b>[{trade_date} JDSS 일일 운용보고]</b>",
+            "",
+            "🧭 <b>오늘의 운용 판단</b>",
+            f"• 목표 노출 <code>{leverage}배</code> · 반도체 상대강도 <code>{rs6m}</code>",
+            "• 과매도 보조신호는 종목별 점수 보고에서 확인",
+            "",
+            "💰 <b>현재 자산</b>",
+            f"• 총자산 <code>{_money(equity)}</code>",
+            f"• 투자중 <code>{_money(invested)}</code> · 현금 <code>{_money(cash)}</code>",
+            f"• 최고자산 <code>{_money(snapshot['high_water'])}</code>",
+            f"• 투자 위험한도 <code>{_money(snapshot['risk_budget'])}</code>",
+            "",
+            "📊 <b>목표 / 현재 비중</b>",
+        ]
+        for symbol in ALLOCATION_SYMBOLS:
+            row = rows[symbol]
+            lines.append(
+                f"• {symbol} <code>{Decimal(str(row['target_weight'])) * 100:.1f}%</code> / "
+                f"<code>{Decimal(str(row['core_weight'])) * 100:.1f}%</code> "
+                f"({_quantity(row['core_quantity'])}주)"
             )
-        lines.append("ℹ️ 현재 포트폴리오 수치는 모의 원장 기준입니다. 실제 Toss 잔고는 /account를 사용하세요.")
+        lines.extend([
+            "",
+            "📝 <b>운영자 확인</b>",
+            "• 목표보다 부족한 매수는 /signal에서 승인",
+            "• 상세 자산구성은 /portfolio, 안전상태는 /dashboard",
+            "• 실거래는 🔒 잠금 상태",
+        ])
         return "\n".join(lines)
 
     def _format_idle_cash_message(self) -> str:
@@ -858,10 +921,16 @@ class TelegramBotApp:
                 lines.append("━━━━━━━━━━━━━━━━━━━━")
                 if self.portfolio_service is not None:
                     snapshot = self.portfolio_service.snapshot()
+                    equity = Decimal(str(snapshot["equity"]))
+                    cash = Decimal(str(snapshot.get("cash", 0)))
+                    invested = Decimal(str(snapshot.get("invested_market_value", equity - cash)))
+                    profit = Decimal(str(snapshot.get("net_profit", 0)))
                     lines.extend(
                         [
-                            f"💰 <b>모의 평가액</b> : <code>{_money(snapshot['equity'])}</code>",
-                            f"🛡️ <b>HWM75 위험예산</b> : <code>{_money(snapshot['risk_budget'])}</code>",
+                            "💰 <b>자산 요약</b>",
+                            f"• 총자산 <code>{_money(equity)}</code> · 손익 <code>{_signed_money(profit)}</code>",
+                            f"• 투자중 <code>{_money(invested)}</code> · 현금 <code>{_money(cash)}</code>",
+                            f"• 위험한도 <code>{_money(snapshot['risk_budget'])}</code>",
                             "",
                             "📊 <b>목표 / 현재 배분</b>",
                         ]
@@ -1518,6 +1587,12 @@ class TelegramBotApp:
         result: PortfolioBacktestResult,
     ) -> str:
         metrics = result.metrics
+        final_cash = metrics.get("final_cash")
+        holdings_value = metrics.get("final_holdings_value")
+        total_fees = metrics.get("total_fees")
+        net_profit = metrics.get(
+            "net_profit", metrics["final_equity"] - metrics["initial_equity"]
+        )
         lines = [
             "✅ <b>[JDSS V3.2.2 통합 백테스트 완료]</b>",
             "",
@@ -1530,6 +1605,12 @@ class TelegramBotApp:
             f"<code>├ Sharpe   : {metrics['sharpe']:>10.3f}</code>",
             f"<code>├ Sortino  : {metrics['sortino']:>10.3f}</code>",
             f"<code>└ 평균노출 : {metrics['average_exposure_pct']:>10.2f}%</code>",
+            "",
+            "💰 <b>종료일 자산 구성</b>",
+            f"• 순손익 : <code>{_signed_money(net_profit)}</code>",
+            *([f"• 남은 현금 : <code>{_money(final_cash)}</code>"] if final_cash is not None else []),
+            *([f"• 보유 평가액 : <code>{_money(holdings_value)}</code>"] if holdings_value is not None else []),
+            *([f"• 누적 수수료 : <code>{_money(total_fees)}</code>"] if total_fees is not None else []),
             "━━━━━━━━━━━━━━━━━━",
             "📦 <b>운영 계약</b>",
             "• 최초진입: <code>50% → 75% → 100%</code> "
@@ -1539,14 +1620,30 @@ class TelegramBotApp:
             f"• 최대 sizing base: <code>{_money(metrics['maximum_sizing_base'])}</code>",
             f"• 슬리피지: <code>{result.slippage * 100:.2f}%</code>",
             "• SGOV: <code>OFF</code>",
-            "",
-            "📜 <b>최근 allocation 체결</b>",
         ]
+        holdings = metrics.get("final_holdings", {})
+        if holdings:
+            lines.extend(["", "📦 <b>종료일 보유수량</b>"])
+            for symbol in ALLOCATION_SYMBOLS:
+                item = holdings.get(symbol, {})
+                lines.append(
+                    f"• {symbol} {_quantity(item.get('quantity', 0))}주 · "
+                    f"<code>{_money(item.get('market_value', 0))}</code>"
+                )
+        lines.extend(["", "📜 <b>최근 allocation 체결</b>"])
         for trade in result.trades[-15:]:
             side = "매수" if trade["side"] == "BUY" else "매도"
+            purpose = str(trade.get("purpose", ""))
+            stage_match = re.match(r"INITIAL_ENTRY_STAGE_(\d+)_", purpose)
+            if stage_match:
+                reason = f"최초진입 {stage_match.group(1)}차"
+            elif trade["side"] == "SELL":
+                reason = "위험축소"
+            else:
+                reason = "목표변경"
             lines.append(
                 f"<code>[{str(trade['date'])[2:].replace('-', '')}] "
-                f"{trade['symbol']} 배분{side} "
+                f"{trade['symbol']} {reason} {side} "
                 f"{trade['quantity']}주 @{_money(trade['price'])}</code>"
             )
         if not result.trades:
@@ -1581,8 +1678,13 @@ class TelegramBotApp:
                 if self.portfolio_service is not None and completed is not None:
                     portfolio_run = self.portfolio_service.run_month_end()
                     if portfolio_run is not None:
+                        self._send(
+                            self._format_daily_portfolio_report(portfolio_run.trade_date)
+                        )
                         for event in portfolio_run.events:
-                            self._send(f"📊 {html.escape(event)}")
+                            if event.startswith("V3.2.2 배분 ") or event.startswith("HWM USD "):
+                                continue
+                            self._send(f"⚠️ {html.escape(event)}")
                         for signal_id in portfolio_run.signals:
                             self._send_signal(self.repository.get_signal(signal_id))
                 if completed is not None and last_analysis != completed.isoformat():

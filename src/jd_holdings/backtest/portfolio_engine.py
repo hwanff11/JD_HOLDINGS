@@ -149,6 +149,18 @@ class PortfolioBacktestEngine:
             sizing_equity = max(0.0, min(sizing_equity, open_equity))
 
             if pending != current:
+                onboarding_stage = None
+                if self.onboarding_policy.enabled:
+                    interval = self.onboarding_policy.minimum_sessions_between_stages
+                    if interval == 0 and execution_index == 0:
+                        onboarding_stage = self.onboarding_policy.total_stages
+                    elif interval > 0 and execution_index <= interval * (
+                        self.onboarding_policy.total_stages - 1
+                    ):
+                        onboarding_stage = min(
+                            execution_index // interval + 1,
+                            self.onboarding_policy.total_stages,
+                        )
                 cash = self._rebalance(
                     pending,
                     quantities,
@@ -160,6 +172,7 @@ class PortfolioBacktestEngine:
                     sell_fee=sell_fee,
                     slippage=slip,
                     trades=trades,
+                    onboarding_stage=onboarding_stage,
                 )
                 current = pending
 
@@ -184,6 +197,13 @@ class PortfolioBacktestEngine:
             trades,
             sizing_history,
             targets.loc[sessions],
+            cash=cash,
+            quantities=quantities,
+            final_prices={
+                symbol: float(frames[symbol].loc[sessions[-1], "close"])
+                for symbol in ALLOCATION_SYMBOLS
+            },
+            sell_fee=sell_fee,
         )
         return PortfolioBacktestResult(
             sessions[0].date(),
@@ -241,6 +261,7 @@ class PortfolioBacktestEngine:
         sell_fee: float,
         slippage: float,
         trades: list[dict[str, Any]],
+        onboarding_stage: int | None = None,
     ) -> float:
         desired: dict[str, int] = {}
         for symbol in ALLOCATION_SYMBOLS:
@@ -260,7 +281,8 @@ class PortfolioBacktestEngine:
             quantities[symbol] -= quantity
             trades.append(
                 PortfolioBacktestEngine._trade(
-                    timestamp, symbol, "SELL", quantity, price, fee
+                    timestamp, symbol, "SELL", quantity, price, fee,
+                    onboarding_stage=onboarding_stage,
                 )
             )
 
@@ -278,19 +300,27 @@ class PortfolioBacktestEngine:
             quantities[symbol] += quantity
             trades.append(
                 PortfolioBacktestEngine._trade(
-                    timestamp, symbol, "BUY", quantity, price, fee
+                    timestamp, symbol, "BUY", quantity, price, fee,
+                    onboarding_stage=onboarding_stage,
                 )
             )
         return cash
 
     @staticmethod
-    def _trade(timestamp, symbol, side, quantity, price, fee) -> dict[str, Any]:
+    def _trade(
+        timestamp, symbol, side, quantity, price, fee, *, onboarding_stage=None
+    ) -> dict[str, Any]:
+        purpose = (
+            f"INITIAL_ENTRY_STAGE_{onboarding_stage}_{side}"
+            if onboarding_stage is not None
+            else f"V322_REBALANCE_{side}"
+        )
         return {
             "date": timestamp.date().isoformat(),
             "component": "allocation",
             "symbol": symbol,
             "side": side,
-            "purpose": f"V322_REBALANCE_{side}",
+            "purpose": purpose,
             "quantity": quantity,
             "price": round(price, 6),
             "fee": round(fee, 6),
@@ -326,6 +356,11 @@ class PortfolioBacktestEngine:
         trades: list[dict[str, Any]],
         sizing_history: list[float],
         targets: pd.DataFrame,
+        *,
+        cash: float,
+        quantities: dict[str, int],
+        final_prices: dict[str, float],
+        sell_fee: float,
     ) -> dict[str, Any]:
         initial = float(self.policy.initial_capital)
         final = float(equity.iloc[-1])
@@ -338,6 +373,18 @@ class PortfolioBacktestEngine:
             equity, self.config.backtest.annualization_days
         )
         cagr = (final / initial) ** (1 / years) - 1
+        holdings = {
+            symbol: {
+                "quantity": quantities[symbol],
+                "price": round(final_prices[symbol], 6),
+                "market_value": round(
+                    quantities[symbol] * final_prices[symbol] * (1 - sell_fee), 2
+                ),
+            }
+            for symbol in ALLOCATION_SYMBOLS
+        }
+        holdings_value = sum(item["market_value"] for item in holdings.values())
+        total_fees = sum(float(trade["fee"]) for trade in trades)
         return {
             "initial_equity": round(initial, 2),
             "final_equity": round(final, 2),
@@ -349,6 +396,11 @@ class PortfolioBacktestEngine:
             "calmar": round(cagr / abs(mdd), 3) if mdd else 0.0,
             "trade_fills": len(trades),
             "average_exposure_pct": round(sum(exposures) / len(exposures) * 100, 2),
+            "final_cash": round(cash, 2),
+            "final_holdings_value": round(holdings_value, 2),
+            "final_holdings": holdings,
+            "total_fees": round(total_fees, 2),
+            "net_profit": round(final - initial, 2),
             "annual_returns_pct": self._calendar_returns(equity, initial),
             "half_year_returns_pct": self._half_year_returns(equity, initial),
             "component_fills": {"allocation": len(trades)},
